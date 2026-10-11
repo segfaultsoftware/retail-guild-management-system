@@ -8,6 +8,7 @@
 Core\DateTime.lua
 Core\SavedData.lua
 Core\Bootstrap.lua
+Core\Reset.lua
 Core\Commands.lua
 UI\UI.lua
 Roster\Roster.lua

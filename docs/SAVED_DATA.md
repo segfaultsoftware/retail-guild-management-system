@@ -46,7 +46,9 @@ records use the shapes built in `Tests/fixtures.lua` and checked by
 `WindowPosition` contains `point`, `relativePoint`, `x`, and `y`. It lives
 under the separate `ui` subtree. Resetting observations creates empty roster
 and bank datasets but deep-copies this subtree, allowing data resets and future
-migrations to preserve the user's window placement.
+migrations to preserve the user's window placement. Replacing one dataset after
+a detected guild change likewise deep-copies the complete valid model before
+clearing that dataset, so it cannot move the window or alter the other dataset.
 
 Only the latest complete roster and bank observations are retained. Daily
 snapshots, scan histories, and unknown fields are rejected rather than carried
@@ -62,13 +64,23 @@ Unsupported future versions enter the `incompatible` state. Malformed values,
 unknown unversioned values, and failed migrations enter the `corrupt` state.
 In either state, `RGMS.DB` remains unavailable so scans and reports cannot use
 unsafe data, and the original `RGMSCharacterDB` value remains untouched. The
-chat message on load reports the disabled state and reason.
+chat message on load reports the disabled state and reason, and RGMS opens its
+reset confirmation. Declining keeps the original value unchanged and leaves
+scans and reports disabled. Accepting replaces it with a valid empty model and
+immediately re-enables RGMS. A later UI reload therefore retains either the
+disabled original or the accepted empty replacement.
 
-To recover manually, log out or exit so WoW flushes SavedVariables, make a
-backup of that character's `SavedVariables/RGMS.lua`, and inspect or replace it
-while the client is closed. Deleting that one character's file makes the next
-load initialize an empty model. Keep the backup when diagnosing a migration or
-validation bug; do not share account or character names from its path.
+`/rgms reset` opens the same confirmation without changing data immediately.
+Accepting clears both datasets' collections, guild identities, and scan
+timestamps for the current character only. Canceling changes nothing. A valid
+saved window position is deep-copied into the replacement, including during
+recovery from an otherwise corrupt or unsupported-version model. An invalid
+window position cannot be put into the valid replacement and is discarded.
+
+For diagnosis, log out or exit so WoW flushes SavedVariables, make a backup of
+that character's `SavedVariables/RGMS.lua`, and inspect it while the client is
+closed. Keep the backup when investigating a migration or validation bug; do
+not share account or character names from its path.
 
 ## Supported migrations
 

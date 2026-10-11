@@ -148,6 +148,57 @@ return {
         test.assert_equal(model.ui.windowPosition.x, 120)
     end),
 
+    test.case("recovery reset keeps only a valid window position from corrupt data", function()
+        local model = fixtures.saved_model()
+        model.roster.members[1].level = "eighty"
+        model.ui.futureSetting = "discard me"
+
+        local reset = savedData.resetObservations(model)
+
+        test.assert_true(savedData.validate(reset))
+        test.assert_equal(reset.ui.windowPosition, fixtures.window_position())
+        test.assert_nil(reset.ui.futureSetting)
+        test.assert_equal(reset.roster.ranks, {})
+        test.assert_equal(reset.roster.members, {})
+        test.assert_equal(reset.bank.tabs, {})
+        test.assert_equal(reset.bank.slots, {})
+        test.assert_nil(reset.roster.guild)
+        test.assert_nil(reset.roster.scannedAt)
+        test.assert_nil(reset.bank.guild)
+        test.assert_nil(reset.bank.scannedAt)
+    end),
+
+    test.case("recovery reset handles invalid positions and version-zero positions", function()
+        local invalid = fixtures.saved_model()
+        invalid.ui.windowPosition.x = "far away"
+        local invalidReset = savedData.resetObservations(invalid)
+        test.assert_true(savedData.validate(invalidReset))
+        test.assert_nil(invalidReset.ui.windowPosition)
+
+        local previous = fixtures.saved_model_v0()
+        previous.roster.members[1].level = "eighty"
+        local previousReset = savedData.resetObservations(previous)
+        test.assert_equal(previousReset.ui.windowPosition, previous.windowPosition)
+        test.assert_true(savedData.validate(previousReset))
+    end),
+
+    test.case("single-dataset replacement preserves the other dataset and UI", function()
+        local model = fixtures.saved_model()
+        local reset = savedData.resetDatasetObservations(model, "roster")
+
+        test.assert_equal(reset.roster, {
+            ranks = {},
+            members = {},
+        })
+        test.assert_equal(reset.bank, model.bank)
+        test.assert_equal(reset.ui.windowPosition, model.ui.windowPosition)
+
+        reset.bank.slots[1].quantity = 1
+        reset.ui.windowPosition.x = 700
+        test.assert_equal(model.bank.slots[1].quantity, 20)
+        test.assert_equal(model.ui.windowPosition.x, 120)
+    end),
+
     test.case("snapshot history and unknown fields fail validation", function()
         local model = fixtures.saved_model()
         model.roster.dailySnapshots = {}

@@ -699,18 +699,71 @@ function SavedData.load(saved)
     }
 end
 
--- Observation resets deliberately keep UI state in a separate subtree.
+local function copyValidWindowPosition(model)
+    if type(model) ~= "table" then
+        return nil
+    end
+
+    local position
+    if type(model.ui) == "table" then
+        position = model.ui.windowPosition
+    end
+    if position == nil then
+        -- Schema version zero stored this at the top level. Keeping this
+        -- fallback also lets recovery retain a usable position when migration
+        -- fails for an unrelated field.
+        position = model.windowPosition
+    end
+
+    local valid = validateWindowPosition(position, "saved window position")
+    if not valid or position == nil then
+        return nil
+    end
+
+    return deepCopy(position)
+end
+
+-- Observation resets deliberately keep UI state in a separate subtree. Only
+-- the known, valid window-position field is recovered from unusable data; all
+-- observations, identities, timestamps, and unknown fields are discarded.
 function SavedData.resetObservations(model)
     local reset = SavedData.newModel()
-    if type(model) == "table" and type(model.ui) == "table" then
-        local copiedUi, copyError = deepCopy(model.ui)
-        if not copiedUi then
-            return nil, copyError
-        end
-        reset.ui = copiedUi
+    local copiedPosition, copyError = copyValidWindowPosition(model)
+    if copyError then
+        return nil, copyError
+    end
+    if copiedPosition ~= nil then
+        reset.ui.windowPosition = copiedPosition
     end
 
     local valid, validationError = SavedData.validate(reset)
+    if not valid then
+        return nil, validationError
+    end
+
+    return reset
+end
+
+-- Guild changes replace one transactional dataset at a time. Keeping this
+-- operation here makes the window-position invariant explicit for the future
+-- roster and bank scanners.
+function SavedData.resetDatasetObservations(model, datasetName)
+    if datasetName ~= "roster" and datasetName ~= "bank" then
+        return nil, "dataset name must be roster or bank"
+    end
+
+    local valid, validationError = SavedData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+
+    local reset, copyError = deepCopy(model)
+    if not reset then
+        return nil, copyError
+    end
+    reset[datasetName] = SavedData.newModel()[datasetName]
+
+    valid, validationError = SavedData.validate(reset)
     if not valid then
         return nil, validationError
     end

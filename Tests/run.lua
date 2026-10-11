@@ -8,6 +8,7 @@ local defaultSuites = {
     "Tests.spec.fixtures_spec",
     "Tests.spec.date_time_spec",
     "Tests.spec.saved_data_spec",
+    "Tests.spec.reset_spec",
 }
 
 local function appendCases(destination, cases, source)

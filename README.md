@@ -7,6 +7,8 @@ data.
 The repository currently includes a minimal addon skeleton. When it loads, it
 prints a development confirmation in chat and exposes `/rgms help` so a
 contributor can verify their local setup before working on product features.
+`/rgms reset` provides a confirmation-protected, per-character observation
+reset and also recovers from corrupt or incompatible saved data.
 
 ## Tests
 

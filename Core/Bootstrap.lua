@@ -33,12 +33,13 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
     else
         RGMS.DB = nil
         RGMS.Print(
-            "Saved data is "
+            "RGMS cannot scan or report because saved data is "
                 .. savedDataState.status
-                .. "; scans and reports are disabled. "
+                .. ": "
                 .. savedDataState.error
-                .. ". The original data was preserved."
+                .. ". The original data was preserved; accept the reset confirmation to recover."
         )
+        RGMS.Reset:requestRecovery(savedDataState)
     end
 
     self:UnregisterEvent("ADDON_LOADED")
