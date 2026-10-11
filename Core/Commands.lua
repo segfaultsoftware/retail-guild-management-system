@@ -2,15 +2,39 @@ local _, RGMS = ...
 
 local Commands = {}
 
+local HELP_LINES = {
+    "RGMS commands:",
+    "  /rgms - Toggle the main window and select Roster when opening.",
+    "  /rgms help - Show this command list.",
+    "  /rgms scanroster - Scan the guild roster.",
+    "  /rgms reset - Open the reset confirmation.",
+}
+
 local function showHelp(api)
-    api.Print("Available commands: /rgms help, /rgms reset")
+    for _, line in ipairs(HELP_LINES) do
+        api.Print(line)
+    end
+end
+
+local function normalize(input)
+    return tostring(input or ""):match("^%s*(.-)%s*$"):lower()
 end
 
 function Commands.handle(input, api)
-    local command = tostring(input or ""):match("^%s*(%S*)"):lower()
+    local command = normalize(input)
 
-    if command == "" or command == "help" then
+    if command == "" then
+        api.UI.Toggle("roster")
+        return
+    end
+
+    if command == "help" then
         showHelp(api)
+        return
+    end
+
+    if command == "scanroster" then
+        api.Roster.RequestManualScan()
         return
     end
 
@@ -19,8 +43,11 @@ function Commands.handle(input, api)
         return
     end
 
-    api.Print(("Unknown command %q. Type /rgms help."):format(command))
+    showHelp(api)
 end
+
+Commands.HELP_LINES = HELP_LINES
+Commands.normalize = normalize
 
 if type(RGMS) == "table" then
     RGMS.Commands = Commands

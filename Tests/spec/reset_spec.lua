@@ -50,7 +50,7 @@ return {
             end,
         }
 
-        commands.handle("  reset ignored-arguments", api)
+        commands.handle("  ReSeT  ", api)
 
         test.assert_not_nil(harness.shownRequest)
         test.assert_false(harness.shownRequest.recovery)
