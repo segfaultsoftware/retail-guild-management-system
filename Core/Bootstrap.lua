@@ -42,5 +42,10 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
         RGMS.Reset:requestRecovery(savedDataState)
     end
 
+    local initialized, initializeError = RGMS.UI.Initialize()
+    if not initialized then
+        RGMS.Print("Could not initialize the main window: " .. tostring(initializeError) .. ".")
+    end
+
     self:UnregisterEvent("ADDON_LOADED")
 end)
