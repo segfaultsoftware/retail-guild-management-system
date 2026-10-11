@@ -1,0 +1,6 @@
+# Local test and coverage output
+Tests/.results/
+coverage/
+luacov.report.out
+luacov.stats.out
+

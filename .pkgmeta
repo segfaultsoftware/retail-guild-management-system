@@ -1,0 +1,10 @@
+package-as: RGMS
+
+ignore:
+  - .github
+  - .gitignore
+  - .pkgmeta
+  - docs
+  - scripts
+  - Tests
+

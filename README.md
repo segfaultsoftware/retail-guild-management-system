@@ -8,6 +8,19 @@ The repository currently includes a minimal addon skeleton. When it loads, it
 prints a development confirmation in chat and exposes `/rgms help` so a
 contributor can verify their local setup before working on product features.
 
+## Tests
+
+With Lua installed, run the complete test suite outside World of Warcraft from
+the repository root:
+
+```text
+lua Tests/run.lua
+```
+
+The suite is dependency-free and deterministic. See
+[Tests/README.md](Tests/README.md) for Lua version details, fixture and test
+examples, and the intentional failure check.
+
 ## Quick start
 
 1. Install the current live **World of Warcraft Retail** client.
