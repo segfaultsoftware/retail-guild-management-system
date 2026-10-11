@@ -1,0 +1,8 @@
+## Interface: 120100
+## Title: Retail Guild Management System (RGMS)
+## Notes: Guild roster and bank data for the RGMS application.
+## Author: RGMS contributors
+## Version: 0.0.1-dev
+## SavedVariablesPerCharacter: RGMSCharacterDB
+
+RGMS.lua
