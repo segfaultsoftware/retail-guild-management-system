@@ -5,6 +5,7 @@
 ## Version: 0.0.1-dev
 ## SavedVariablesPerCharacter: RGMSCharacterDB
 
+Core\DateTime.lua
 Core\Bootstrap.lua
 Core\Commands.lua
 UI\UI.lua

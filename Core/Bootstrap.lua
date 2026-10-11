@@ -18,7 +18,12 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
     end
 
     RGMSCharacterDB.loadCount = (tonumber(RGMSCharacterDB.loadCount) or 0) + 1
-    RGMSCharacterDB.lastLoadedAt = date("%Y-%m-%d %H:%M:%S")
+
+    local loadedAt, timestampError = RGMS.DateTime.formatPacificTimestamp()
+    if not loadedAt then
+        error("RGMS could not record its load time: " .. timestampError)
+    end
+    RGMSCharacterDB.lastLoadedAt = loadedAt
 
     RGMS.Print("[development] loaded. Type /rgms help for available commands.")
     self:UnregisterEvent("ADDON_LOADED")

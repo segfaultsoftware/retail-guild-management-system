@@ -6,6 +6,7 @@ local test = require("Tests.lib.runner")
 local defaultSuites = {
     "Tests.spec.runner_spec",
     "Tests.spec.fixtures_spec",
+    "Tests.spec.date_time_spec",
 }
 
 local function appendCases(destination, cases, source)
