@@ -6,6 +6,7 @@
 ## SavedVariablesPerCharacter: RGMSCharacterDB
 
 Core\DateTime.lua
+Core\SavedData.lua
 Core\Bootstrap.lua
 Core\Commands.lua
 UI\UI.lua

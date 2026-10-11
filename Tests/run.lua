@@ -7,6 +7,7 @@ local defaultSuites = {
     "Tests.spec.runner_spec",
     "Tests.spec.fixtures_spec",
     "Tests.spec.date_time_spec",
+    "Tests.spec.saved_data_spec",
 }
 
 local function appendCases(destination, cases, source)

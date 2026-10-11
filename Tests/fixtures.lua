@@ -91,5 +91,60 @@ function Fixtures.bank_slot(overrides)
     }, overrides)
 end
 
+function Fixtures.window_position(overrides)
+    return withOverrides({
+        point = "TOPLEFT",
+        relativePoint = "TOPLEFT",
+        x = 120,
+        y = -80,
+    }, overrides)
+end
+
+function Fixtures.saved_model(overrides)
+    local guild = Fixtures.guild_identity()
+    local timestamp = Fixtures.timestamp()
+
+    return withOverrides({
+        schemaVersion = 1,
+        roster = {
+            guild = guild,
+            scannedAt = timestamp,
+            ranks = { Fixtures.roster_rank() },
+            members = { Fixtures.roster_member() },
+        },
+        bank = {
+            guild = guild,
+            scannedAt = timestamp,
+            tabs = { Fixtures.bank_tab() },
+            slots = { Fixtures.bank_slot() },
+        },
+        ui = {
+            windowPosition = Fixtures.window_position(),
+        },
+    }, overrides)
+end
+
+function Fixtures.saved_model_v0(overrides)
+    local guild = Fixtures.guild_identity()
+    local timestamp = Fixtures.timestamp()
+
+    return withOverrides({
+        schemaVersion = 0,
+        roster = {
+            guildIdentity = guild,
+            scanTimestamp = timestamp,
+            ranks = { Fixtures.roster_rank() },
+            members = { Fixtures.roster_member() },
+        },
+        bank = {
+            guildIdentity = guild,
+            scanTimestamp = timestamp,
+            tabs = { Fixtures.bank_tab() },
+            slots = { Fixtures.bank_slot() },
+        },
+        windowPosition = Fixtures.window_position(),
+    }, overrides)
+end
+
 
 return Fixtures

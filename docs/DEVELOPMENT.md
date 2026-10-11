@@ -169,6 +169,10 @@ WoW keeps an in-memory copy and can overwrite manual changes on reload, logout,
 or exit. Treat real account and character names in the path or data as private
 when sharing diagnostics.
 
+The saved value is versioned and validated before RGMS exposes it to scans or
+reports. See [SAVED_DATA.md](SAVED_DATA.md) for its exact schema, supported
+migrations, disabled states, and recovery steps.
+
 ## Runtime and manifest assumptions
 
 - The target is the current live Retail client only.

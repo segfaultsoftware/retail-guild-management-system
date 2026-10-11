@@ -49,4 +49,16 @@ return {
         })
         test.assert_equal(laterTimestamp.iso8601, "2024-06-01T12:35:56Z")
     end),
+
+    test.case("saved-data fixtures model current and version-zero shapes", function()
+        local current = fixtures.saved_model()
+        local previous = fixtures.saved_model_v0()
+
+        test.assert_equal(current.schemaVersion, 1)
+        test.assert_equal(current.roster.guild.name, "Example Guild")
+        test.assert_equal(current.ui.windowPosition.point, "TOPLEFT")
+        test.assert_equal(previous.schemaVersion, 0)
+        test.assert_equal(previous.roster.guildIdentity.name, "Example Guild")
+        test.assert_nil(previous.ui)
+    end),
 }

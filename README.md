@@ -36,3 +36,7 @@ examples, and the intentional failure check.
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the complete setup,
 SavedVariables, runtime assumptions, iteration workflow, and troubleshooting
 guide.
+
+The versioned per-character persistence schema, validation behavior, and
+recovery procedure are documented in
+[docs/SAVED_DATA.md](docs/SAVED_DATA.md).

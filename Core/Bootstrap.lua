@@ -13,18 +13,33 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
         return
     end
 
-    if type(RGMSCharacterDB) ~= "table" then
-        RGMSCharacterDB = {}
+    local savedDataState = RGMS.SavedData.load(RGMSCharacterDB)
+    RGMS.SavedDataState = savedDataState
+
+    if savedDataState.enabled then
+        RGMSCharacterDB = savedDataState.model
+        RGMS.DB = savedDataState.model
+
+        if savedDataState.migratedFrom ~= nil then
+            RGMS.Print(
+                "Saved data migrated from "
+                    .. tostring(savedDataState.migratedFrom)
+                    .. " to schema version "
+                    .. RGMS.SavedData.CURRENT_SCHEMA_VERSION
+                    .. "."
+            )
+        end
+        RGMS.Print("[development] loaded. Type /rgms help for available commands.")
+    else
+        RGMS.DB = nil
+        RGMS.Print(
+            "Saved data is "
+                .. savedDataState.status
+                .. "; scans and reports are disabled. "
+                .. savedDataState.error
+                .. ". The original data was preserved."
+        )
     end
 
-    RGMSCharacterDB.loadCount = (tonumber(RGMSCharacterDB.loadCount) or 0) + 1
-
-    local loadedAt, timestampError = RGMS.DateTime.formatPacificTimestamp()
-    if not loadedAt then
-        error("RGMS could not record its load time: " .. timestampError)
-    end
-    RGMSCharacterDB.lastLoadedAt = loadedAt
-
-    RGMS.Print("[development] loaded. Type /rgms help for available commands.")
     self:UnregisterEvent("ADDON_LOADED")
 end)
