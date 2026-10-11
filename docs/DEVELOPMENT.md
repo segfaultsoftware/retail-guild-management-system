@@ -21,7 +21,9 @@ features and WoW APIs supplied by the current Retail client; it cannot use the
 normal operating-system, filesystem, or networking libraries.
 
 The repository root is the addon root. `RGMS.toc` is the manifest, and the Lua
-files named in that manifest are loaded in order.
+files named in that manifest are loaded in order. Runtime source is grouped by
+responsibility in `Core`, `UI`, `Roster`, and `Bank`; development-only tests
+belong in `Tests` and are not loaded by the game.
 
 ## 1. Find the Retail installation
 
@@ -66,7 +68,7 @@ location. The resulting layout must be exactly:
 
 ```text
 _retail_/Interface/AddOns/RGMS/RGMS.toc
-_retail_/Interface/AddOns/RGMS/RGMS.lua
+_retail_/Interface/AddOns/RGMS/Core/Bootstrap.lua
 ```
 
 An extra nested directory such as
@@ -120,10 +122,10 @@ directory. After every source change, copy the changed files again before using
 3. Find **Retail Guild Management System (RGMS)** and check its box for the
    character you will use. The name comes from the `Title` field in `RGMS.toc`.
 4. Log in with that character.
-5. Look for `RGMS: loaded. Type /rgms to verify the development setup.` in the
-   default chat frame.
-6. Enter `/rgms`. A second RGMS message with a per-character load count proves
-   that the addon code and its SavedVariables are available.
+5. Look for `RGMS: [development] loaded. Type /rgms help for available
+   commands.` in the default chat frame.
+6. Enter `/rgms help`. A second RGMS-owned message confirms that the slash
+   command path is operational.
 
 Enable built-in Lua error dialogs while developing:
 
@@ -173,10 +175,17 @@ when sharing diagnostics.
 - `RGMS.toc` currently declares Retail interface `120100`. The number is a
   compatibility marker, not a Lua language version. Retail can change it with
   a game patch.
+- The manifest's `Title`, `Notes`, `Author`, and `Version` fields provide the
+  addon-list and project metadata. Keep the development version placeholder
+  until a release process supplies a real release version.
 - WoW supplies a sandboxed, modified Lua runtime and the Retail FrameXML/API
   globals. Test behavior in WoW even if an editor or external linter is used.
 - Files are plain UTF-8 text. Keep the manifest's file list and load order in
   sync when adding modules.
+- Each Lua file receives the same private `RGMS` addon table from WoW. Share
+  module state through that table rather than adding new global variables;
+  `RGMSCharacterDB` and WoW's slash-command registration globals are the
+  deliberate exceptions.
 - No setup command other than creating the directory link is currently needed;
   there are no vendored libraries, generated files, or package-manager steps.
 

@@ -5,4 +5,8 @@
 ## Version: 0.0.1-dev
 ## SavedVariablesPerCharacter: RGMSCharacterDB
 
-RGMS.lua
+Core\Bootstrap.lua
+Core\Commands.lua
+UI\UI.lua
+Roster\Roster.lua
+Bank\Bank.lua
