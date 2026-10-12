@@ -2,7 +2,7 @@
 ## Title: Retail Guild Management System (RGMS)
 ## Notes: Guild roster and bank data for the RGMS application.
 ## Author: RGMS contributors
-## Version: 0.0.1-dev
+## Version: 0.1.0-rc.1
 ## SavedVariablesPerCharacter: RGMSCharacterDB
 
 Core\Realm.lua
