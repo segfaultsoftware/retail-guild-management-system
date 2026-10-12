@@ -20,6 +20,8 @@ local function completedSnapshot(unixSeconds, options)
         observedAt = observedAt,
     })
     member.rankTenureStartDate = nil
+    member.lastSeenDate = nil
+    member.isMissing = nil
 
     return {
         guild = fixtures.guild_identity(),
@@ -31,6 +33,16 @@ local function completedSnapshot(unixSeconds, options)
             }),
         },
         members = { member },
+    }
+end
+
+local function emptySnapshot(unixSeconds, ranks)
+    local scannedAt = dateTime.utcTimestamp(unixSeconds)
+    return {
+        guild = fixtures.guild_identity(),
+        scannedAt = scannedAt,
+        ranks = ranks or { fixtures.roster_rank() },
+        members = {},
     }
 end
 
@@ -99,6 +111,130 @@ return {
             tenure.daysSince("2024-06-01", "2024-06-04", dateTime),
             3
         )
+    end),
+
+    test.case("first absence retains and marks the member under the current rank", function()
+        local first = reduce(
+            emptyDataset(),
+            completedSnapshot(dateFixtures.pacificMidnight.after)
+        )
+        local absent = reduce(
+            first,
+            emptySnapshot(dateFixtures.pacificMidnight.after + 24 * 60 * 60)
+        )
+        local member = absent.members[1]
+
+        test.assert_equal(#absent.members, 1)
+        test.assert_true(member.isMissing)
+        test.assert_equal(member.lastSeenDate, "2024-06-01")
+        test.assert_equal(member.rankName, "Officer")
+        test.assert_equal(member.rankTenureStartDate, "2024-06-01")
+        test.assert_equal(member.observedAt, first.members[1].observedAt)
+        test.assert_equal(member.lastOnline.days, 3)
+        test.assert_equal(member.lastOnline.hours, 3)
+        test.assert_false(first.members[1].isMissing)
+    end),
+
+    test.case("missing members are retained at day 21 and removed on day 22", function()
+        local startedAt = dateFixtures.pacificMidnight.after
+        local first = reduce(emptyDataset(), completedSnapshot(startedAt))
+        local firstAbsence = reduce(first, emptySnapshot(startedAt + 24 * 60 * 60))
+        local day21 = reduce(firstAbsence, emptySnapshot(
+            startedAt + 21 * 24 * 60 * 60
+        ))
+        local day22 = reduce(day21, emptySnapshot(
+            startedAt + 22 * 24 * 60 * 60
+        ))
+
+        test.assert_equal(#day21.members, 1)
+        test.assert_true(day21.members[1].isMissing)
+        test.assert_equal(day21.members[1].lastOnline.days, 23)
+        test.assert_equal(#day22.members, 0)
+    end),
+
+    test.case("scan gaps and Pacific midnight carry online age by calendar date", function()
+        local currentSnapshot = completedSnapshot(dateFixtures.pacificMidnight.before)
+        currentSnapshot.members[1].isOnline = true
+        currentSnapshot.members[1].lastOnline = nil
+        local first = reduce(emptyDataset(), currentSnapshot)
+        local missing = reduce(
+            first,
+            emptySnapshot(dateFixtures.pacificMidnight.after)
+        )
+
+        test.assert_true(missing.members[1].isMissing)
+        test.assert_false(missing.members[1].isOnline)
+        test.assert_equal(missing.members[1].lastSeenDate, "2024-05-31")
+        test.assert_equal(missing.members[1].lastOnline, {
+            years = 0,
+            months = 0,
+            days = 1,
+            hours = 0,
+        })
+
+        local afterGap = reduce(missing, emptySnapshot(
+            dateFixtures.pacificMidnight.after + 4 * 24 * 60 * 60
+        ))
+        test.assert_equal(afterGap.members[1].lastOnline.days, 5)
+        test.assert_equal(afterGap.members[1].lastSeenDate, "2024-05-31")
+    end),
+
+    test.case("reappearance resets tenure at the same or a different rank", function()
+        for _, rankIndex in ipairs({ 1, 2 }) do
+            local startedAt = dateFixtures.pacificMidnight.after
+            local first = reduce(emptyDataset(), completedSnapshot(startedAt))
+            local missing = reduce(first, emptySnapshot(startedAt + 24 * 60 * 60))
+            local rankName = rankIndex == 1 and "Officer" or "Member"
+            local returned = reduce(missing, completedSnapshot(
+                startedAt + 2 * 24 * 60 * 60,
+                { rankIndex = rankIndex, rankName = rankName }
+            ))
+            local member = returned.members[1]
+
+            test.assert_false(member.isMissing)
+            test.assert_equal(member.lastSeenDate, "2024-06-03")
+            test.assert_equal(member.rankIndex, rankIndex)
+            test.assert_equal(member.rankTenureStartDate, "2024-06-03")
+        end
+    end),
+
+    test.case("removing a rank removes its retained missing members", function()
+        local startedAt = dateFixtures.pacificMidnight.after
+        local first = reduce(emptyDataset(), completedSnapshot(startedAt, {
+            rankIndex = 2,
+            rankName = "Member",
+        }))
+        local withoutFormerRank = reduce(first, emptySnapshot(
+            startedAt + 24 * 60 * 60,
+            { fixtures.roster_rank({ index = 1, name = "Officer" }) }
+        ))
+
+        test.assert_equal(#withoutFormerRank.members, 0)
+    end),
+
+    test.case("current members remain regardless of old last-online values", function()
+        local startedAt = dateFixtures.pacificMidnight.after
+        local firstSnapshot = completedSnapshot(startedAt)
+        firstSnapshot.members[1].lastOnline = {
+            years = 9,
+            months = 11,
+            days = 30,
+            hours = 23,
+        }
+        local first = reduce(emptyDataset(), firstSnapshot)
+        local currentSnapshot = completedSnapshot(startedAt + 22 * 24 * 60 * 60)
+        currentSnapshot.members[1].lastOnline = {
+            years = 10,
+            months = 0,
+            days = 0,
+            hours = 0,
+        }
+        local current = reduce(first, currentSnapshot)
+
+        test.assert_equal(#current.members, 1)
+        test.assert_false(current.members[1].isMissing)
+        test.assert_equal(current.members[1].lastOnline.years, 10)
+        test.assert_equal(current.members[1].rankTenureStartDate, "2024-06-01")
     end),
 
     test.case("rank rename at the same index preserves tenure", function()

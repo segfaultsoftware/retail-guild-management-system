@@ -6,6 +6,8 @@ local _, RGMS = ...
 
 local Tenure = {}
 
+Tenure.MISSING_RETENTION_DAYS = 21
+
 local function deepCopy(value, active)
     if type(value) ~= "table" then
         return value
@@ -65,6 +67,46 @@ local function indexMembers(members, source)
     return indexed
 end
 
+local function indexRanks(ranks)
+    local indexed = {}
+    for _, rank in ipairs(ranks) do
+        if type(rank) ~= "table" or type(rank.index) ~= "number" then
+            return nil, "completed roster rank index must be a number"
+        end
+        if indexed[rank.index] ~= nil then
+            return nil, "completed roster contains duplicate rank index " .. rank.index
+        end
+        indexed[rank.index] = rank
+    end
+    return indexed
+end
+
+local function pacificDateForTimestamp(timestamp, dateTime, source)
+    if type(timestamp) ~= "table" or type(timestamp.unixSeconds) ~= "number" then
+        return nil, source .. " timestamp is invalid"
+    end
+
+    local date, dateError = dateTime.currentPacificDate(timestamp.unixSeconds)
+    if not date then
+        return nil, dateError
+    end
+    return date
+end
+
+local function carryLastOnlineForward(member, elapsedDays)
+    if member.isOnline then
+        member.lastOnline = {
+            years = 0,
+            months = 0,
+            days = elapsedDays,
+            hours = 0,
+        }
+    elseif member.lastOnline ~= nil then
+        member.lastOnline.days = member.lastOnline.days + elapsedDays
+    end
+    member.isOnline = false
+end
+
 function Tenure.reduce(previousDataset, snapshot, dateTime)
     local dateTimeAvailable, dateTimeError = requireDateTime(dateTime)
     if not dateTimeAvailable then
@@ -80,8 +122,10 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
         return nil, "completed roster snapshot is invalid"
     end
 
-    local observedDate, dateError = dateTime.currentPacificDate(
-        snapshot.scannedAt.unixSeconds
+    local observedDate, dateError = pacificDateForTimestamp(
+        snapshot.scannedAt,
+        dateTime,
+        "completed roster snapshot"
     )
     if not observedDate then
         return nil, dateError
@@ -101,6 +145,10 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
     if not currentMembers then
         return nil, currentError
     end
+    local currentRanks, rankError = indexRanks(snapshot.ranks)
+    if not currentRanks then
+        return nil, rankError
+    end
 
     local nextDataset, copyError = deepCopy({
         guild = snapshot.guild,
@@ -114,10 +162,60 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
 
     for _, member in ipairs(nextDataset.members) do
         local previous = previousMembers[member.displayName]
-        if previous ~= nil and previous.rankIndex == member.rankIndex then
+        if previous ~= nil
+            and not previous.isMissing
+            and previous.rankIndex == member.rankIndex then
             member.rankTenureStartDate = previous.rankTenureStartDate
         else
             member.rankTenureStartDate = observedDate
+        end
+        member.lastSeenDate = observedDate
+        member.isMissing = false
+    end
+
+    local previousScanDate
+    if #previousDataset.members > 0 then
+        previousScanDate, dateError = pacificDateForTimestamp(
+            previousDataset.scannedAt,
+            dateTime,
+            "previous roster dataset"
+        )
+        if not previousScanDate then
+            return nil, dateError
+        end
+    end
+
+    for _, previous in ipairs(previousDataset.members) do
+        if currentMembers[previous.displayName] == nil then
+            local currentRank = currentRanks[previous.rankIndex]
+            if currentRank ~= nil then
+                local missingDays, missingError = dateTime.calendarDayDifference(
+                    previous.lastSeenDate,
+                    observedDate
+                )
+                if missingDays == nil then
+                    return nil, missingError
+                end
+
+                if missingDays <= Tenure.MISSING_RETENTION_DAYS then
+                    local elapsedDays, elapsedError = dateTime.calendarDayDifference(
+                        previousScanDate,
+                        observedDate
+                    )
+                    if elapsedDays == nil then
+                        return nil, elapsedError
+                    end
+
+                    local retained, retainedError = deepCopy(previous)
+                    if not retained then
+                        return nil, retainedError
+                    end
+                    retained.rankName = currentRank.name
+                    retained.isMissing = true
+                    carryLastOnlineForward(retained, elapsedDays)
+                    nextDataset.members[#nextDataset.members + 1] = retained
+                end
+            end
         end
     end
 

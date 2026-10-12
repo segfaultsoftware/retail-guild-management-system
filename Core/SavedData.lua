@@ -7,7 +7,7 @@ local _, RGMS = ...
 local SavedData = {}
 local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTime")
 
-SavedData.CURRENT_SCHEMA_VERSION = 3
+SavedData.CURRENT_SCHEMA_VERSION = 4
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -305,7 +305,12 @@ local function validateRosterRank(value, path)
     return true
 end
 
-local function validateRosterMember(value, path, requireTenureStartDate)
+local function validateRosterMember(
+    value,
+    path,
+    requireTenureStartDate,
+    requireMissingState
+)
     local allowedKeys = {
         guid = true,
         name = true,
@@ -322,6 +327,10 @@ local function validateRosterMember(value, path, requireTenureStartDate)
     }
     if requireTenureStartDate then
         allowedKeys.rankTenureStartDate = true
+    end
+    if requireMissingState then
+        allowedKeys.lastSeenDate = true
+        allowedKeys.isMissing = true
     end
 
     local valid, validationError = validateExactTable(value, allowedKeys, path)
@@ -386,6 +395,17 @@ local function validateRosterMember(value, path, requireTenureStartDate)
         return nil, validationError
     end
 
+    local observedDate
+    if requireTenureStartDate or requireMissingState then
+        local observedDateError
+        observedDate, observedDateError = DateTime.currentPacificDate(
+            value.observedAt.unixSeconds
+        )
+        if not observedDate then
+            return nil, path .. ".observedAt " .. observedDateError
+        end
+    end
+
     if requireTenureStartDate then
         local parsedDate, dateError = DateTime.parseStoredDate(
             value.rankTenureStartDate
@@ -394,12 +414,6 @@ local function validateRosterMember(value, path, requireTenureStartDate)
             return nil, path .. ".rankTenureStartDate " .. dateError
         end
 
-        local observedDate, observedDateError = DateTime.currentPacificDate(
-            value.observedAt.unixSeconds
-        )
-        if not observedDate then
-            return nil, path .. ".observedAt " .. observedDateError
-        end
         local tenureDays = DateTime.calendarDayDifference(
             value.rankTenureStartDate,
             observedDate
@@ -409,11 +423,29 @@ local function validateRosterMember(value, path, requireTenureStartDate)
         end
     end
 
+    if requireMissingState then
+        valid, validationError = requireBoolean(value.isMissing, path .. ".isMissing")
+        if not valid then
+            return nil, validationError
+        end
+
+        local parsedDate, dateError = DateTime.parseStoredDate(value.lastSeenDate)
+        if not parsedDate then
+            return nil, path .. ".lastSeenDate " .. dateError
+        end
+        if value.lastSeenDate ~= observedDate then
+            return nil, path .. ".lastSeenDate must match observedAt's Pacific date"
+        end
+        if value.isMissing and value.isOnline then
+            return nil, path .. ".isOnline must be false while the member is missing"
+        end
+    end
+
     return true
 end
 
 local function validateCurrentRosterMember(value, path)
-    return validateRosterMember(value, path, true)
+    return validateRosterMember(value, path, true, true)
 end
 
 local function validateBankTab(value, path)
@@ -839,10 +871,71 @@ local function migrateVersionTwo(model)
     return model
 end
 
+local function validateVersionThreeRosterMember(value, path)
+    return validateRosterMember(value, path, true, false)
+end
+
+local function migrateVersionThree(model)
+    if model.schemaVersion ~= 3 then
+        return nil, "schema version 3 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 3 data")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.roster, "schema version 3 data.roster", {
+        ranks = validateRosterRank,
+        members = validateVersionThreeRosterMember,
+    })
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.bank, "schema version 3 data.bank", {
+        tabs = validateBankTab,
+        slots = validateBankSlot,
+    })
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+    }, "schema version 3 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 3 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    for _, member in ipairs(model.roster.members or {}) do
+        local observedDate, observedDateError = DateTime.currentPacificDate(
+            member.observedAt.unixSeconds
+        )
+        if not observedDate then
+            return nil, observedDateError
+        end
+        member.lastSeenDate = observedDate
+        member.isMissing = false
+    end
+    model.schemaVersion = 4
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
     [2] = migrateVersionTwo,
+    [3] = migrateVersionThree,
 }
 
 local function isLegacyDevelopmentState(value)

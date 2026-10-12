@@ -74,6 +74,8 @@ function Fixtures.roster_member(overrides)
         },
         observedAt = Fixtures.timestamp(),
         rankTenureStartDate = "2024-06-01",
+        lastSeenDate = "2024-06-01",
+        isMissing = false,
     }, overrides)
 end
 
@@ -114,7 +116,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 3,
+        schemaVersion = 4,
         roster = {
             guild = guild,
             scannedAt = timestamp,
@@ -141,6 +143,8 @@ function Fixtures.saved_model_v0(overrides)
     member.rankName = nil
     member.lastOnline = nil
     member.rankTenureStartDate = nil
+    member.lastSeenDate = nil
+    member.isMissing = nil
 
     return withOverrides({
         schemaVersion = 0,
@@ -168,6 +172,8 @@ function Fixtures.saved_model_v1(overrides)
         member.rankName = nil
         member.lastOnline = nil
         member.rankTenureStartDate = nil
+        member.lastSeenDate = nil
+        member.isMissing = nil
     end
     return model
 end
@@ -177,6 +183,18 @@ function Fixtures.saved_model_v2(overrides)
     model.schemaVersion = 2
     for _, member in ipairs(model.roster.members) do
         member.rankTenureStartDate = nil
+        member.lastSeenDate = nil
+        member.isMissing = nil
+    end
+    return model
+end
+
+function Fixtures.saved_model_v3(overrides)
+    local model = Fixtures.saved_model(overrides)
+    model.schemaVersion = 3
+    for _, member in ipairs(model.roster.members) do
+        member.lastSeenDate = nil
+        member.isMissing = nil
     end
     return model
 end

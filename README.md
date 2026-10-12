@@ -10,6 +10,9 @@ roster scan for guilded characters; `/rgms scanroster` and the Roster refresh
 button start the same transaction manually. Incomplete and failed scans leave
 the last successful observation untouched. Successful scans track each current
 member's tenure at their numeric rank position using Pacific calendar dates.
+Members absent from a successful scan are retained with a warning state for up
+to 21 Pacific calendar days so officers can review recent departures without
+keeping stale records indefinitely.
 `/rgms reset` provides a
 confirmation-protected observation reset and also recovers from corrupt or
 incompatible saved data.

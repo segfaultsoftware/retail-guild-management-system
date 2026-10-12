@@ -5,13 +5,13 @@ RGMS persists one global named `RGMSCharacterDB`. `RGMS.toc` declares it with
 each `CharacterName-Realm`. RGMS does not add an account-level character map;
 observations from two characters therefore cannot be combined accidentally.
 
-## Current schema: version 3
+## Current schema: version 4
 
 The complete persisted shape is:
 
 ```text
 {
-  schemaVersion = 3,
+  schemaVersion = 4,
   roster = {
     guild = GuildIdentity | nil,
     scannedAt = Timestamp | nil,
@@ -54,6 +54,14 @@ timestamp in `observedAt`. `rankTenureStartDate` stores the Pacific
 `YYYY-MM-DD` date on which that `Name-Realm` was first successfully observed at
 its current numeric rank index. Rank-name changes preserve it; a different
 rank index resets it. Tenure days are derived from this date rather than stored.
+`lastSeenDate` stores the Pacific `YYYY-MM-DD` date of the member's most recent
+appearance in a successful roster scan, and `isMissing` identifies records
+retained after an absence. Missing records keep their last observation and
+rank-tenure start date, remain under the current rank at their former numeric
+index, and carry their stored last-online age forward between successful scans.
+They are retained through 21 missing calendar days and removed on a later
+successful scan after that threshold. Reappearance clears `isMissing` and
+restarts rank tenure even when the numeric rank is unchanged.
 An offline member may include the game's approximate `lastOnline` components
 (`years`, `months`, `days`, and `hours`); an absent value does not invent
 precision the client did not provide. Collection records use the shapes built
@@ -66,9 +74,10 @@ migrations to preserve the user's window placement. Replacing one dataset after
 a detected guild change likewise deep-copies the complete valid model before
 clearing that dataset, so it cannot move the window or alter the other dataset.
 
-Only the latest complete roster and bank observations are retained. Daily
-snapshots, scan histories, and unknown fields are rejected rather than carried
-forward silently.
+Only the latest complete roster and bank state is retained. The roster state
+may include members carried forward under the missing-member retention rule;
+it does not include prior daily snapshots. Scan histories and unknown fields
+are rejected rather than carried forward silently.
 
 ## Transactional dataset ownership
 
@@ -88,8 +97,8 @@ position survives every automatic replacement.
 ## Loading, validation, and recovery
 
 All existing values are copied before migration and validation. RGMS replaces
-`RGMSCharacterDB` only after the copy reaches schema version 3 and passes full
-validation. A fresh character receives a valid empty version 3 model.
+`RGMSCharacterDB` only after the copy reaches schema version 4 and passes full
+validation. A fresh character receives a valid empty version 4 model.
 
 Unsupported future versions enter the `incompatible` state. Malformed values,
 unknown unversioned values, and failed migrations enter the `corrupt` state.
@@ -127,9 +136,12 @@ not share account or character names from its path.
   Migration initializes it to the Pacific date of that member's saved
   `observedAt` timestamp, the earliest observation available in the retained
   snapshot.
+- Schema version 3 roster members did not store `lastSeenDate` or `isMissing`.
+  Migration initializes the date from each member's saved `observedAt`
+  timestamp and marks every migrated member current.
 - The pre-schema development placeholder contained only `loadCount` and/or
   `lastLoadedAt`. Those diagnostic values did not contain observations and are
-  migrated to a fresh empty version 3 model. Any other unversioned shape is
+  migrated to a fresh empty version 4 model. Any other unversioned shape is
   preserved and classified as corrupt.
 
 Every migration is deterministic and operates on a deep copy. There is no

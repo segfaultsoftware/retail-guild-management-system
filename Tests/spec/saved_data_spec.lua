@@ -10,7 +10,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 3,
+            schemaVersion = 4,
             roster = {
                 ranks = {},
                 members = {},
@@ -56,7 +56,7 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 3)
+        test.assert_equal(first.model.schemaVersion, 4)
         test.assert_equal(first.model.roster.guild, original.roster.guildIdentity)
         test.assert_equal(first.model.roster.scannedAt, original.roster.scanTimestamp)
         test.assert_equal(first.model.bank.guild, original.bank.guildIdentity)
@@ -71,7 +71,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 3)
+        test.assert_equal(state.model.schemaVersion, 4)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
@@ -82,6 +82,8 @@ return {
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
         )
+        test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
+        test.assert_false(state.model.roster.members[1].isMissing)
         test.assert_equal(original.schemaVersion, 1)
         test.assert_nil(original.roster.members[1].displayName)
     end),
@@ -92,13 +94,27 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
-        test.assert_equal(state.model.schemaVersion, 3)
+        test.assert_equal(state.model.schemaVersion, 4)
         test.assert_equal(
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
         )
         test.assert_equal(original.schemaVersion, 2)
         test.assert_nil(original.roster.members[1].rankTenureStartDate)
+    end),
+
+    test.case("schema version three backfills missing-member state", function()
+        local original = fixtures.saved_model_v3()
+        local state = savedData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 3)
+        test.assert_equal(state.model.schemaVersion, 4)
+        test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
+        test.assert_false(state.model.roster.members[1].isMissing)
+        test.assert_equal(original.schemaVersion, 3)
+        test.assert_nil(original.roster.members[1].lastSeenDate)
+        test.assert_nil(original.roster.members[1].isMissing)
     end),
 
     test.case("the previous development placeholder migrates to an empty model", function()
@@ -149,6 +165,24 @@ return {
         test.assert_false(state.enabled)
         test.assert_equal(state.status, "corrupt")
         test.assert_matches(state.error, "must not follow observedAt")
+    end),
+
+    test.case("missing state must match the member's last observation", function()
+        local invalidDate = fixtures.saved_model()
+        invalidDate.roster.members[1].lastSeenDate = "2024-05-31"
+        local dateState = savedData.load(invalidDate)
+
+        test.assert_false(dateState.enabled)
+        test.assert_matches(dateState.error, "must match observedAt")
+
+        local invalidOnline = fixtures.saved_model()
+        invalidOnline.roster.members[1].isMissing = true
+        invalidOnline.roster.members[1].isOnline = true
+        invalidOnline.roster.members[1].lastOnline = nil
+        local onlineState = savedData.load(invalidOnline)
+
+        test.assert_false(onlineState.enabled)
+        test.assert_matches(onlineState.error, "must be false while the member is missing")
     end),
 
     test.case("unsupported versions disable use and preserve the original", function()

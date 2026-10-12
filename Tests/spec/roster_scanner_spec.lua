@@ -20,6 +20,8 @@ local function successfulSnapshot(memberName)
         observedAt = scannedAt,
     })
     member.rankTenureStartDate = nil
+    member.lastSeenDate = nil
+    member.isMissing = nil
     return {
         guild = guild,
         scannedAt = scannedAt,
@@ -29,6 +31,15 @@ local function successfulSnapshot(memberName)
             fixtures.roster_rank({ index = 3, name = "Empty Rank" }),
         },
         members = { member },
+    }
+end
+
+local function successfulEmptySnapshot(unixSeconds)
+    return {
+        guild = fixtures.guild_identity(),
+        scannedAt = dateTime.utcTimestamp(unixSeconds),
+        ranks = { fixtures.roster_rank() },
+        members = {},
     }
 end
 
@@ -73,7 +84,7 @@ local function newHarness(options)
             if options.partial then
                 return nil, "incomplete", "member list is partial"
             end
-            return successfulSnapshot(options.memberName)
+            return options.snapshot or successfulSnapshot(options.memberName)
         end,
     }
 
@@ -141,9 +152,61 @@ return {
             harness.current().roster.members[1].rankTenureStartDate,
             "2024-06-01"
         )
+        test.assert_equal(
+            harness.current().roster.members[1].lastSeenDate,
+            "2024-06-01"
+        )
+        test.assert_false(harness.current().roster.members[1].isMissing)
         test.assert_equal(harness.reductions(), 1)
         test.assert_equal(harness.progress, { true, false })
         test.assert_matches(harness.messages[1], "scan complete")
+    end),
+
+    test.case("successful and failed transactions preserve the missing lifecycle", function()
+        local startedAt = fixtures.timestamp().unixSeconds
+        local firstAbsence = newHarness({
+            snapshot = successfulEmptySnapshot(startedAt + 24 * 60 * 60),
+        })
+        test.assert_true(firstAbsence.scanner:Request("manual"))
+        test.assert_true(firstAbsence.scanner:OnDataUpdated())
+        local marked = firstAbsence.current()
+
+        test.assert_true(savedData.validate(marked))
+        test.assert_true(marked.roster.members[1].isMissing)
+        test.assert_equal(marked.roster.members[1].lastSeenDate, "2024-06-01")
+
+        local day21 = newHarness({
+            model = marked,
+            snapshot = successfulEmptySnapshot(startedAt + 21 * 24 * 60 * 60),
+        })
+        test.assert_true(day21.scanner:Request("manual"))
+        test.assert_true(day21.scanner:OnDataUpdated())
+        local retained = day21.current()
+
+        test.assert_true(savedData.validate(retained))
+        test.assert_equal(#retained.roster.members, 1)
+        test.assert_true(retained.roster.members[1].isMissing)
+
+        local failedDay22 = newHarness({
+            model = retained,
+            partial = true,
+            timeoutSeconds = 1,
+        })
+        test.assert_true(failedDay22.scanner:Request("manual"))
+        local completed, state = failedDay22.scanner:OnDataUpdated()
+        test.assert_false(completed)
+        test.assert_equal(state, "incomplete")
+        failedDay22.scanner:Update(1)
+        test.assert_equal(failedDay22.current(), retained)
+
+        local day22 = newHarness({
+            model = retained,
+            snapshot = successfulEmptySnapshot(startedAt + 22 * 24 * 60 * 60),
+        })
+        test.assert_true(day22.scanner:Request("manual"))
+        test.assert_true(day22.scanner:OnDataUpdated())
+        test.assert_true(savedData.validate(day22.current()))
+        test.assert_equal(#day22.current().roster.members, 0)
     end),
 
     test.case("unguilded automatic scan is silent and manual scan reports an error", function()
@@ -172,6 +235,7 @@ return {
         test.assert_nil(finished)
         test.assert_equal(reason, "timeout")
         test.assert_equal(harness.current(), harness.original)
+        test.assert_false(harness.current().roster.members[1].isMissing)
         test.assert_matches(harness.messages[1], "timed out")
         test.assert_false(harness.scanner:IsInProgress())
     end),
@@ -189,6 +253,7 @@ return {
 
         harness.scanner:Update(2)
         test.assert_equal(harness.current(), harness.original)
+        test.assert_false(harness.current().roster.members[1].isMissing)
         test.assert_matches(harness.messages[1], "timed out")
     end),
 
@@ -227,6 +292,7 @@ return {
         test.assert_nil(completed)
         test.assert_equal(reason, "api-failure")
         test.assert_equal(harness.current(), harness.original)
+        test.assert_false(harness.current().roster.members[1].isMissing)
         test.assert_equal(harness.reductions(), 0)
         test.assert_equal(harness.requests(), 1)
         test.assert_matches(harness.messages[1], "simulated client failure")

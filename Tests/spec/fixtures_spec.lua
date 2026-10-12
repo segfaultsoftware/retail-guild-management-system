@@ -18,6 +18,8 @@ return {
         test.assert_equal(member.rankIndex, 2)
         test.assert_equal(member.observedAt.iso8601, "2024-06-01T12:34:56Z")
         test.assert_equal(member.rankTenureStartDate, "2024-06-01")
+        test.assert_equal(member.lastSeenDate, "2024-06-01")
+        test.assert_false(member.isMissing)
     end),
 
     test.case("bank fixtures include tabs and slots", function()
@@ -55,7 +57,7 @@ return {
         local current = fixtures.saved_model()
         local previous = fixtures.saved_model_v0()
 
-        test.assert_equal(current.schemaVersion, 3)
+        test.assert_equal(current.schemaVersion, 4)
         test.assert_equal(current.roster.guild.name, "Example Guild")
         test.assert_equal(current.ui.windowPosition.point, "TOPLEFT")
         test.assert_equal(previous.schemaVersion, 0)
