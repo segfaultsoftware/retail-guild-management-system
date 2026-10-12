@@ -33,6 +33,10 @@ lua Tests/run.lua
 The suite is dependency-free and deterministic. See
 [Tests/README.md](Tests/README.md) for Lua version details, fixture and test
 examples, and the intentional failure check.
+Release candidates should also complete the
+[MVP live-client scenario checklist](docs/MVP_SCENARIO_CHECKLIST.md), which
+records the expected chat, UI, timestamps, and persisted state for the combined
+roster, bank, recovery, and character-isolation workflows.
 
 ## Quick start
 

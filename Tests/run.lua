@@ -24,6 +24,7 @@ local defaultSuites = {
     "Tests.spec.bank_report_spec",
     "Tests.spec.bank_scanner_spec",
     "Tests.spec.bank_spec",
+    "Tests.spec.mvp_integration_spec",
 }
 
 local function appendCases(destination, cases, source)

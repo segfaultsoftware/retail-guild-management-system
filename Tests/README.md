@@ -39,6 +39,11 @@ end
 The provided builders cover guild identities, roster members and ranks, bank
 tabs and slots, and UTC timestamps.
 
+`Tests/mvp_fixtures.lua` adds the reusable end-to-end workflow data for issue
+#21. Its dates name the Pacific calendar day explicitly and pair it with a
+fixed UTC timestamp. It also provides the expected final roster and bank
+datasets used by the integration scenarios.
+
 ## Add a test
 
 Create a file under `Tests/spec` that returns test cases:
@@ -64,6 +69,14 @@ as arguments. Put calls to WoW globals in thin adapter modules. No WoW API stub
 is needed by the initial suite because all code under test is pure Lua; add the
 smallest explicit stub to a test only when a module boundary actually requires
 one.
+
+The `MVP-E2E-*` cases in `Tests/spec/mvp_integration_spec.lua` combine the
+scanner, dataset-ownership, reducer, persistence, reset, and command layers.
+Each case wraps its state changes in named transitions, so a failure reports
+both the scenario and the exact transition that failed.
+
+Live-client behavior that cannot be reproduced faithfully outside Retail is
+covered by [the MVP release-candidate checklist](../docs/MVP_SCENARIO_CHECKLIST.md).
 
 ## Confirm failure behavior
 
