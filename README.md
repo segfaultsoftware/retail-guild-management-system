@@ -13,6 +13,10 @@ member's tenure at their numeric rank position using Pacific calendar dates.
 Members absent from a successful scan are retained with a warning state for up
 to 21 Pacific calendar days so officers can review recent departures without
 keeping stale records indefinitely.
+Opening the default guild-bank window starts a transactional scan of every
+purchased tab the character can access. The Bank refresh button can repeat the
+scan while the bank is open; incomplete, failed, timed-out, and canceled scans
+leave the last successful bank observation untouched.
 `/rgms reset` provides a
 confirmation-protected observation reset and also recovers from corrupt or
 incompatible saved data.

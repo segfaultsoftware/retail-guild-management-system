@@ -45,9 +45,15 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
     local initialized, initializeError = RGMS.UI.Initialize()
     if not initialized then
         RGMS.Print("Could not initialize the main window: " .. tostring(initializeError) .. ".")
-    elseif type(RGMS.Roster) == "table"
-        and type(RGMS.Roster.RefreshStatus) == "function" then
-        RGMS.Roster.RefreshStatus()
+    else
+        if type(RGMS.Roster) == "table"
+            and type(RGMS.Roster.RefreshStatus) == "function" then
+            RGMS.Roster.RefreshStatus()
+        end
+        if type(RGMS.Bank) == "table"
+            and type(RGMS.Bank.RefreshStatus) == "function" then
+            RGMS.Bank.RefreshStatus()
+        end
     end
 
     self:UnregisterEvent("ADDON_LOADED")

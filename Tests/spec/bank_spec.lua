@@ -24,7 +24,32 @@ local function newHarness(options)
     end
 
     local rgmsShown = options.rgmsShown == true
+    local scanner = {
+        inProgress = false,
+    }
+    function scanner:IsInProgress()
+        return self.inProgress
+    end
+    function scanner:Request(source)
+        actions[#actions + 1] = { action = "scan", source = source }
+        self.inProgress = true
+        return true
+    end
+    function scanner:Cancel()
+        actions[#actions + 1] = { action = "cancel" }
+        self.inProgress = false
+        return true
+    end
+    function scanner:OnSlotsChanged()
+        actions[#actions + 1] = { action = "slots-changed" }
+    end
+    function scanner:Update(elapsed)
+        actions[#actions + 1] = { action = "update", elapsed = elapsed }
+    end
     local fakeRGMS = {
+        Bank = {
+            Scanner = scanner,
+        },
         Reset = {
             canScan = function()
                 return true
@@ -45,6 +70,9 @@ local function newHarness(options)
             AlignToRightOf = function(frame)
                 actions[#actions + 1] = { action = "align", frame = frame }
                 return true
+            end,
+            SetGuildBankOpen = function(isOpen)
+                actions[#actions + 1] = { action = "bank-open", value = isOpen }
             end,
         },
     }
@@ -84,7 +112,8 @@ return {
         test.assert_true(
             harness.eventFrame.events.PLAYER_INTERACTION_MANAGER_FRAME_SHOW
         )
-        test.assert_false(harness.eventFrame.events.GUILDBANKFRAME_CLOSED == true)
+        test.assert_true(harness.eventFrame.events.GUILDBANKFRAME_CLOSED)
+        test.assert_true(harness.eventFrame.events.GUILDBANKBAGSLOTS_CHANGED)
         harness.eventFrame.scripts.OnEvent(
             nil,
             "PLAYER_INTERACTION_MANAGER_FRAME_SHOW",
@@ -92,8 +121,10 @@ return {
         )
 
         test.assert_equal(harness.actions, {
+            { action = "bank-open", value = true },
             { action = "show", tabId = "bank" },
             { action = "align", frame = harness.guildBankFrame },
+            { action = "scan", source = "automatic" },
         })
         harness.restore()
     end),
@@ -124,13 +155,29 @@ return {
         harness.restore()
     end),
 
-    test.case("closed windows remain independent", function()
+    test.case("closing the guild bank cancels collection but keeps RGMS open", function()
         local harness = newHarness({ rgmsShown = true, guildBankShown = false })
 
         harness.eventFrame.scripts.OnEvent(nil, "GUILDBANKFRAME_CLOSED")
         harness.eventFrame.scripts.OnEvent(nil, "UI_SCALE_CHANGED")
 
-        test.assert_equal(harness.actions, {})
+        test.assert_equal(harness.actions, {
+            { action = "bank-open", value = false },
+            { action = "cancel" },
+        })
+        harness.restore()
+    end),
+
+    test.case("slot events and frame updates are routed to the scanner", function()
+        local harness = newHarness()
+
+        harness.eventFrame.scripts.OnEvent(nil, "GUILDBANKBAGSLOTS_CHANGED")
+        harness.eventFrame.scripts.OnUpdate(nil, 0.25)
+
+        test.assert_equal(harness.actions, {
+            { action = "slots-changed" },
+            { action = "update", elapsed = 0.25 },
+        })
         harness.restore()
     end),
 }

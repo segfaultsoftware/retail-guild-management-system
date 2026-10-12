@@ -478,7 +478,11 @@ local function validateBankTab(value, path)
     if not valid then
         return nil, validationError
     end
-    valid, validationError = requireInteger(value.icon, path .. ".icon", 0)
+    if type(value.icon) == "string" then
+        valid, validationError = requireString(value.icon, path .. ".icon")
+    else
+        valid, validationError = requireInteger(value.icon, path .. ".icon", 0)
+    end
     if not valid then
         return nil, validationError
     end

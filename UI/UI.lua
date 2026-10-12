@@ -389,19 +389,30 @@ local function createView(parent, tabId)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     view.status:SetPoint("TOPLEFT", 2, 0)
-    view.status:SetPoint("TOPRIGHT", tabId == "roster" and -94 or -2, 0)
+    view.status:SetPoint("TOPRIGHT", -94, 0)
     view.status:SetJustifyH("LEFT")
     view.status:SetText("Ready")
 
-    if tabId == "roster" then
+    if tabId == "roster" or tabId == "bank" then
         view.refreshButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
         view.refreshButton:SetSize(84, 22)
         view.refreshButton:SetPoint("TOPRIGHT", 0, 4)
         view.refreshButton:SetText("Refresh")
-        view.refreshButton:SetScript("OnClick", function()
-            RGMS.Roster.RequestManualScan()
-        end)
+        if tabId == "roster" then
+            view.refreshButton:SetScript("OnClick", function()
+                RGMS.Roster.RequestManualScan()
+            end)
+        else
+            view.refreshButton:SetScript("OnClick", function()
+                RGMS.Bank.RequestManualScan()
+            end)
+            view.bankOpen = false
+            view.bankScanInProgress = false
+            view.refreshButton:SetEnabled(false)
+        end
+    end
 
+    if tabId == "roster" then
         view.rankScrollFrame = CreateFrame(
             "ScrollFrame",
             nil,
@@ -537,6 +548,12 @@ local function createWindow()
 
     frame:SetScript("OnShow", function()
         UI.ClampToScreen()
+    end)
+    frame:SetScript("OnHide", function()
+        if type(RGMS.Bank) == "table"
+            and type(RGMS.Bank.CancelScan) == "function" then
+            RGMS.Bank.CancelScan()
+        end
     end)
 
     return frame
@@ -782,6 +799,34 @@ function UI.SetRosterScanInProgress(inProgress)
     end
 
     UI.frame.views.roster.refreshButton:SetEnabled(not inProgress)
+    return true
+end
+
+local function updateBankRefreshButton(view)
+    view.refreshButton:SetEnabled(
+        view.bankOpen == true and view.bankScanInProgress ~= true
+    )
+end
+
+function UI.SetGuildBankOpen(isOpen)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.bank
+    view.bankOpen = isOpen == true
+    updateBankRefreshButton(view)
+    return true
+end
+
+function UI.SetBankScanInProgress(inProgress)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.bank
+    view.bankScanInProgress = inProgress == true
+    updateBankRefreshButton(view)
     return true
 end
 

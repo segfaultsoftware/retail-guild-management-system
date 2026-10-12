@@ -124,7 +124,11 @@ local function newRegion(parent)
     end
 
     function region:Hide()
+        local wasShown = self.shown
         self.shown = false
+        if wasShown and self.scripts.OnHide then
+            self.scripts.OnHide(self)
+        end
     end
 
     function region:IsShown()
@@ -219,6 +223,8 @@ end
 local function newHarness(savedPosition, screenWidth, screenHeight)
     local mainFrame
     local refreshRequests = 0
+    local bankRefreshRequests = 0
+    local bankCancellations = 0
     local tooltip = {
         lines = {},
         shown = false,
@@ -280,6 +286,14 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 refreshRequests = refreshRequests + 1
             end,
         },
+        Bank = {
+            RequestManualScan = function()
+                bankRefreshRequests = bankRefreshRequests + 1
+            end,
+            CancelScan = function()
+                bankCancellations = bankCancellations + 1
+            end,
+        },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
     local ui = chunk("RGMS", rgms)
@@ -291,6 +305,12 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         end,
         refreshRequests = function()
             return refreshRequests
+        end,
+        bankRefreshRequests = function()
+            return bankRefreshRequests
+        end,
+        bankCancellations = function()
+            return bankCancellations
         end,
         tooltip = tooltip,
         ui = ui,
@@ -350,6 +370,40 @@ return {
         test.assert_false(refreshButton:IsEnabled())
         test.assert_true(harness.ui.SetRosterScanInProgress(false))
         test.assert_true(refreshButton:IsEnabled())
+    end),
+
+    test.case("bank refresh follows bank-open and scan lifecycle restrictions", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local refreshButton = harness.frame().views.bank.refreshButton
+
+        test.assert_false(refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetGuildBankOpen(true))
+        test.assert_true(refreshButton:IsEnabled())
+        refreshButton.scripts.OnClick()
+        test.assert_equal(harness.bankRefreshRequests(), 1)
+
+        test.assert_true(harness.ui.SetBankScanInProgress(true))
+        test.assert_false(refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetBankScanInProgress(false))
+        test.assert_true(refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetGuildBankOpen(false))
+        test.assert_false(refreshButton:IsEnabled())
+    end),
+
+    test.case("closing RGMS cancels a bank scan without clearing bank content", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.SetViewContent("bank", "Previously committed bank report")
+        harness.ui.Show("bank")
+
+        harness.frame().closeButton.scripts.OnClick()
+
+        test.assert_equal(harness.bankCancellations(), 1)
+        test.assert_equal(
+            harness.frame().views.bank.text.text,
+            "Previously committed bank report"
+        )
     end),
 
     test.case("roster rank tabs render all brackets and selection is observation-safe", function()
