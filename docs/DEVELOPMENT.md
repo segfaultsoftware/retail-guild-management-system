@@ -5,6 +5,11 @@ checkout to a visible in-game proof that RGMS loaded. It applies only to the
 current live **Retail** client. Classic, Classic Era, PTR, and Beta clients use
 different directories and interface versions and are out of scope.
 
+For subsystem ownership, architecture boundaries, coding conventions, and test
+organization, continue with [`CONTRIBUTING.md`](../CONTRIBUTING.md). Maintainers
+preparing a distributable package should use the complete
+[`RELEASING.md`](RELEASING.md) runbook.
+
 ## What you need
 
 - The current live World of Warcraft Retail client, installed through the

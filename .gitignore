@@ -4,3 +4,6 @@ coverage/
 luacov.report.out
 luacov.stats.out
 
+# Local release staging and distributable archives
+.release/
+
