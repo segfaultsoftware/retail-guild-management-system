@@ -5,7 +5,7 @@ local _, RGMS = ...
 
 local Layout = {}
 
-Layout.WINDOW_WIDTH = 420
+Layout.WINDOW_WIDTH = 840
 Layout.WINDOW_HEIGHT = 560
 Layout.EDGE_MARGIN = 12
 

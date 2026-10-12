@@ -1,6 +1,9 @@
 local _, RGMS = ...
 
 local Roster = RGMS.Roster or {}
+local Names = type(RGMS.RosterNames) == "table"
+    and RGMS.RosterNames
+    or require("Roster.Names")
 
 local REGION_NAMES = {
     [1] = "US",
@@ -12,17 +15,6 @@ local REGION_NAMES = {
 
 local function incomplete(message)
     return nil, "incomplete", message
-end
-
-local function splitDisplayName(value, defaultRealm)
-    local displayName = tostring(value or "")
-    local name, realm = string.match(displayName, "^([^%-]+)%-(.+)$")
-    if not name then
-        name = displayName
-        realm = defaultRealm
-        displayName = name .. "-" .. realm
-    end
-    return name, realm, displayName
 end
 
 local function copyTimestamp(timestamp)
@@ -142,7 +134,7 @@ local function createRetailApi()
                 return incomplete("a guild member class is unavailable")
             end
 
-            local name, realm, displayName = splitDisplayName(
+            local name, realm, displayName = Names.splitDisplayName(
                 info.name,
                 GetNormalizedRealmName()
             )
@@ -224,6 +216,26 @@ end
 function Roster.RefreshStatus()
     if type(RGMS.UI) ~= "table" or type(RGMS.UI.SetViewStatus) ~= "function" then
         return
+    end
+
+    if type(RGMS.UI.SetRosterReport) == "function"
+        and type(RGMS.RosterReport) == "table"
+        and type(RGMS.RosterReport.build) == "function"
+        and type(RGMS.DB) == "table"
+        and type(RGMS.DB.roster) == "table" then
+        local report, reportError = RGMS.RosterReport.build(
+            RGMS.DB.roster,
+            nil,
+            RGMS.DateTime
+        )
+        if report then
+            RGMS.UI.SetRosterReport(report)
+        else
+            RGMS.UI.SetViewContent(
+                "roster",
+                "Roster report unavailable: " .. tostring(reportError)
+            )
+        end
     end
 
     if Roster.IsScanInProgress() then

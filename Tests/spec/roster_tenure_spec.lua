@@ -237,6 +237,29 @@ return {
         test.assert_equal(current.members[1].rankTenureStartDate, "2024-06-01")
     end),
 
+    test.case("a current member with a repeated realm suffix reconciles canonically", function()
+        local startedAt = dateFixtures.pacificMidnight.after
+        local previous = reduce(emptyDataset(), completedSnapshot(startedAt))
+        previous.members[1].realm = "Example Realm-Example Realm-Example Realm"
+        previous.members[1].displayName = previous.members[1].name
+            .. "-"
+            .. previous.members[1].realm
+
+        local current = reduce(
+            previous,
+            completedSnapshot(startedAt + 24 * 60 * 60)
+        )
+
+        test.assert_equal(#current.members, 1)
+        test.assert_equal(current.members[1].realm, "Example Realm")
+        test.assert_equal(
+            current.members[1].displayName,
+            "Aeloria-Example Realm"
+        )
+        test.assert_equal(current.members[1].rankTenureStartDate, "2024-06-01")
+        test.assert_false(current.members[1].isMissing)
+    end),
+
     test.case("rank rename at the same index preserves tenure", function()
         local first = reduce(
             emptyDataset(),

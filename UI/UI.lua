@@ -13,6 +13,15 @@ local PLACEHOLDER_COPY = {
     bank = "Bank report placeholder",
 }
 
+local RANK_TAB_WIDTH = 242
+local RANK_TAB_HEIGHT = 24
+local RANK_TAB_GAP = 3
+local ROSTER_CONTENT_GAP = 24
+local ROSTER_TITLE_HEIGHT = 26
+local ROSTER_GROUP_HEIGHT = 22
+local ROSTER_ROW_HEIGHT = 20
+local ROSTER_GROUP_GAP = 8
+
 local function normalizeTabId(tabId)
     if type(tabId) ~= "string" then
         return nil
@@ -91,14 +100,178 @@ local function applyClampedPosition(position, shouldSave)
     return clamped
 end
 
+local function layoutRosterLines(view, availableWidth)
+    if type(view.rosterLines) ~= "table" then
+        return
+    end
+
+    local nameWidth = math.floor(availableWidth * 0.5)
+    local lastOnlineWidth = math.floor(availableWidth * 0.3)
+    local tenureWidth = availableWidth - nameWidth - lastOnlineWidth
+
+    for _, line in ipairs(view.rosterLines) do
+        line.frame:SetWidth(availableWidth)
+        line.primary:ClearAllPoints()
+        line.secondary:ClearAllPoints()
+        line.tertiary:ClearAllPoints()
+        line.primary:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+        if line.columns then
+            line.primary:SetWidth(nameWidth)
+            line.secondary:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                nameWidth,
+                0
+            )
+            line.secondary:SetWidth(lastOnlineWidth)
+            line.tertiary:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                nameWidth + lastOnlineWidth,
+                0
+            )
+            line.tertiary:SetWidth(tenureWidth)
+        else
+            line.primary:SetWidth(availableWidth)
+        end
+    end
+end
+
 local function refreshScrollChild(view)
     local availableWidth = math.max(1, view.scrollFrame:GetWidth() - 8)
     view.scrollChild:SetWidth(availableWidth)
     view.text:SetWidth(availableWidth)
+    layoutRosterLines(view, availableWidth)
 
     local viewportHeight = math.max(1, view.scrollFrame:GetHeight())
-    local textHeight = view.text:GetStringHeight() + 16
-    view.scrollChild:SetHeight(math.max(viewportHeight, textHeight))
+    local contentHeight = view.rosterTableHeight
+        or (view.text:GetStringHeight() + 16)
+    view.scrollChild:SetHeight(math.max(viewportHeight, contentHeight))
+end
+
+local function refreshRankScrollChild(view)
+    if not view.rankScrollFrame then
+        return
+    end
+
+    local viewportHeight = math.max(1, view.rankScrollFrame:GetHeight())
+    local rankCount = type(view.rosterReport) == "table"
+        and type(view.rosterReport.ranks) == "table"
+        and #view.rosterReport.ranks
+        or 0
+    local contentHeight = rankCount * (RANK_TAB_HEIGHT + RANK_TAB_GAP) + 4
+    view.rankScrollChild:SetHeight(math.max(viewportHeight, contentHeight))
+end
+
+local function hideRosterLines(view)
+    for _, line in ipairs(view.rosterLines or {}) do
+        line.frame:Hide()
+    end
+    view.rosterTableHeight = nil
+end
+
+local function acquireRosterLine(view, index)
+    local line = view.rosterLines[index]
+    if line then
+        return line
+    end
+
+    local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local primary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local secondary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local tertiary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    primary:SetJustifyH("LEFT")
+    secondary:SetJustifyH("LEFT")
+    tertiary:SetJustifyH("LEFT")
+    primary:SetJustifyV("MIDDLE")
+    secondary:SetJustifyV("MIDDLE")
+    tertiary:SetJustifyV("MIDDLE")
+    if type(primary.SetWordWrap) == "function" then
+        primary:SetWordWrap(false)
+        secondary:SetWordWrap(false)
+        tertiary:SetWordWrap(false)
+    end
+    line = {
+        frame = frame,
+        primary = primary,
+        secondary = secondary,
+        tertiary = tertiary,
+    }
+    view.rosterLines[index] = line
+    return line
+end
+
+local function renderRosterRank(view, rank)
+    view.text:Hide()
+    local lineIndex = 0
+    local offset = 4
+
+    local function addLine(height, primary, secondary, tertiary, columns)
+        lineIndex = lineIndex + 1
+        local line = acquireRosterLine(view, lineIndex)
+        line.columns = columns == true
+        line.frame:ClearAllPoints()
+        line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        line.frame:SetHeight(height)
+        line.primary:SetText(primary or "")
+        line.secondary:SetText(secondary or "")
+        line.tertiary:SetText(tertiary or "")
+        line.frame:Show()
+        offset = offset + height
+    end
+
+    addLine(ROSTER_TITLE_HEIGHT, "|cffffd100" .. rank.name .. "|r")
+    for groupIndex, group in ipairs(rank.groups) do
+        addLine(ROSTER_GROUP_HEIGHT, "|cffffd100" .. group.title .. "|r")
+        if #group.members == 0 then
+            addLine(
+                ROSTER_ROW_HEIGHT,
+                "|cff888888" .. group.emptyText .. "|r"
+            )
+        else
+            addLine(
+                ROSTER_ROW_HEIGHT,
+                "|cffaaaaaaName-Realm|r",
+                "|cffaaaaaaLast online|r",
+                "|cffaaaaaaRank tenure|r",
+                true
+            )
+            for _, member in ipairs(group.members) do
+                local dayLabel = member.tenureDays == 1 and "day" or "days"
+                addLine(
+                    ROSTER_ROW_HEIGHT,
+                    member.displayName,
+                    member.lastOnlineText,
+                    string.format("%d %s", member.tenureDays, dayLabel),
+                    true
+                )
+            end
+        end
+        if groupIndex < #rank.groups then
+            offset = offset + ROSTER_GROUP_GAP
+        end
+    end
+
+    for index = lineIndex + 1, #view.rosterLines do
+        view.rosterLines[index].frame:Hide()
+    end
+    view.rosterTableHeight = offset + 4
+    view.scrollFrame:SetVerticalScroll(0)
+    refreshScrollChild(view)
+end
+
+local function findRosterRank(view, rankIndex)
+    if type(view.rosterReport) ~= "table" then
+        return nil
+    end
+    for _, rank in ipairs(view.rosterReport.ranks or {}) do
+        if rank.index == rankIndex then
+            return rank
+        end
+    end
+    return nil
 end
 
 local function createView(parent, tabId)
@@ -120,10 +293,39 @@ local function createView(parent, tabId)
         view.refreshButton:SetScript("OnClick", function()
             RGMS.Roster.RequestManualScan()
         end)
+
+        view.rankScrollFrame = CreateFrame(
+            "ScrollFrame",
+            nil,
+            view,
+            "UIPanelScrollFrameTemplate"
+        )
+        view.rankScrollFrame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, -24)
+        view.rankScrollFrame:SetPoint("BOTTOMLEFT", view, "BOTTOMLEFT", 0, 0)
+        view.rankScrollFrame:SetWidth(RANK_TAB_WIDTH)
+
+        view.rankScrollChild = CreateFrame("Frame", nil, view.rankScrollFrame)
+        view.rankScrollChild:SetSize(RANK_TAB_WIDTH - 22, 1)
+        view.rankScrollFrame:SetScrollChild(view.rankScrollChild)
+        view.rankButtons = {}
+        view.rosterLines = {}
+        view.rankScrollFrame:SetScript("OnSizeChanged", function()
+            refreshRankScrollChild(view)
+        end)
     end
 
     view.scrollFrame = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
-    view.scrollFrame:SetPoint("TOPLEFT", 0, -24)
+    if tabId == "roster" then
+        view.scrollFrame:SetPoint(
+            "TOPLEFT",
+            view,
+            "TOPLEFT",
+            RANK_TAB_WIDTH + ROSTER_CONTENT_GAP,
+            -24
+        )
+    else
+        view.scrollFrame:SetPoint("TOPLEFT", 0, -24)
+    end
     view.scrollFrame:SetPoint("BOTTOMRIGHT", 0, 0)
 
     view.scrollChild = CreateFrame("Frame", nil, view.scrollFrame)
@@ -260,6 +462,7 @@ function UI.Initialize()
     UI.SelectPrimaryTab("roster")
     for _, tabId in ipairs(TAB_ORDER) do
         refreshScrollChild(UI.frame.views[tabId])
+        refreshRankScrollChild(UI.frame.views[tabId])
     end
 
     if type(UISpecialFrames) == "table" then
@@ -325,6 +528,10 @@ function UI.SetViewContent(tabId, content)
     end
 
     local view = UI.frame.views[tabId]
+    if tabId == "roster" then
+        hideRosterLines(view)
+        view.text:Show()
+    end
     view.text:SetText(tostring(content or ""))
     view.scrollFrame:SetVerticalScroll(0)
     refreshScrollChild(view)
@@ -341,6 +548,93 @@ function UI.SetViewStatus(tabId, status)
     end
 
     UI.frame.views[tabId].status:SetText(tostring(status or ""))
+    return true
+end
+
+function UI.SelectRosterRank(rankIndex)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.roster
+    local rank = findRosterRank(view, rankIndex)
+    if not rank then
+        return nil, "roster rank is unavailable"
+    end
+
+    for buttonIndex, buttonRank in ipairs(view.rosterReport.ranks) do
+        local button = view.rankButtons[buttonIndex]
+        button:SetEnabled(buttonRank.index ~= rankIndex)
+    end
+    view.selectedRankIndex = rankIndex
+    renderRosterRank(view, rank)
+    return true
+end
+
+function UI.SetRosterReport(report)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(report) ~= "table" or type(report.ranks) ~= "table" then
+        return nil, "roster report must contain ranks"
+    end
+
+    local view = UI.frame.views.roster
+    local previousRankIndex = view.selectedRankIndex
+    view.rosterReport = report
+
+    for index, rank in ipairs(report.ranks) do
+        local button = view.rankButtons[index]
+        if not button then
+            button = CreateFrame(
+                "Button",
+                nil,
+                view.rankScrollChild,
+                "UIPanelButtonTemplate"
+            )
+            button:SetHeight(RANK_TAB_HEIGHT)
+            view.rankButtons[index] = button
+        end
+
+        button:ClearAllPoints()
+        button:SetWidth(RANK_TAB_WIDTH - 22)
+        if index == 1 then
+            button:SetPoint("TOPLEFT", view.rankScrollChild, "TOPLEFT", 0, -2)
+        else
+            button:SetPoint(
+                "TOPLEFT",
+                view.rankButtons[index - 1],
+                "BOTTOMLEFT",
+                0,
+                -RANK_TAB_GAP
+            )
+        end
+        button:SetText(rank.label)
+        local rankIndex = rank.index
+        button:SetScript("OnClick", function()
+            UI.SelectRosterRank(rankIndex)
+        end)
+        button:Show()
+    end
+    for index = #report.ranks + 1, #view.rankButtons do
+        view.rankButtons[index]:Hide()
+    end
+
+    view.rankScrollFrame:SetVerticalScroll(0)
+    refreshRankScrollChild(view)
+
+    local selectedRank = findRosterRank(view, previousRankIndex)
+        or report.ranks[1]
+    if selectedRank then
+        return UI.SelectRosterRank(selectedRank.index)
+    end
+
+    view.selectedRankIndex = nil
+    hideRosterLines(view)
+    view.text:Show()
+    view.text:SetText("No roster data yet")
+    view.scrollFrame:SetVerticalScroll(0)
+    refreshScrollChild(view)
     return true
 end
 

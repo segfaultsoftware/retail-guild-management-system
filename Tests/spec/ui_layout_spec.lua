@@ -21,7 +21,7 @@ return {
             1080
         )
 
-        assertClose(position.x, 750)
+        assertClose(position.x, 540)
         assertClose(position.y, 260)
         test.assert_true(layout.isFullyVisible(
             position,

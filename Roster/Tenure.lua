@@ -5,6 +5,10 @@
 local _, RGMS = ...
 
 local Tenure = {}
+local Names = type(RGMS) == "table"
+    and type(RGMS.RosterNames) == "table"
+    and RGMS.RosterNames
+    or require("Roster.Names")
 
 Tenure.MISSING_RETENTION_DAYS = 21
 
@@ -47,7 +51,7 @@ local function requireDateTime(dateTime)
     return true
 end
 
-local function indexMembers(members, source)
+local function indexMembers(members, source, repairEquivalentNames)
     if type(members) ~= "table" then
         return nil, source .. " members must be a table"
     end
@@ -59,10 +63,17 @@ local function indexMembers(members, source)
             or member.displayName == "" then
             return nil, source .. " member displayName must be a non-empty string"
         end
-        if indexed[member.displayName] ~= nil then
-            return nil, source .. " contains duplicate member " .. member.displayName
+        local identity = Names.displayName(member.name, member.realm)
+        if indexed[identity] ~= nil then
+            if not repairEquivalentNames then
+                return nil, source .. " contains duplicate member " .. identity
+            end
+            if indexed[identity].isMissing and not member.isMissing then
+                indexed[identity] = member
+            end
+        else
+            indexed[identity] = member
         end
-        indexed[member.displayName] = member
     end
     return indexed
 end
@@ -133,7 +144,8 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
 
     local previousMembers, previousError = indexMembers(
         previousDataset.members,
-        "previous roster dataset"
+        "previous roster dataset",
+        true
     )
     if not previousMembers then
         return nil, previousError
@@ -161,7 +173,8 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
     end
 
     for _, member in ipairs(nextDataset.members) do
-        local previous = previousMembers[member.displayName]
+        local identity = Names.displayName(member.name, member.realm)
+        local previous = previousMembers[identity]
         if previous ~= nil
             and not previous.isMissing
             and previous.rankIndex == member.rankIndex then
@@ -186,7 +199,9 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
     end
 
     for _, previous in ipairs(previousDataset.members) do
-        if currentMembers[previous.displayName] == nil then
+        local identity = Names.displayName(previous.name, previous.realm)
+        if previousMembers[identity] == previous
+            and currentMembers[identity] == nil then
             local currentRank = currentRanks[previous.rankIndex]
             if currentRank ~= nil then
                 local missingDays, missingError = dateTime.calendarDayDifference(

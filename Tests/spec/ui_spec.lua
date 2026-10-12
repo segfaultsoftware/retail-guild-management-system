@@ -1,6 +1,38 @@
 local layout = require("UI.Layout")
 local test = require("Tests.lib.runner")
 
+local EMPTY_TEXT = "<no members in this bracket>"
+
+local function emptyGroups()
+    return {
+        { title = "This Week", emptyText = EMPTY_TEXT, members = {} },
+        { title = "Last Week", emptyText = EMPTY_TEXT, members = {} },
+        { title = "Two Weeks Ago", emptyText = EMPTY_TEXT, members = {} },
+        { title = "It's Been a While", emptyText = EMPTY_TEXT, members = {} },
+    }
+end
+
+local function rosterRank(index, name, label)
+    return {
+        index = index,
+        name = name,
+        label = label or name,
+        groups = emptyGroups(),
+    }
+end
+
+local function rosterTableText(view)
+    local parts = {}
+    for _, line in ipairs(view.rosterLines or {}) do
+        if line.frame:IsShown() then
+            parts[#parts + 1] = line.primary.text or ""
+            parts[#parts + 1] = line.secondary.text or ""
+            parts[#parts + 1] = line.tertiary.text or ""
+        end
+    end
+    return table.concat(parts, "\n")
+end
+
 local function countLines(value)
     local count = 1
     for _ in string.gmatch(value or "", "\n") do
@@ -16,6 +48,7 @@ local function newRegion(parent)
         width = 340,
         height = 420,
         scripts = {},
+        points = {},
     }
 
     function region:SetSize(width, height)
@@ -45,6 +78,13 @@ local function newRegion(parent)
         self.relativePoint = relativePoint
         self.x = x or 0
         self.y = y or 0
+        self.points[#self.points + 1] = {
+            point = point,
+            relativeTo = relativeTo,
+            relativePoint = relativePoint,
+            x = x or 0,
+            y = y or 0,
+        }
         if point == "BOTTOMLEFT" and relativePoint == "BOTTOMLEFT" then
             self.left = self.x
             self.bottom = self.y
@@ -53,6 +93,7 @@ local function newRegion(parent)
 
     function region:ClearAllPoints()
         self.point = nil
+        self.points = {}
     end
 
     function region:GetLeft()
@@ -222,6 +263,8 @@ return {
         test.assert_false(frame:IsShown())
         test.assert_equal(frame:GetWidth(), layout.WINDOW_WIDTH)
         test.assert_equal(frame:GetHeight(), layout.WINDOW_HEIGHT)
+        test.assert_equal(frame.views.roster.rankScrollFrame:GetWidth(), 242)
+        test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 266)
         test.assert_false(frame.resizable)
         test.assert_nil(harness.database.ui.windowPosition)
         test.assert_true(
@@ -266,6 +309,69 @@ return {
         test.assert_true(refreshButton:IsEnabled())
     end),
 
+    test.case("roster rank tabs render all brackets and selection is observation-safe", function()
+        local harness = newHarness()
+        harness.database.roster = {
+            members = { { displayName = "Stored-Example Realm" } },
+        }
+        local expectedObservations = {
+            members = { { displayName = "Stored-Example Realm" } },
+        }
+        harness.ui.Initialize()
+
+        local first = rosterRank(1, "Guild Master")
+        first.groups[1].members[1] = {
+            displayName = "Current-Example Realm",
+            lastOnlineText = "5 hours ago",
+            tenureDays = 12,
+        }
+        local second = rosterRank(7, "Trial", "Trial (Rank 7)")
+        local report = { ranks = { first, second } }
+
+        test.assert_true(harness.ui.SetRosterReport(report))
+        local view = harness.frame().views.roster
+        test.assert_equal(view.rankButtons[1].text, "Guild Master")
+        test.assert_equal(view.rankButtons[2].text, "Trial (Rank 7)")
+        local tableText = rosterTableText(view)
+        test.assert_matches(tableText, "Current%-Example Realm")
+        test.assert_matches(tableText, "5 hours ago")
+        test.assert_matches(tableText, "12 days")
+        test.assert_false(string.find(tableText, " | ", 1, true) ~= nil)
+        local memberLine = view.rosterLines[4]
+        test.assert_equal(memberLine.primary.text, "Current-Example Realm")
+        test.assert_equal(memberLine.secondary.text, "5 hours ago")
+        test.assert_equal(memberLine.tertiary.text, "12 days")
+
+        view.rankButtons[2].scripts.OnClick()
+        test.assert_equal(view.selectedRankIndex, 7)
+        test.assert_equal(harness.database.roster, expectedObservations)
+        tableText = rosterTableText(view)
+        test.assert_equal(select(2, string.gsub(tableText, EMPTY_TEXT, "")), 4)
+    end),
+
+    test.case("long rank and member lists scroll inside the fixed roster view", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local report = { ranks = {} }
+        for index = 1, 30 do
+            report.ranks[index] = rosterRank(index, "Rank " .. index)
+        end
+        for index = 1, 100 do
+            report.ranks[1].groups[1].members[index] = {
+                displayName = string.format("Member%03d-Example Realm", index),
+                lastOnlineText = "1 day ago",
+                tenureDays = 10,
+            }
+        end
+
+        harness.ui.SetRosterReport(report)
+        local view = harness.frame().views.roster
+        test.assert_true(
+            view.rankScrollChild:GetHeight() > view.rankScrollFrame:GetHeight()
+        )
+        test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
+    end),
+
     test.case("dragging saves a canonical per-character position", function()
         local harness = newHarness()
         harness.ui.Initialize()
@@ -297,7 +403,7 @@ return {
         test.assert_equal(harness.database.ui.windowPosition, {
             point = "BOTTOMLEFT",
             relativePoint = "BOTTOMLEFT",
-            x = 848,
+            x = 428,
             y = 12,
         })
         test.assert_true(layout.isFullyVisible(
