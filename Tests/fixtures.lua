@@ -87,6 +87,7 @@ function Fixtures.bank_tab(overrides)
         isViewable = true,
         canDeposit = true,
         withdrawalsPerDay = 5,
+        lastAccessibleAt = Fixtures.timestamp(),
     }, overrides)
 end
 
@@ -96,6 +97,7 @@ function Fixtures.bank_slot(overrides)
         slotIndex = 1,
         itemId = 191384,
         itemLink = "|Hitem:191384::::::::80:::::|h[Refreshing Healing Potion]|h",
+        icon = 236873,
         quantity = 20,
         isLocked = false,
         observedAt = Fixtures.timestamp(),
@@ -117,7 +119,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 6,
+        schemaVersion = 7,
         roster = {
             guild = guild,
             scannedAt = timestamp,
@@ -134,6 +136,15 @@ function Fixtures.saved_model(overrides)
             windowPosition = Fixtures.window_position(),
         },
     }, overrides)
+end
+
+local function removeVersionSevenBankFields(model)
+    for _, tab in ipairs(model.bank.tabs) do
+        tab.lastAccessibleAt = nil
+    end
+    for _, slot in ipairs(model.bank.slots) do
+        slot.icon = nil
+    end
 end
 
 function Fixtures.saved_model_v0(overrides)
@@ -166,6 +177,7 @@ function Fixtures.saved_model_v0(overrides)
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
     end
+    removeVersionSevenBankFields(model)
     return model
 end
 
@@ -183,6 +195,7 @@ function Fixtures.saved_model_v1(overrides)
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
     end
+    removeVersionSevenBankFields(model)
     return model
 end
 
@@ -197,6 +210,7 @@ function Fixtures.saved_model_v2(overrides)
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
     end
+    removeVersionSevenBankFields(model)
     return model
 end
 
@@ -210,6 +224,7 @@ function Fixtures.saved_model_v3(overrides)
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
     end
+    removeVersionSevenBankFields(model)
     return model
 end
 
@@ -219,6 +234,7 @@ function Fixtures.saved_model_v4(overrides)
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
     end
+    removeVersionSevenBankFields(model)
     return model
 end
 
@@ -228,6 +244,14 @@ function Fixtures.saved_model_v5(overrides)
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
     end
+    removeVersionSevenBankFields(model)
+    return model
+end
+
+function Fixtures.saved_model_v6(overrides)
+    local model = Fixtures.saved_model(overrides)
+    model.schemaVersion = 6
+    removeVersionSevenBankFields(model)
     return model
 end
 

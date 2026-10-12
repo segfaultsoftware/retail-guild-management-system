@@ -236,6 +236,9 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     function tooltip:SetText(value)
         self.lines = { value }
     end
+    function tooltip:SetHyperlink(value)
+        self.hyperlink = value
+    end
     function tooltip:AddLine(value)
         self.lines[#self.lines + 1] = value
     end
@@ -274,6 +277,11 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local database = {
         ui = {},
     }
+    local modifiedItemClicks = {}
+    HandleModifiedItemClick = function(itemLink)
+        modifiedItemClicks[#modifiedItemClicks + 1] = itemLink
+        return true
+    end
     if savedPosition then
         database.ui.windowPosition = savedPosition
     end
@@ -313,6 +321,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
             return bankCancellations
         end,
         tooltip = tooltip,
+        modifiedItemClicks = modifiedItemClicks,
         ui = ui,
     }
 end
@@ -328,6 +337,8 @@ return {
         test.assert_equal(frame:GetHeight(), layout.WINDOW_HEIGHT)
         test.assert_equal(frame.views.roster.rankScrollFrame:GetWidth(), 242)
         test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 266)
+        test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 200)
+        test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 218)
         test.assert_false(frame.resizable)
         test.assert_nil(harness.database.ui.windowPosition)
         test.assert_true(
@@ -389,6 +400,122 @@ return {
         test.assert_true(refreshButton:IsEnabled())
         test.assert_true(harness.ui.SetGuildBankOpen(false))
         test.assert_false(refreshButton:IsEnabled())
+    end),
+
+    test.case("bank tabs render access state rows stale styling tooltips and links", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local itemLink = "|Hitem:1001|h[Ancient Cloth]|h"
+        local report = {
+            tabs = {
+                {
+                    index = 1,
+                    name = "Materials",
+                    icon = 9001,
+                    isViewable = true,
+                    lastAccessibleText = "2024-06-22 09:30 PT",
+                    rows = {
+                        {
+                            tabIndex = 1,
+                            tabName = "Materials",
+                            slotIndex = 4,
+                            itemId = 1001,
+                            itemLink = itemLink,
+                            itemName = "Ancient Cloth",
+                            icon = 8001,
+                            quantity = 20,
+                            stableSinceDate = "2024-06-01",
+                            ageDays = 21,
+                            isStale = true,
+                        },
+                    },
+                },
+                {
+                    index = 2,
+                    name = "Restricted",
+                    icon = 9002,
+                    isViewable = false,
+                    lastAccessibleText = "2024-06-20 08:00 PT",
+                    rows = {},
+                },
+                {
+                    index = 3,
+                    name = "Never Seen",
+                    icon = 9003,
+                    isViewable = false,
+                    rows = {},
+                },
+            },
+        }
+
+        test.assert_true(harness.ui.SetBankReport(report))
+        local view = harness.frame().views.bank
+        test.assert_equal(view.bankTabButtons[1].text, "   Materials")
+        test.assert_equal(view.bankTabButtons[1].icon.texture, 9001)
+        test.assert_equal(view.bankTitle.text, "Last accessible: 2024-06-22 09:30 PT")
+        test.assert_equal(view.bankRows[1].item.text, "Ancient Cloth")
+        test.assert_equal(view.bankRows[1].tab.text, "Materials")
+        test.assert_equal(view.bankRows[1].slot.text, "4")
+        test.assert_equal(view.bankRows[1].count.text, "20")
+        test.assert_equal(view.bankRows[1].stable.text, "2024-06-01")
+        test.assert_equal(view.bankRows[1].age.text, "|cffff555521 days|r")
+
+        view.bankRows[1].itemButton.scripts.OnEnter()
+        test.assert_true(harness.tooltip.shown)
+        test.assert_equal(harness.tooltip.hyperlink, itemLink)
+        view.bankRows[1].itemButton.scripts.OnClick()
+        test.assert_equal(harness.modifiedItemClicks, { itemLink })
+        view.bankRows[1].itemButton.scripts.OnLeave()
+        test.assert_false(harness.tooltip.shown)
+
+        view.bankTabButtons[2].scripts.OnClick()
+        test.assert_equal(view.selectedBankTabIndex, 2)
+        test.assert_equal(view.bankMessage.text, "|cffff5555No access|r")
+        test.assert_equal(view.bankTitle.text, "Last accessible: 2024-06-20 08:00 PT")
+        test.assert_false(view.bankRows[1].frame:IsShown())
+
+        view.bankTabButtons[3].scripts.OnClick()
+        test.assert_equal(view.bankMessage.text, "|cffff5555No access|r")
+        test.assert_equal(view.bankTitle.text, "No successful access yet")
+    end),
+
+    test.case("large bank tab and inventory lists scroll inside the fixed view", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local report = { tabs = {} }
+        for tabIndex = 1, 30 do
+            local tab = {
+                index = tabIndex,
+                name = "Tab " .. tabIndex,
+                icon = 9000 + tabIndex,
+                isViewable = true,
+                lastAccessibleText = "2024-06-22 09:30 PT",
+                rows = {},
+            }
+            report.tabs[tabIndex] = tab
+        end
+        for slotIndex = 1, 98 do
+            report.tabs[1].rows[slotIndex] = {
+                tabIndex = 1,
+                tabName = "Tab 1",
+                slotIndex = slotIndex,
+                itemId = 1000 + slotIndex,
+                itemLink = "|Hitem:1|h[Test Item]|h",
+                itemName = "Test Item " .. slotIndex,
+                icon = 8000,
+                quantity = 1,
+                stableSinceDate = "2024-06-01",
+                ageDays = 21,
+                isStale = true,
+            }
+        end
+
+        harness.ui.SetBankReport(report)
+        local view = harness.frame().views.bank
+        test.assert_true(
+            view.bankTabScrollChild:GetHeight() > view.bankTabScrollFrame:GetHeight()
+        )
+        test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
     end),
 
     test.case("closing RGMS cancels a bank scan without clearing bank content", function()

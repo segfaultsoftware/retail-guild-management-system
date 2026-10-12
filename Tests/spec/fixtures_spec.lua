@@ -30,6 +30,8 @@ return {
         test.assert_equal(slot.tabIndex, 3)
         test.assert_equal(slot.quantity, 7)
         test.assert_equal(slot.stableSinceDate, "2024-06-01")
+        test.assert_not_nil(tab.lastAccessibleAt)
+        test.assert_not_nil(slot.icon)
     end),
 
     test.case("fixture instances do not share nested state", function()
@@ -58,7 +60,7 @@ return {
         local current = fixtures.saved_model()
         local previous = fixtures.saved_model_v0()
 
-        test.assert_equal(current.schemaVersion, 6)
+        test.assert_equal(current.schemaVersion, 7)
         test.assert_equal(current.roster.guild.name, "Example Guild")
         test.assert_equal(current.ui.windowPosition.point, "TOPLEFT")
         test.assert_equal(previous.schemaVersion, 0)

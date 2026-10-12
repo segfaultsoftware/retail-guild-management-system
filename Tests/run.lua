@@ -20,6 +20,7 @@ local defaultSuites = {
     "Tests.spec.ui_spec",
     "Tests.spec.bank_adapter_spec",
     "Tests.spec.bank_state_spec",
+    "Tests.spec.bank_report_spec",
     "Tests.spec.bank_scanner_spec",
     "Tests.spec.bank_spec",
 }

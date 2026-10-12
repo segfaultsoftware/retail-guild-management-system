@@ -8,7 +8,7 @@ local SavedData = {}
 local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTime")
 local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
 
-SavedData.CURRENT_SCHEMA_VERSION = 6
+SavedData.CURRENT_SCHEMA_VERSION = 7
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -457,15 +457,20 @@ local function validateCurrentRosterMember(value, path)
     return validateRosterMember(value, path, true, true, true)
 end
 
-local function validateBankTab(value, path)
-    local valid, validationError = validateExactTable(value, {
+local function validateBankTabFields(value, path, allowLastAccessibleAt)
+    local allowedKeys = {
         index = true,
         name = true,
         icon = true,
         isViewable = true,
         canDeposit = true,
         withdrawalsPerDay = true,
-    }, path)
+    }
+    if allowLastAccessibleAt then
+        allowedKeys.lastAccessibleAt = true
+    end
+
+    local valid, validationError = validateExactTable(value, allowedKeys, path)
     if not valid then
         return nil, validationError
     end
@@ -493,10 +498,35 @@ local function validateBankTab(value, path)
         end
     end
 
-    return requireInteger(value.withdrawalsPerDay, path .. ".withdrawalsPerDay", -1)
+    valid, validationError = requireInteger(
+        value.withdrawalsPerDay,
+        path .. ".withdrawalsPerDay",
+        -1
+    )
+    if not valid then
+        return nil, validationError
+    end
+
+    if value.lastAccessibleAt ~= nil then
+        return validateTimestamp(value.lastAccessibleAt, path .. ".lastAccessibleAt")
+    end
+    return true
 end
 
-local function validateBankSlotFields(value, path, requireStableSinceDate)
+local function validateLegacyBankTab(value, path)
+    return validateBankTabFields(value, path, false)
+end
+
+local function validateBankTab(value, path)
+    return validateBankTabFields(value, path, true)
+end
+
+local function validateBankSlotFields(
+    value,
+    path,
+    requireStableSinceDate,
+    allowIcon
+)
     local allowedKeys = {
         tabIndex = true,
         slotIndex = true,
@@ -508,6 +538,9 @@ local function validateBankSlotFields(value, path, requireStableSinceDate)
     }
     if requireStableSinceDate then
         allowedKeys.stableSinceDate = true
+    end
+    if allowIcon then
+        allowedKeys.icon = true
     end
 
     local valid, validationError = validateExactTable(value, allowedKeys, path)
@@ -528,6 +561,17 @@ local function validateBankSlotFields(value, path, requireStableSinceDate)
     valid, validationError = requireBoolean(value.isLocked, path .. ".isLocked")
     if not valid then
         return nil, validationError
+    end
+
+    if value.icon ~= nil then
+        if type(value.icon) == "string" then
+            valid, validationError = requireString(value.icon, path .. ".icon")
+        else
+            valid, validationError = requireInteger(value.icon, path .. ".icon", 0)
+        end
+        if not valid then
+            return nil, validationError
+        end
     end
 
     valid, validationError = validateTimestamp(value.observedAt, path .. ".observedAt")
@@ -571,11 +615,15 @@ local function validateBankSlotFields(value, path, requireStableSinceDate)
 end
 
 local function validateLegacyBankSlot(value, path)
-    return validateBankSlotFields(value, path, false)
+    return validateBankSlotFields(value, path, false, false)
+end
+
+local function validateVersionSixBankSlot(value, path)
+    return validateBankSlotFields(value, path, true, false)
 end
 
 local function validateBankSlot(value, path)
-    return validateBankSlotFields(value, path, true)
+    return validateBankSlotFields(value, path, true, true)
 end
 
 local function validateWindowPosition(value, path)
@@ -712,6 +760,12 @@ function SavedData.validate(model)
     }, true)
     if not valid then
         return nil, validationError
+    end
+    for _, tab in ipairs(model.bank.tabs) do
+        if tab.lastAccessibleAt ~= nil
+            and tab.lastAccessibleAt.unixSeconds > model.bank.scannedAt.unixSeconds then
+            return nil, "saved data.bank.tabs lastAccessibleAt must not follow scannedAt"
+        end
     end
 
     valid, validationError = validateExactTable(model.ui, {
@@ -862,7 +916,7 @@ local function migrateVersionOne(model)
         return nil, migrationError
     end
     valid, migrationError = validateDataset(model.bank, "schema version 1 data.bank", {
-        tabs = validateBankTab,
+        tabs = validateLegacyBankTab,
         slots = validateLegacyBankSlot,
     })
     if not valid then
@@ -920,7 +974,7 @@ local function migrateVersionTwo(model)
         return nil, migrationError
     end
     valid, migrationError = validateDataset(model.bank, "schema version 2 data.bank", {
-        tabs = validateBankTab,
+        tabs = validateLegacyBankTab,
         slots = validateLegacyBankSlot,
     })
     if not valid then
@@ -979,7 +1033,7 @@ local function migrateVersionThree(model)
         return nil, migrationError
     end
     valid, migrationError = validateDataset(model.bank, "schema version 3 data.bank", {
-        tabs = validateBankTab,
+        tabs = validateLegacyBankTab,
         slots = validateLegacyBankSlot,
     })
     if not valid then
@@ -1077,7 +1131,7 @@ local function migrateVersionFour(model)
         return nil, migrationError
     end
     valid, migrationError = validateDataset(model.bank, "schema version 4 data.bank", {
-        tabs = validateBankTab,
+        tabs = validateLegacyBankTab,
         slots = validateLegacyBankSlot,
     }, false)
     if not valid then
@@ -1126,7 +1180,7 @@ local function migrateVersionFive(model)
         return nil, migrationError
     end
     valid, migrationError = validateDataset(model.bank, "schema version 5 data.bank", {
-        tabs = validateBankTab,
+        tabs = validateLegacyBankTab,
         slots = validateLegacyBankSlot,
     }, true)
     if not valid then
@@ -1159,6 +1213,72 @@ local function migrateVersionFive(model)
     return model
 end
 
+local function migrateVersionSix(model)
+    if model.schemaVersion ~= 6 then
+        return nil, "schema version 6 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 6 data")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.roster, "schema version 6 data.roster", {
+        ranks = validateRosterRank,
+        members = validateCurrentRosterMember,
+    }, true)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.bank, "schema version 6 data.bank", {
+        tabs = validateLegacyBankTab,
+        slots = validateVersionSixBankSlot,
+    }, true)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+    }, "schema version 6 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 6 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    local latestSlotTimestampByTab = {}
+    for _, slot in ipairs(model.bank.slots) do
+        local latest = latestSlotTimestampByTab[slot.tabIndex]
+        if latest == nil or slot.observedAt.unixSeconds > latest.unixSeconds then
+            latestSlotTimestampByTab[slot.tabIndex] = slot.observedAt
+        end
+    end
+    for _, tab in ipairs(model.bank.tabs) do
+        local recovered = tab.isViewable
+            and model.bank.scannedAt
+            or latestSlotTimestampByTab[tab.index]
+        if recovered ~= nil then
+            local copied, copyError = deepCopy(recovered)
+            if not copied then
+                return nil, copyError
+            end
+            tab.lastAccessibleAt = copied
+        end
+    end
+
+    model.schemaVersion = 7
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
@@ -1166,6 +1286,7 @@ local MIGRATIONS = {
     [3] = migrateVersionThree,
     [4] = migrateVersionFour,
     [5] = migrateVersionFive,
+    [6] = migrateVersionSix,
 }
 
 local function isLegacyDevelopmentState(value)

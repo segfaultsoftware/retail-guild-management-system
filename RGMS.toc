@@ -20,5 +20,6 @@ Roster\Tenure.lua
 Roster\Scanner.lua
 Roster\Roster.lua
 Bank\State.lua
+Bank\Report.lua
 Bank\Scanner.lua
 Bank\Bank.lua

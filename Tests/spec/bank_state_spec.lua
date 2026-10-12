@@ -59,6 +59,7 @@ local function expectedSlot(observedSlot, stableSinceDate)
         slotIndex = observedSlot.slotIndex,
         itemId = observedSlot.itemId,
         itemLink = observedSlot.itemLink,
+        icon = observedSlot.icon,
         quantity = observedSlot.quantity,
         isLocked = observedSlot.isLocked,
         observedAt = observedSlot.observedAt,
@@ -73,6 +74,7 @@ return {
             slot(1, 2, 100, 5),
         })
         local first = reduce(emptyDataset(), firstSnapshot)
+        test.assert_equal(first.tabs[1].lastAccessibleAt, firstSnapshot.scannedAt)
         test.assert_equal(first.slots, {
             expectedSlot(firstSnapshot.slots[1], "2024-06-01"),
             expectedSlot(firstSnapshot.slots[2], "2024-06-01"),
@@ -162,6 +164,7 @@ return {
         test.assert_false(hidden.tabs[1].isViewable)
         test.assert_equal(hidden.tabs[1].name, "Hidden Materials")
         test.assert_equal(hidden.tabs[1].icon, 2000)
+        test.assert_equal(hidden.tabs[1].lastAccessibleAt, firstSnapshot.scannedAt)
         test.assert_equal(hidden.slots, first.slots)
 
         local restoredSnapshot = snapshot(4, { tab(1, true, {
@@ -173,6 +176,10 @@ return {
         local restored = reduce(hidden, restoredSnapshot)
         test.assert_true(restored.tabs[1].isViewable)
         test.assert_equal(restored.tabs[1].name, "Restored Materials")
+        test.assert_equal(
+            restored.tabs[1].lastAccessibleAt,
+            restoredSnapshot.scannedAt
+        )
         test.assert_equal(restored.slots, {
             expectedSlot(restoredSnapshot.slots[1], "2024-06-01"),
         })
@@ -181,6 +188,16 @@ return {
             "2024-06-05",
             dateTime
         ), 4)
+    end),
+
+    test.case("empty accessible tabs retain their access timestamp while hidden", function()
+        local firstSnapshot = snapshot(0, { tab(1, true) }, {})
+        local first = reduce(emptyDataset(), firstSnapshot)
+        test.assert_equal(first.tabs[1].lastAccessibleAt, firstSnapshot.scannedAt)
+
+        local hidden = reduce(first, snapshot(3, { tab(1, false) }, {}))
+        test.assert_equal(hidden.tabs[1].lastAccessibleAt, firstSnapshot.scannedAt)
+        test.assert_equal(hidden.slots, {})
     end),
 
     test.case("restored access resets state only when contents differ", function()

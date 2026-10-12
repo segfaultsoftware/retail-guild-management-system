@@ -156,6 +156,7 @@ local function createRetailApi()
                     slotIndex = slotIndex,
                     itemId = itemId,
                     itemLink = itemLink,
+                    icon = texture,
                     quantity = quantity,
                     isLocked = isLocked == true,
                 }
@@ -201,6 +202,26 @@ end
 function Bank.RefreshStatus()
     if type(RGMS.UI) ~= "table" or type(RGMS.UI.SetViewStatus) ~= "function" then
         return
+    end
+
+    if type(RGMS.UI.SetBankReport) == "function"
+        and type(RGMS.BankReport) == "table"
+        and type(RGMS.BankReport.build) == "function"
+        and type(RGMS.DB) == "table"
+        and type(RGMS.DB.bank) == "table" then
+        local report, reportError = RGMS.BankReport.build(
+            RGMS.DB.bank,
+            nil,
+            RGMS.DateTime
+        )
+        if report then
+            RGMS.UI.SetBankReport(report)
+        else
+            RGMS.UI.SetViewContent(
+                "bank",
+                "Bank report unavailable: " .. tostring(reportError)
+            )
+        end
     end
 
     if Bank.IsScanInProgress() then

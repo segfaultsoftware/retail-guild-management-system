@@ -127,6 +127,10 @@ function State.reduce(previousDataset, snapshot, dateTime)
     if not tabs then
         return nil, tabError
     end
+    local previousTabs, previousTabError = indexTabs(previousDataset.tabs)
+    if not previousTabs then
+        return nil, previousTabError
+    end
     local previousSlots, previousError = indexSlots(
         previousDataset.slots,
         "previous bank dataset"
@@ -150,6 +154,24 @@ function State.reduce(previousDataset, snapshot, dateTime)
     })
     if not nextDataset then
         return nil, copyError
+    end
+
+    for _, tab in ipairs(nextDataset.tabs) do
+        if tab.isViewable then
+            tab.lastAccessibleAt = {
+                unixSeconds = snapshot.scannedAt.unixSeconds,
+                iso8601 = snapshot.scannedAt.iso8601,
+            }
+        else
+            tab.lastAccessibleAt = nil
+            local previousTab = previousTabs[tab.index]
+            if previousTab ~= nil and previousTab.lastAccessibleAt ~= nil then
+                tab.lastAccessibleAt = {
+                    unixSeconds = previousTab.lastAccessibleAt.unixSeconds,
+                    iso8601 = previousTab.lastAccessibleAt.iso8601,
+                }
+            end
+        end
     end
 
     for _, slot in ipairs(nextDataset.slots) do

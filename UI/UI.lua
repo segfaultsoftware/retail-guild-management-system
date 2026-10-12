@@ -17,6 +17,14 @@ local RANK_TAB_WIDTH = 242
 local RANK_TAB_HEIGHT = 24
 local RANK_TAB_GAP = 3
 local ROSTER_CONTENT_GAP = 24
+local BANK_TAB_WIDTH = 200
+local BANK_CONTENT_GAP = 18
+local BANK_TAB_HEIGHT = 28
+local BANK_TAB_GAP = 3
+local BANK_ROW_HEIGHT = 22
+local BANK_ICON_SIZE = 18
+local BANK_HEADER_HEIGHT = 22
+local BANK_TITLE_HEIGHT = 24
 local ROSTER_TITLE_HEIGHT = 26
 local ROSTER_GROUP_HEIGHT = 22
 local ROSTER_ROW_HEIGHT = 20
@@ -190,16 +198,115 @@ local function layoutRosterLines(view, availableWidth)
     end
 end
 
+local function layoutBankLines(view, availableWidth)
+    if type(view.bankRows) ~= "table" then
+        return
+    end
+
+    local tabWidth = 92
+    local slotWidth = 38
+    local countWidth = 48
+    local stableWidth = 88
+    local ageWidth = 60
+    local itemWidth = math.max(
+        120,
+        availableWidth - tabWidth - slotWidth - countWidth - stableWidth - ageWidth
+    )
+    local usedWidth = itemWidth + tabWidth + slotWidth + countWidth + stableWidth + ageWidth
+    if usedWidth > availableWidth then
+        itemWidth = math.max(1, itemWidth - (usedWidth - availableWidth))
+    end
+
+    local function positionColumns(line)
+        line.frame:SetWidth(availableWidth)
+        for _, field in ipairs({ "item", "tab", "slot", "count", "stable", "age" }) do
+            if line[field] then
+                line[field]:ClearAllPoints()
+            end
+        end
+        if line.itemButton then
+            line.itemButton:ClearAllPoints()
+            line.itemButton:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+            line.itemButton:SetSize(itemWidth, BANK_ROW_HEIGHT)
+            line.itemIcon:ClearAllPoints()
+            line.itemIcon:SetPoint("LEFT", line.itemButton, "LEFT", 0, 0)
+            line.item:ClearAllPoints()
+            line.item:SetPoint(
+                "LEFT",
+                line.itemButton,
+                "LEFT",
+                BANK_ICON_SIZE + 4,
+                0
+            )
+            line.item:SetWidth(math.max(1, itemWidth - BANK_ICON_SIZE - 6))
+        else
+            line.item:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+            line.item:SetWidth(itemWidth)
+        end
+        line.tab:SetPoint("LEFT", line.frame, "LEFT", itemWidth, 0)
+        line.tab:SetWidth(tabWidth)
+        line.slot:SetPoint("LEFT", line.frame, "LEFT", itemWidth + tabWidth, 0)
+        line.slot:SetWidth(slotWidth)
+        line.count:SetPoint(
+            "LEFT",
+            line.frame,
+            "LEFT",
+            itemWidth + tabWidth + slotWidth,
+            0
+        )
+        line.count:SetWidth(countWidth)
+        line.stable:SetPoint(
+            "LEFT",
+            line.frame,
+            "LEFT",
+            itemWidth + tabWidth + slotWidth + countWidth,
+            0
+        )
+        line.stable:SetWidth(stableWidth)
+        line.age:SetPoint(
+            "LEFT",
+            line.frame,
+            "LEFT",
+            itemWidth + tabWidth + slotWidth + countWidth + stableWidth,
+            0
+        )
+        line.age:SetWidth(ageWidth)
+    end
+
+    if view.bankHeader then
+        positionColumns(view.bankHeader)
+    end
+    for _, line in ipairs(view.bankRows) do
+        positionColumns(line)
+    end
+end
+
 local function refreshScrollChild(view)
     local availableWidth = math.max(1, view.scrollFrame:GetWidth() - 8)
     view.scrollChild:SetWidth(availableWidth)
     view.text:SetWidth(availableWidth)
     layoutRosterLines(view, availableWidth)
+    layoutBankLines(view, availableWidth)
 
     local viewportHeight = math.max(1, view.scrollFrame:GetHeight())
     local contentHeight = view.rosterTableHeight
+        or view.bankTableHeight
         or (view.text:GetStringHeight() + 16)
     view.scrollChild:SetHeight(math.max(viewportHeight, contentHeight))
+end
+
+local function refreshBankTabScrollChild(view)
+    if not view.bankTabScrollFrame then
+        return
+    end
+
+    local viewportHeight = math.max(1, view.bankTabScrollFrame:GetHeight())
+    local tabCount = type(view.bankReport) == "table"
+        and type(view.bankReport.tabs) == "table"
+        and #view.bankReport.tabs
+        or 0
+    local contentHeight = tabCount * (BANK_TAB_HEIGHT + BANK_TAB_GAP) + 4
+    view.bankTabScrollChild:SetHeight(math.max(viewportHeight, contentHeight))
 end
 
 local function refreshRankScrollChild(view)
@@ -382,6 +489,181 @@ local function findRosterRank(view, rankIndex)
     return nil
 end
 
+local function hideBankLines(view)
+    if view.bankHeader then
+        view.bankHeader.frame:Hide()
+    end
+    for _, line in ipairs(view.bankRows or {}) do
+        hideTooltipIfOwned(line.itemButton)
+        line.frame:Hide()
+    end
+    if view.bankTitle then
+        view.bankTitle:Hide()
+    end
+    if view.bankMessage then
+        view.bankMessage:Hide()
+    end
+    view.bankTableHeight = nil
+end
+
+local function configureBankText(text)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("MIDDLE")
+    if type(text.SetWordWrap) == "function" then
+        text:SetWordWrap(false)
+    end
+end
+
+local function createBankHeader(view)
+    local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local header = {
+        frame = frame,
+        item = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        tab = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        slot = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        count = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        stable = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        age = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+    }
+    for _, field in ipairs({ "item", "tab", "slot", "count", "stable", "age" }) do
+        configureBankText(header[field])
+    end
+    header.item:SetText("Item")
+    header.tab:SetText("Tab")
+    header.slot:SetText("Slot")
+    header.count:SetText("Count")
+    header.stable:SetText("Stable since")
+    header.age:SetText("Age")
+    view.bankHeader = header
+    return header
+end
+
+local function acquireBankLine(view, index)
+    local line = view.bankRows[index]
+    if line then
+        return line
+    end
+
+    local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local itemButton = CreateFrame("Button", nil, frame)
+    local itemIcon = itemButton:CreateTexture(nil, "ARTWORK")
+    itemIcon:SetSize(BANK_ICON_SIZE, BANK_ICON_SIZE)
+    local item = itemButton:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local tab = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local slot = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local count = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local stable = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local age = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    line = {
+        frame = frame,
+        itemButton = itemButton,
+        itemIcon = itemIcon,
+        item = item,
+        tab = tab,
+        slot = slot,
+        count = count,
+        stable = stable,
+        age = age,
+    }
+    for _, field in ipairs({ "item", "tab", "slot", "count", "stable", "age" }) do
+        configureBankText(line[field])
+    end
+    itemButton:SetScript("OnEnter", function()
+        if line.itemLink == nil then
+            return
+        end
+        GameTooltip:SetOwner(itemButton, "ANCHOR_RIGHT")
+        GameTooltip:SetHyperlink(line.itemLink)
+        GameTooltip:Show()
+    end)
+    itemButton:SetScript("OnLeave", function()
+        hideTooltipIfOwned(itemButton)
+    end)
+    itemButton:SetScript("OnClick", function()
+        if line.itemLink ~= nil and type(HandleModifiedItemClick) == "function" then
+            HandleModifiedItemClick(line.itemLink)
+        end
+    end)
+    view.bankRows[index] = line
+    return line
+end
+
+local function renderBankTab(view, tab)
+    view.text:Hide()
+    hideBankLines(view)
+    view.bankTitle:Show()
+    view.bankMessage:Show()
+
+    local timestampText = tab.lastAccessibleText
+        and ("Last accessible: " .. tab.lastAccessibleText)
+        or "No successful access yet"
+    view.bankTitle:SetText(timestampText)
+    view.bankTitle:ClearAllPoints()
+    view.bankTitle:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -4)
+
+    local offset = 4 + BANK_TITLE_HEIGHT
+    if not tab.isViewable then
+        view.bankMessage:SetText("|cffff5555No access|r")
+        view.bankMessage:ClearAllPoints()
+        view.bankMessage:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        offset = offset + BANK_ROW_HEIGHT
+    elseif #tab.rows == 0 then
+        view.bankMessage:SetText("|cff888888No occupied slots|r")
+        view.bankMessage:ClearAllPoints()
+        view.bankMessage:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        offset = offset + BANK_ROW_HEIGHT
+    else
+        view.bankMessage:Hide()
+        local header = view.bankHeader or createBankHeader(view)
+        header.frame:ClearAllPoints()
+        header.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        header.frame:SetHeight(BANK_HEADER_HEIGHT)
+        header.frame:Show()
+        offset = offset + BANK_HEADER_HEIGHT
+
+        for index, row in ipairs(tab.rows) do
+            local line = acquireBankLine(view, index)
+            line.itemLink = row.itemLink
+            line.frame:ClearAllPoints()
+            line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+            line.frame:SetHeight(BANK_ROW_HEIGHT)
+            line.itemIcon:SetTexture(row.icon)
+            line.item:SetText(row.itemName)
+            line.tab:SetText(row.tabName)
+            line.slot:SetText(tostring(row.slotIndex))
+            line.count:SetText(tostring(row.quantity))
+            line.stable:SetText(row.stableSinceDate)
+            local ageLabel = row.ageDays == 1 and "1 day" or (row.ageDays .. " days")
+            if row.isStale then
+                ageLabel = "|cffff5555" .. ageLabel .. "|r"
+            end
+            line.age:SetText(ageLabel)
+            line.frame:Show()
+            offset = offset + BANK_ROW_HEIGHT
+        end
+    end
+
+    for index = #tab.rows + 1, #view.bankRows do
+        hideTooltipIfOwned(view.bankRows[index].itemButton)
+        view.bankRows[index].frame:Hide()
+    end
+    view.bankTableHeight = offset + 4
+    view.scrollFrame:SetVerticalScroll(0)
+    refreshScrollChild(view)
+end
+
+local function findBankTab(view, tabIndex)
+    if type(view.bankReport) ~= "table" then
+        return nil
+    end
+    for _, tab in ipairs(view.bankReport.tabs or {}) do
+        if tab.index == tabIndex then
+            return tab
+        end
+    end
+    return nil
+end
+
 local function createView(parent, tabId)
     local view = CreateFrame("Frame", nil, parent)
     view:SetPoint("TOPLEFT", 18, -92)
@@ -431,6 +713,25 @@ local function createView(parent, tabId)
         view.rankScrollFrame:SetScript("OnSizeChanged", function()
             refreshRankScrollChild(view)
         end)
+    elseif tabId == "bank" then
+        view.bankTabScrollFrame = CreateFrame(
+            "ScrollFrame",
+            nil,
+            view,
+            "UIPanelScrollFrameTemplate"
+        )
+        view.bankTabScrollFrame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, -24)
+        view.bankTabScrollFrame:SetPoint("BOTTOMLEFT", view, "BOTTOMLEFT", 0, 0)
+        view.bankTabScrollFrame:SetWidth(BANK_TAB_WIDTH)
+
+        view.bankTabScrollChild = CreateFrame("Frame", nil, view.bankTabScrollFrame)
+        view.bankTabScrollChild:SetSize(BANK_TAB_WIDTH - 22, 1)
+        view.bankTabScrollFrame:SetScrollChild(view.bankTabScrollChild)
+        view.bankTabButtons = {}
+        view.bankRows = {}
+        view.bankTabScrollFrame:SetScript("OnSizeChanged", function()
+            refreshBankTabScrollChild(view)
+        end)
     end
 
     view.scrollFrame = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
@@ -440,6 +741,14 @@ local function createView(parent, tabId)
             view,
             "TOPLEFT",
             RANK_TAB_WIDTH + ROSTER_CONTENT_GAP,
+            -24
+        )
+    elseif tabId == "bank" then
+        view.scrollFrame:SetPoint(
+            "TOPLEFT",
+            view,
+            "TOPLEFT",
+            BANK_TAB_WIDTH + BANK_CONTENT_GAP,
             -24
         )
     else
@@ -456,6 +765,23 @@ local function createView(parent, tabId)
     view.text:SetJustifyH("LEFT")
     view.text:SetJustifyV("TOP")
     view.text:SetText(placeholderText(tabId))
+
+    if tabId == "bank" then
+        view.bankTitle = view.scrollChild:CreateFontString(
+            nil,
+            "ARTWORK",
+            "GameFontNormal"
+        )
+        configureBankText(view.bankTitle)
+        view.bankTitle:Hide()
+        view.bankMessage = view.scrollChild:CreateFontString(
+            nil,
+            "ARTWORK",
+            "GameFontHighlight"
+        )
+        configureBankText(view.bankMessage)
+        view.bankMessage:Hide()
+    end
 
     view.scrollFrame:SetScript("OnSizeChanged", function()
         refreshScrollChild(view)
@@ -588,6 +914,7 @@ function UI.Initialize()
     for _, tabId in ipairs(TAB_ORDER) do
         refreshScrollChild(UI.frame.views[tabId])
         refreshRankScrollChild(UI.frame.views[tabId])
+        refreshBankTabScrollChild(UI.frame.views[tabId])
     end
 
     if type(UISpecialFrames) == "table" then
@@ -685,6 +1012,9 @@ function UI.SetViewContent(tabId, content)
     local view = UI.frame.views[tabId]
     if tabId == "roster" then
         hideRosterLines(view)
+        view.text:Show()
+    elseif tabId == "bank" then
+        hideBankLines(view)
         view.text:Show()
     end
     view.text:SetText(tostring(content or ""))
@@ -788,6 +1118,96 @@ function UI.SetRosterReport(report)
     hideRosterLines(view)
     view.text:Show()
     view.text:SetText("No roster data yet")
+    view.scrollFrame:SetVerticalScroll(0)
+    refreshScrollChild(view)
+    return true
+end
+
+function UI.SelectBankTab(tabIndex)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.bank
+    local tab = findBankTab(view, tabIndex)
+    if not tab then
+        return nil, "bank tab is unavailable"
+    end
+
+    for buttonIndex, buttonTab in ipairs(view.bankReport.tabs) do
+        local button = view.bankTabButtons[buttonIndex]
+        button:SetEnabled(buttonTab.index ~= tabIndex)
+    end
+    view.selectedBankTabIndex = tabIndex
+    renderBankTab(view, tab)
+    return true
+end
+
+function UI.SetBankReport(report)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(report) ~= "table" or type(report.tabs) ~= "table" then
+        return nil, "bank report must contain tabs"
+    end
+
+    local view = UI.frame.views.bank
+    local previousTabIndex = view.selectedBankTabIndex
+    view.bankReport = report
+
+    for index, tab in ipairs(report.tabs) do
+        local button = view.bankTabButtons[index]
+        if not button then
+            button = CreateFrame(
+                "Button",
+                nil,
+                view.bankTabScrollChild,
+                "UIPanelButtonTemplate"
+            )
+            button:SetHeight(BANK_TAB_HEIGHT)
+            button.icon = button:CreateTexture(nil, "ARTWORK")
+            button.icon:SetSize(BANK_ICON_SIZE, BANK_ICON_SIZE)
+            button.icon:SetPoint("LEFT", button, "LEFT", 6, 0)
+            view.bankTabButtons[index] = button
+        end
+
+        button:ClearAllPoints()
+        button:SetWidth(BANK_TAB_WIDTH - 22)
+        if index == 1 then
+            button:SetPoint("TOPLEFT", view.bankTabScrollChild, "TOPLEFT", 0, -2)
+        else
+            button:SetPoint(
+                "TOPLEFT",
+                view.bankTabButtons[index - 1],
+                "BOTTOMLEFT",
+                0,
+                -BANK_TAB_GAP
+            )
+        end
+        button:SetText("   " .. tab.name)
+        button.icon:SetTexture(tab.icon)
+        local tabIndex = tab.index
+        button:SetScript("OnClick", function()
+            UI.SelectBankTab(tabIndex)
+        end)
+        button:Show()
+    end
+    for index = #report.tabs + 1, #view.bankTabButtons do
+        view.bankTabButtons[index]:Hide()
+    end
+
+    view.bankTabScrollFrame:SetVerticalScroll(0)
+    refreshBankTabScrollChild(view)
+
+    local selectedTab = findBankTab(view, previousTabIndex) or report.tabs[1]
+    if selectedTab then
+        return UI.SelectBankTab(selectedTab.index)
+    end
+
+    view.selectedBankTabIndex = nil
+    hideBankLines(view)
+    view.text:Show()
+    view.text:SetText("No bank tabs purchased")
     view.scrollFrame:SetVerticalScroll(0)
     refreshScrollChild(view)
     return true

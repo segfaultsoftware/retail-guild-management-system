@@ -10,7 +10,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 6,
+            schemaVersion = 7,
             roster = {
                 ranks = {},
                 members = {},
@@ -56,7 +56,7 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 6)
+        test.assert_equal(first.model.schemaVersion, 7)
         test.assert_equal(first.model.roster.guild, original.roster.guildIdentity)
         test.assert_equal(first.model.roster.scannedAt, original.roster.scanTimestamp)
         test.assert_equal(first.model.bank.guild, original.bank.guildIdentity)
@@ -71,7 +71,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
@@ -94,7 +94,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_equal(
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
@@ -109,7 +109,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
         test.assert_false(state.model.roster.members[1].isMissing)
         test.assert_equal(original.schemaVersion, 3)
@@ -143,7 +143,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_equal(state.model.roster.guild.realm.name, "Ner'zhul")
         test.assert_equal(state.model.roster.guild.realm.slug, "Ner'zhul")
         test.assert_equal(state.model.bank.guild.realm.name, "Deep-Rock")
@@ -166,13 +166,51 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_equal(
             state.model.bank.slots[1].stableSinceDate,
             "2024-06-01"
         )
         test.assert_nil(original.bank.slots[1].stableSinceDate)
         test.assert_equal(original.schemaVersion, 5)
+    end),
+
+    test.case("schema version six backfills per-tab accessible timestamps", function()
+        local original = fixtures.saved_model_v6()
+        local earlier = fixtures.timestamp({
+            unixSeconds = 1717158896,
+            iso8601 = "2024-05-31T12:34:56Z",
+        })
+        original.bank.tabs = {
+            fixtures.bank_tab({ index = 1, isViewable = true }),
+            fixtures.bank_tab({ index = 2, isViewable = false }),
+            fixtures.bank_tab({ index = 3, isViewable = false }),
+        }
+        for _, tab in ipairs(original.bank.tabs) do
+            tab.lastAccessibleAt = nil
+        end
+        original.bank.slots = {
+            fixtures.bank_slot({
+                tabIndex = 2,
+                observedAt = earlier,
+                stableSinceDate = "2024-05-31",
+            }),
+        }
+        original.bank.slots[1].icon = nil
+
+        local state = savedData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(
+            state.model.bank.tabs[1].lastAccessibleAt,
+            original.bank.scannedAt
+        )
+        test.assert_equal(state.model.bank.tabs[2].lastAccessibleAt, earlier)
+        test.assert_nil(state.model.bank.tabs[3].lastAccessibleAt)
+        test.assert_nil(original.bank.tabs[1].lastAccessibleAt)
+        test.assert_equal(original.schemaVersion, 6)
     end),
 
     test.case("the previous development placeholder migrates to an empty model", function()
@@ -247,6 +285,19 @@ return {
         test.assert_false(state.enabled)
         test.assert_equal(state.status, "corrupt")
         test.assert_matches(state.error, "stableSinceDate must not follow observedAt")
+    end),
+
+    test.case("bank last-access timestamps cannot follow the overall scan", function()
+        local model = fixtures.saved_model()
+        model.bank.tabs[1].lastAccessibleAt = fixtures.timestamp({
+            unixSeconds = model.bank.scannedAt.unixSeconds + 1,
+            iso8601 = "2024-06-01T12:34:57Z",
+        })
+
+        local state = savedData.load(model)
+
+        test.assert_false(state.enabled)
+        test.assert_matches(state.error, "lastAccessibleAt must not follow scannedAt")
     end),
 
     test.case("missing state must match the member's last observation", function()

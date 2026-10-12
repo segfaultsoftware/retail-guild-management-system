@@ -162,6 +162,7 @@ return {
             test.assert_equal(slots[1].tabIndex, 1)
             test.assert_equal(slots[1].slotIndex, 5)
             test.assert_equal(slots[1].itemId, 191384)
+            test.assert_equal(slots[1].icon, 236873)
             test.assert_equal(slots[1].quantity, 20)
             test.assert_false(slots[1].isLocked)
             test.assert_matches(slots[1].itemLink, "Refreshing Healing Potion")

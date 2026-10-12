@@ -74,7 +74,20 @@ local function newHarness(options)
             SetGuildBankOpen = function(isOpen)
                 actions[#actions + 1] = { action = "bank-open", value = isOpen }
             end,
+            SetBankReport = function(report)
+                actions[#actions + 1] = { action = "report", report = report }
+            end,
+            SetViewStatus = function(tabId, status)
+                actions[#actions + 1] = {
+                    action = "status",
+                    tabId = tabId,
+                    status = status,
+                }
+            end,
         },
+        DB = options.database,
+        BankReport = options.bankReport,
+        DateTime = options.dateTime,
     }
 
     local previousCreateFrame = CreateFrame
@@ -91,12 +104,13 @@ local function newHarness(options)
     }
 
     local chunk = assert(loadfile("Bank/Bank.lua"))
-    chunk("RGMS", fakeRGMS)
+    local bank = chunk("RGMS", fakeRGMS)
 
     return {
         actions = actions,
         eventFrame = eventFrame,
         guildBankFrame = guildBankFrame,
+        bank = bank,
         restore = function()
             CreateFrame = previousCreateFrame
             GuildBankFrame = previousGuildBankFrame
@@ -106,6 +120,42 @@ local function newHarness(options)
 end
 
 return {
+    test.case("status refresh renders the committed bank report and overall timestamp", function()
+        local projected = { tabs = { { index = 1, rows = {} } } }
+        local dataset = {
+            scannedAt = { unixSeconds = 100 },
+            tabs = {},
+            slots = {},
+        }
+        local harness = newHarness({
+            database = { bank = dataset },
+            bankReport = {
+                build = function(value)
+                    test.assert_true(value == dataset)
+                    return projected
+                end,
+            },
+            dateTime = {
+                formatPacificTimestamp = function(unixSeconds)
+                    test.assert_equal(unixSeconds, 100)
+                    return "2024-06-01 05:34 PT"
+                end,
+            },
+        })
+
+        harness.bank.RefreshStatus()
+
+        test.assert_equal(harness.actions, {
+            { action = "report", report = projected },
+            {
+                action = "status",
+                tabId = "bank",
+                status = "Last successful scan: 2024-06-01 05:34 PT",
+            },
+        })
+        harness.restore()
+    end),
+
     test.case("opening the default guild bank opens RGMS on the Bank view", function()
         local harness = newHarness()
 
