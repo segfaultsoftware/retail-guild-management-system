@@ -1,5 +1,6 @@
 local dateTime = require("Core.DateTime")
 local savedData = require("Core.SavedData")
+local bankState = require("Bank.State")
 local test = require("Tests.lib.runner")
 
 local GLOBAL_NAMES = {
@@ -166,12 +167,12 @@ return {
             test.assert_matches(slots[1].itemLink, "Refreshing Healing Potion")
 
             local model = savedData.newModel()
-            model.bank = {
+            model.bank = assert(bankState.reduce(model.bank, {
                 guild = catalog.guild,
                 scannedAt = scannedAt,
                 tabs = catalog.tabs,
                 slots = slots,
-            }
+            }, dateTime))
             test.assert_true(savedData.validate(model))
         end)
     end),

@@ -10,7 +10,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 5,
+            schemaVersion = 6,
             roster = {
                 ranks = {},
                 members = {},
@@ -56,7 +56,7 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 5)
+        test.assert_equal(first.model.schemaVersion, 6)
         test.assert_equal(first.model.roster.guild, original.roster.guildIdentity)
         test.assert_equal(first.model.roster.scannedAt, original.roster.scanTimestamp)
         test.assert_equal(first.model.bank.guild, original.bank.guildIdentity)
@@ -71,7 +71,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
@@ -94,7 +94,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
-        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
         test.assert_equal(
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
@@ -109,7 +109,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
         test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
         test.assert_false(state.model.roster.members[1].isMissing)
         test.assert_equal(original.schemaVersion, 3)
@@ -143,7 +143,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
         test.assert_equal(state.model.roster.guild.realm.name, "Ner'zhul")
         test.assert_equal(state.model.roster.guild.realm.slug, "Ner'zhul")
         test.assert_equal(state.model.bank.guild.realm.name, "Deep-Rock")
@@ -158,6 +158,21 @@ return {
         test.assert_equal(original.schemaVersion, 4)
         test.assert_equal(#original.roster.members, 2)
         test.assert_equal(original.roster.members[2].realm, corruptedRealm)
+    end),
+
+    test.case("schema version five backfills bank stable-since dates", function()
+        local original = fixtures.saved_model_v5()
+        local state = savedData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(
+            state.model.bank.slots[1].stableSinceDate,
+            "2024-06-01"
+        )
+        test.assert_nil(original.bank.slots[1].stableSinceDate)
+        test.assert_equal(original.schemaVersion, 5)
     end),
 
     test.case("the previous development placeholder migrates to an empty model", function()
@@ -222,6 +237,16 @@ return {
         test.assert_false(state.enabled)
         test.assert_equal(state.status, "corrupt")
         test.assert_matches(state.error, "must not follow observedAt")
+    end),
+
+    test.case("bank stable-since dates cannot follow their observations", function()
+        local original = fixtures.saved_model()
+        original.bank.slots[1].stableSinceDate = "2024-06-02"
+        local state = savedData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "stableSinceDate must not follow observedAt")
     end),
 
     test.case("missing state must match the member's last observation", function()

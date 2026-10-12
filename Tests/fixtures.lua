@@ -99,6 +99,7 @@ function Fixtures.bank_slot(overrides)
         quantity = 20,
         isLocked = false,
         observedAt = Fixtures.timestamp(),
+        stableSinceDate = "2024-06-01",
     }, overrides)
 end
 
@@ -116,7 +117,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 5,
+        schemaVersion = 6,
         roster = {
             guild = guild,
             scannedAt = timestamp,
@@ -146,7 +147,7 @@ function Fixtures.saved_model_v0(overrides)
     member.lastSeenDate = nil
     member.isMissing = nil
 
-    return withOverrides({
+    local model = withOverrides({
         schemaVersion = 0,
         roster = {
             guildIdentity = guild,
@@ -162,6 +163,10 @@ function Fixtures.saved_model_v0(overrides)
         },
         windowPosition = Fixtures.window_position(),
     }, overrides)
+    for _, slot in ipairs(model.bank.slots) do
+        slot.stableSinceDate = nil
+    end
+    return model
 end
 
 function Fixtures.saved_model_v1(overrides)
@@ -175,6 +180,9 @@ function Fixtures.saved_model_v1(overrides)
         member.lastSeenDate = nil
         member.isMissing = nil
     end
+    for _, slot in ipairs(model.bank.slots) do
+        slot.stableSinceDate = nil
+    end
     return model
 end
 
@@ -186,6 +194,9 @@ function Fixtures.saved_model_v2(overrides)
         member.lastSeenDate = nil
         member.isMissing = nil
     end
+    for _, slot in ipairs(model.bank.slots) do
+        slot.stableSinceDate = nil
+    end
     return model
 end
 
@@ -196,12 +207,27 @@ function Fixtures.saved_model_v3(overrides)
         member.lastSeenDate = nil
         member.isMissing = nil
     end
+    for _, slot in ipairs(model.bank.slots) do
+        slot.stableSinceDate = nil
+    end
     return model
 end
 
 function Fixtures.saved_model_v4(overrides)
     local model = Fixtures.saved_model(overrides)
     model.schemaVersion = 4
+    for _, slot in ipairs(model.bank.slots) do
+        slot.stableSinceDate = nil
+    end
+    return model
+end
+
+function Fixtures.saved_model_v5(overrides)
+    local model = Fixtures.saved_model(overrides)
+    model.schemaVersion = 5
+    for _, slot in ipairs(model.bank.slots) do
+        slot.stableSinceDate = nil
+    end
     return model
 end
 

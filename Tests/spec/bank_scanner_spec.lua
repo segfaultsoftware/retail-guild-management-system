@@ -1,7 +1,9 @@
 local datasetOwnership = require("Core.DatasetOwnership")
+local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
 local savedData = require("Core.SavedData")
 local scannerModule = require("Bank.Scanner")
+local bankState = require("Bank.State")
 local test = require("Tests.lib.runner")
 
 local function tab(index, isViewable, name)
@@ -88,13 +90,8 @@ local function newHarness(options)
     local scanner = scannerModule.create({
         api = api,
         ownership = ownership,
-        reduceBank = function(_, snapshot)
-            return {
-                guild = snapshot.guild,
-                scannedAt = snapshot.scannedAt,
-                tabs = snapshot.tabs,
-                slots = snapshot.slots,
-            }
+        reduceBank = function(previousDataset, snapshot)
+            return bankState.reduce(previousDataset, snapshot, dateTime)
         end,
         timeoutSeconds = options.timeoutSeconds or 10,
         canScan = function()
@@ -205,7 +202,11 @@ return {
         test.assert_equal(harness.requests, {})
         test.assert_equal(harness.commits(), 1)
         test.assert_equal(#harness.current().bank.tabs, 2)
-        test.assert_equal(#harness.current().bank.slots, 0)
+        test.assert_equal(#harness.current().bank.slots, 1)
+        test.assert_equal(
+            harness.current().bank.slots[1],
+            harness.original.bank.slots[1]
+        )
         test.assert_matches(harness.messages[1], "0 accessible")
         test.assert_false(harness.scanner:IsInProgress())
     end),
@@ -304,5 +305,40 @@ return {
         test.assert_true(second.scanner:OnSlotsChanged())
 
         test.assert_equal(second.current().bank.scannedAt.unixSeconds, 1717248900)
+    end),
+
+    test.case("a different guild transaction replaces prior bank state", function()
+        local original = fixtures.saved_model()
+        local otherGuild = fixtures.guild_identity({
+            id = "99999",
+            name = "Other Guild",
+        })
+        local harness = newHarness({
+            model = original,
+            catalog = {
+                guild = otherGuild,
+                tabs = { tab(1, true) },
+            },
+            slotsByTab = {
+                [1] = { slot(1, 1, 7) },
+            },
+            timestamp = fixtures.timestamp({
+                unixSeconds = 1717331756,
+                iso8601 = "2024-06-02T12:35:56Z",
+            }),
+        })
+
+        test.assert_true(harness.scanner:Request("manual"))
+        test.assert_true(harness.scanner:OnSlotsChanged())
+
+        test.assert_equal(harness.current().bank.guild, otherGuild)
+        test.assert_equal(#harness.current().bank.slots, 1)
+        test.assert_equal(
+            harness.current().bank.slots[1].stableSinceDate,
+            "2024-06-02"
+        )
+        test.assert_equal(harness.current().roster, original.roster)
+        test.assert_equal(harness.messages[1], "Detected guild change; resetting bank data")
+        test.assert_matches(harness.messages[2], "scan complete")
     end),
 }

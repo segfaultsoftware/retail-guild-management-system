@@ -8,7 +8,7 @@ local SavedData = {}
 local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTime")
 local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
 
-SavedData.CURRENT_SCHEMA_VERSION = 5
+SavedData.CURRENT_SCHEMA_VERSION = 6
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -496,8 +496,8 @@ local function validateBankTab(value, path)
     return requireInteger(value.withdrawalsPerDay, path .. ".withdrawalsPerDay", -1)
 end
 
-local function validateBankSlot(value, path)
-    local valid, validationError = validateExactTable(value, {
+local function validateBankSlotFields(value, path, requireStableSinceDate)
+    local allowedKeys = {
         tabIndex = true,
         slotIndex = true,
         itemId = true,
@@ -505,7 +505,12 @@ local function validateBankSlot(value, path)
         quantity = true,
         isLocked = true,
         observedAt = true,
-    }, path)
+    }
+    if requireStableSinceDate then
+        allowedKeys.stableSinceDate = true
+    end
+
+    local valid, validationError = validateExactTable(value, allowedKeys, path)
     if not valid then
         return nil, validationError
     end
@@ -525,7 +530,52 @@ local function validateBankSlot(value, path)
         return nil, validationError
     end
 
-    return validateTimestamp(value.observedAt, path .. ".observedAt")
+    valid, validationError = validateTimestamp(value.observedAt, path .. ".observedAt")
+    if not valid then
+        return nil, validationError
+    end
+
+    if requireStableSinceDate then
+        local stableDate, dateError = DateTime.parseStoredDate(
+            value.stableSinceDate
+        )
+        if not stableDate then
+            return nil, path .. ".stableSinceDate " .. dateError
+        end
+
+        local observedDate, observedDateError = DateTime.currentPacificDate(
+            value.observedAt.unixSeconds
+        )
+        if not observedDate then
+            return nil, observedDateError
+        end
+        local elapsedDays, elapsedError = DateTime.calendarDayDifference(
+            value.stableSinceDate,
+            observedDate
+        )
+        if elapsedDays == nil then
+            if type(elapsedError) == "string"
+                and string.find(
+                    elapsedError,
+                    "later date precedes earlier date",
+                    1,
+                    true
+                ) then
+                return nil, path .. ".stableSinceDate must not follow observedAt"
+            end
+            return nil, elapsedError
+        end
+    end
+
+    return true
+end
+
+local function validateLegacyBankSlot(value, path)
+    return validateBankSlotFields(value, path, false)
+end
+
+local function validateBankSlot(value, path)
+    return validateBankSlotFields(value, path, true)
 end
 
 local function validateWindowPosition(value, path)
@@ -813,7 +863,7 @@ local function migrateVersionOne(model)
     end
     valid, migrationError = validateDataset(model.bank, "schema version 1 data.bank", {
         tabs = validateBankTab,
-        slots = validateBankSlot,
+        slots = validateLegacyBankSlot,
     })
     if not valid then
         return nil, migrationError
@@ -871,7 +921,7 @@ local function migrateVersionTwo(model)
     end
     valid, migrationError = validateDataset(model.bank, "schema version 2 data.bank", {
         tabs = validateBankTab,
-        slots = validateBankSlot,
+        slots = validateLegacyBankSlot,
     })
     if not valid then
         return nil, migrationError
@@ -930,7 +980,7 @@ local function migrateVersionThree(model)
     end
     valid, migrationError = validateDataset(model.bank, "schema version 3 data.bank", {
         tabs = validateBankTab,
-        slots = validateBankSlot,
+        slots = validateLegacyBankSlot,
     })
     if not valid then
         return nil, migrationError
@@ -1028,7 +1078,7 @@ local function migrateVersionFour(model)
     end
     valid, migrationError = validateDataset(model.bank, "schema version 4 data.bank", {
         tabs = validateBankTab,
-        slots = validateBankSlot,
+        slots = validateLegacyBankSlot,
     }, false)
     if not valid then
         return nil, migrationError
@@ -1054,12 +1104,68 @@ local function migrateVersionFour(model)
     return model
 end
 
+local function migrateVersionFive(model)
+    if model.schemaVersion ~= 5 then
+        return nil, "schema version 5 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 5 data")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.roster, "schema version 5 data.roster", {
+        ranks = validateRosterRank,
+        members = validateCurrentRosterMember,
+    }, true)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.bank, "schema version 5 data.bank", {
+        tabs = validateBankTab,
+        slots = validateLegacyBankSlot,
+    }, true)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+    }, "schema version 5 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 5 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    for _, slot in ipairs(model.bank.slots) do
+        local stableSinceDate, dateError = DateTime.currentPacificDate(
+            slot.observedAt.unixSeconds
+        )
+        if not stableSinceDate then
+            return nil, dateError
+        end
+        slot.stableSinceDate = stableSinceDate
+    end
+    model.schemaVersion = 6
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
     [2] = migrateVersionTwo,
     [3] = migrateVersionThree,
     [4] = migrateVersionFour,
+    [5] = migrateVersionFive,
 }
 
 local function isLegacyDevelopmentState(value)

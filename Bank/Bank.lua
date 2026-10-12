@@ -277,13 +277,12 @@ if type(Bank.Scanner) ~= "table"
     Bank.Scanner = RGMS.BankScanner.create({
         api = createRetailApi(),
         ownership = RGMS.DatasetOwnership,
-        reduceBank = function(_, snapshot)
-            return {
-                guild = snapshot.guild,
-                scannedAt = snapshot.scannedAt,
-                tabs = snapshot.tabs,
-                slots = snapshot.slots,
-            }
+        reduceBank = function(previousDataset, snapshot)
+            return RGMS.BankState.reduce(
+                previousDataset,
+                snapshot,
+                RGMS.DateTime
+            )
         end,
         canScan = Bank.CanScan,
         print = RGMS.Print,

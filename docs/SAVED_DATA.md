@@ -5,13 +5,13 @@ RGMS persists one global named `RGMSCharacterDB`. `RGMS.toc` declares it with
 each `CharacterName-Realm`. RGMS does not add an account-level character map;
 observations from two characters therefore cannot be combined accidentally.
 
-## Current schema: version 5
+## Current schema: version 6
 
 The complete persisted shape is:
 
 ```text
 {
-  schemaVersion = 5,
+  schemaVersion = 6,
   roster = {
     guild = GuildIdentity | nil,
     scannedAt = Timestamp | nil,
@@ -68,6 +68,18 @@ An offline member may include the game's approximate `lastOnline` components
 precision the client did not provide. Collection records use the shapes built
 in `Tests/fixtures.lua` and checked by `Core/SavedData.lua`.
 
+Each `BankTab` is identified by its one-based numeric position and stores the
+latest name, icon, and access metadata. Each occupied `BankSlot` is identified
+independently by numeric tab and numeric slot. It stores the basic item ID,
+stack count, display metadata, last accessible observation timestamp, and a
+Pacific `YYYY-MM-DD` `stableSinceDate`. A matching item ID and count at the
+same location preserve that date; replacement, count changes, movement into a
+new slot, and refilling an emptied slot reset it to the successful scan date.
+Age is derived from the date and is never persisted. Inaccessible tabs retain
+their last accessible slot state while their current access metadata is saved;
+when access returns, the next observation compares with that retained state.
+Tab renames and icon changes do not affect slot identity.
+
 `WindowPosition` contains `point`, `relativePoint`, `x`, and `y`. It lives
 under the separate `ui` subtree. Resetting observations creates empty roster
 and bank datasets but deep-copies this subtree, allowing data resets and future
@@ -98,8 +110,8 @@ position survives every automatic replacement.
 ## Loading, validation, and recovery
 
 All existing values are copied before migration and validation. RGMS replaces
-`RGMSCharacterDB` only after the copy reaches schema version 5 and passes full
-validation. A fresh character receives a valid empty version 5 model.
+`RGMSCharacterDB` only after the copy reaches schema version 6 and passes full
+validation. A fresh character receives a valid empty version 6 model.
 
 Unsupported future versions enter the `incompatible` state. Malformed values,
 unknown unversioned values, and failed migrations enter the `corrupt` state.
@@ -145,9 +157,12 @@ not share account or character names from its path.
   canonicalizes roster and bank guild realms, canonicalizes member realms and
   display names, and coalesces equivalent members. When both a current and a
   retained-missing duplicate exist, the current observation wins.
+- Schema version 5 bank slots did not store `stableSinceDate`. Migration
+  initializes it to the Pacific date of each slot's saved `observedAt`
+  timestamp, preserving the only retained observation available.
 - The pre-schema development placeholder contained only `loadCount` and/or
   `lastLoadedAt`. Those diagnostic values did not contain observations and are
-  migrated to a fresh empty version 5 model. Any other unversioned shape is
+  migrated to a fresh empty version 6 model. Any other unversioned shape is
   preserved and classified as corrupt.
 
 Every migration is deterministic and operates on a deep copy. There is no
