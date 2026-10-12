@@ -544,6 +544,15 @@ function SavedData.validate(model)
     return validateWindowPosition(model.ui.windowPosition, "saved data.ui.windowPosition")
 end
 
+function SavedData.copyGuildIdentity(identity)
+    local valid, validationError = validateGuildIdentity(identity, "guild identity")
+    if not valid then
+        return nil, validationError
+    end
+
+    return deepCopy(identity)
+end
+
 local function migrateVersionZero(model)
     local valid, migrationError = validateExactTable(model, {
         schemaVersion = true,
@@ -769,6 +778,39 @@ function SavedData.resetDatasetObservations(model, datasetName)
     end
 
     return reset
+end
+
+-- Commits one complete scan result without exposing partial state or changing
+-- the other dataset and UI subtree. The replacement is copied so callers can
+-- safely discard or reuse their transaction tables after the commit.
+function SavedData.replaceDataset(model, datasetName, dataset)
+    if datasetName ~= "roster" and datasetName ~= "bank" then
+        return nil, "dataset name must be roster or bank"
+    end
+
+    local valid, validationError = SavedData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+
+    local copiedDataset
+    copiedDataset, copyError = deepCopy(dataset)
+    if not copiedDataset then
+        return nil, copyError
+    end
+    replacement[datasetName] = copiedDataset
+
+    valid, validationError = SavedData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+
+    return replacement
 end
 
 if type(RGMS) == "table" then

@@ -39,9 +39,11 @@ be mistaken for one another.
 
 `Timestamp` contains an integer `unixSeconds` and its UTC
 `YYYY-MM-DDTHH:MM:SSZ` rendering in `iso8601`. `GuildIdentity` contains the
-guild `id`, `name`, `region`, and a `realm` with `name` and `slug`. Collection
-records use the shapes built in `Tests/fixtures.lua` and checked by
-`Core/SavedData.lua`.
+guild `id`, `name`, `region`, and a `realm` with `name` and `slug`. The `slug`
+stores the normalized realm value supplied by the Retail API. Dataset ownership
+compares the exact guild name and this normalized realm value; the other fields
+are metadata. Collection records use the shapes built in `Tests/fixtures.lua`
+and checked by `Core/SavedData.lua`.
 
 `WindowPosition` contains `point`, `relativePoint`, `x`, and `y`. It lives
 under the separate `ui` subtree. Resetting observations creates empty roster
@@ -53,6 +55,21 @@ clearing that dataset, so it cannot move the window or alter the other dataset.
 Only the latest complete roster and bank observations are retained. Daily
 snapshots, scan histories, and unknown fields are rejected rather than carried
 forward silently.
+
+## Transactional dataset ownership
+
+Roster and Bank create independent working transactions. A transaction for the
+same guild receives a detached copy of that dataset as its baseline. A first
+binding or different guild receives an empty baseline, but the saved model is
+not changed at that point. Only a complete, valid success replaces the relevant
+dataset. Failure, cancellation, and an unavailable guild identity discard the
+working data without changing saved observations or ownership.
+
+A different guild is recognized only when a previously bound dataset's exact
+guild name or normalized realm value differs. Its successful commit prints the
+dataset-specific reset message. The replacement deep-copies the other dataset
+and UI state, so roster and bank may refer to different guilds and window
+position survives every automatic replacement.
 
 ## Loading, validation, and recovery
 

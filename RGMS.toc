@@ -10,6 +10,7 @@ Core\SavedData.lua
 UI\Layout.lua
 Core\Bootstrap.lua
 Core\Reset.lua
+Core\DatasetOwnership.lua
 Core\Commands.lua
 UI\UI.lua
 Roster\Roster.lua
