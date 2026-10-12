@@ -185,7 +185,8 @@ Before adding a dependency or asset:
 - document its name, version or source revision, source URL, license, and use in
   this section or a dedicated `THIRD_PARTY_NOTICES.md`;
 - ensure the distributable ZIP contains any notice the dependency requires;
-- add only the files needed at runtime and update `.pkgmeta` deliberately.
+- add only the files needed at runtime and update the explicit distribution
+  allowlist in `scripts/build-release.ps1` deliberately.
 
 Do not copy Blizzard or third-party artwork into the repository without clear
 redistribution permission.
@@ -193,6 +194,7 @@ redistribution permission.
 ## Release-related changes
 
 User-visible changes belong under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md).
-Do not create or move release tags casually: the packaging tool derives the
-version and changelog range from Git tags. Maintainers should use the complete
+Do not create or move release tags casually: a `vX.Y.Z` or `vX.Y.Z-rc.N` tag
+starts the automated verified-package and draft-release workflow, and its
+version must match `RGMS.toc`. Maintainers should use the complete
 [`docs/RELEASING.md`](docs/RELEASING.md) runbook.

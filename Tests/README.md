@@ -92,5 +92,6 @@ It should print one failure and exit non-zero. The example is not part of the
 normal suite.
 
 Tests, fixtures, examples, and generated coverage/results directories are not
-listed in `RGMS.toc`. `.pkgmeta` excludes the entire test tree from addon
-release packages, while `.gitignore` excludes local result and coverage files.
+listed in `RGMS.toc`. The release builder uses an explicit runtime allowlist,
+so it excludes the entire test tree from addon packages; `.gitignore` excludes
+local result and coverage files.

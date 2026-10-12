@@ -198,8 +198,8 @@ migrations, disabled states, and recovery steps.
 - The automated tests use the project's dependency-free Lua runner and target
   Lua 5.1-compatible syntax. With a Lua interpreter installed, run them outside
   WoW with `lua Tests/run.lua`; no package-manager or network step is required.
-- Test files are omitted from `RGMS.toc`, and `.pkgmeta` excludes development
-  files from addon release archives.
+- Test files are omitted from `RGMS.toc`, and the repository-owned release
+  builder's explicit allowlist excludes development files from addon archives.
 
 The client can report its current interface number in chat:
 

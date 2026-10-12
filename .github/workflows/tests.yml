@@ -2,10 +2,15 @@ name: Tests
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  lua-tests:
+  validation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,3 +20,16 @@ jobs:
           sudo apt-get install --yes lua5.1
       - name: Run test suite
         run: lua5.1 Tests/run.lua
+      - name: Build and validate a reproducible package
+        shell: pwsh
+        run: |
+          $manifestVersion = Select-String `
+            -Path RGMS.toc `
+            -Pattern '^## Version:\s*(\S+)\s*$'
+          if ($manifestVersion.Matches.Count -ne 1) {
+            throw "RGMS.toc must declare exactly one Version value."
+          }
+          ./scripts/build-release.ps1 `
+            -Version $manifestVersion.Matches[0].Groups[1].Value `
+            -OutputDirectory .release/ci `
+            -LuaCommand lua5.1

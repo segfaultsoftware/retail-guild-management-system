@@ -74,6 +74,22 @@ Release candidates must also complete the live-client
 copy as described in [`docs/qa/README.md`](docs/qa/README.md); automated tests
 do not replace Retail client verification.
 
+## Build a release package
+
+After setting `## Version` in `RGMS.toc`, run the repository-owned release
+builder from the repository root:
+
+```text
+pwsh ./scripts/build-release.ps1 -Version 0.1.0-rc.1
+```
+
+The command runs the complete Lua suite, validates the manifest and runtime
+files, builds the archive twice to prove deterministic output, and writes the
+verified `RGMS-<version>.zip` under `.release`. It refuses to overwrite an
+existing artifact. See [`docs/RELEASING.md`](docs/RELEASING.md) for tagging,
+live-client verification, automated draft releases, and manual CurseForge
+upload.
+
 ## Current exclusions
 
 The MVP has no Classic support, localization, minimap icon, settings panel,
@@ -89,8 +105,8 @@ or partially supported features.
 - [`docs/SAVED_DATA.md`](docs/SAVED_DATA.md) defines the current persisted
   schema, migrations, validation, and recovery behavior.
 - [`CHANGELOG.md`](CHANGELOG.md) records user-visible changes.
-- [`docs/RELEASING.md`](docs/RELEASING.md) is the manual release runbook for
-  versioning, packaging, GitHub releases, and CurseForge uploads.
+- [`docs/RELEASING.md`](docs/RELEASING.md) covers versioning, deterministic
+  packaging, automated draft GitHub releases, and manual CurseForge uploads.
 
 ## License
 

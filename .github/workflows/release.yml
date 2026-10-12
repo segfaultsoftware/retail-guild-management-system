@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.1
+
+      - name: Validate tag and select version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $releaseTagPattern = '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.(0|[1-9][0-9]*))?$'
+          if ($tag -cnotmatch $releaseTagPattern) {
+            throw "Release tag must be vX.Y.Z or vX.Y.Z-rc.N."
+          }
+          $version = $tag.Substring(1)
+          "RGMS_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Run tests and build verified package
+        shell: pwsh
+        run: |
+          ./scripts/build-release.ps1 `
+            -Version $env:RGMS_VERSION `
+            -LuaCommand lua5.1
+
+      - name: Prepare release notes
+        shell: pwsh
+        run: |
+          $changelog = Get-Content -Raw CHANGELOG.md
+          $versionHeading = [regex]::Escape("## [$env:RGMS_VERSION]")
+          $match = [regex]::Match(
+            $changelog,
+            "(?ms)^$versionHeading[^\r\n]*\r?\n(.*?)(?=^## \[|\z)"
+          )
+          if (-not $match.Success -and $env:RGMS_VERSION.Contains("-")) {
+            $match = [regex]::Match(
+              $changelog,
+              '(?ms)^## \[Unreleased\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)'
+            )
+          }
+          if (-not $match.Success) {
+            throw "CHANGELOG.md has no section for $env:RGMS_VERSION."
+          }
+
+          $artifact = ".release/RGMS-$env:RGMS_VERSION.zip"
+          $checksum = (Get-FileHash -Algorithm SHA256 $artifact).Hash.ToLowerInvariant()
+          $notes = @"
+          Built automatically from tag ${{ github.ref_name }} after the full test and package validation workflow passed.
+
+          SHA-256: ``$checksum``
+
+          ## Changelog
+
+          $($match.Groups[1].Value.Trim())
+          "@
+          Set-Content -Path .release/release-notes.md -Value $notes -Encoding utf8NoBOM
+
+      - name: Create draft GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          & gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $tag already exists; refusing to overwrite or reuse it."
+          }
+
+          $arguments = @(
+            "release", "create", $tag,
+            ".release/RGMS-$env:RGMS_VERSION.zip",
+            "--verify-tag",
+            "--draft",
+            "--title", "RGMS $env:RGMS_VERSION",
+            "--notes-file", ".release/release-notes.md"
+          )
+          if ($env:RGMS_VERSION.Contains("-")) {
+            $arguments += "--prerelease"
+          }
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub draft release creation failed."
+          }
