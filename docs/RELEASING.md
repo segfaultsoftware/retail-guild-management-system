@@ -48,12 +48,15 @@ release-critical checks in one command:
 - refuse to overwrite an existing `RGMS-<version>.zip`.
 
 The **Tests** workflow runs the Lua suite and package validation for every pull
-request and push to `main`. A tag matching `v*.*.*` starts the **Release**
-workflow, which validates the stricter semantic-version pattern, rebuilds from
-the tagged revision, prepares notes from the matching changelog section, and
-attaches the exact verified ZIP to a draft GitHub release. Any failed test,
-manifest mismatch, invalid archive, reused release, or missing changelog
-section stops the workflow before a new draft release is created.
+request and push to `main`. A maintainer manually dispatches the **Release**
+workflow with a version, full commit SHA on `main`, and completed QA-record
+path. Before requesting approval, the workflow rebuilds that exact commit and
+requires its ZIP checksum to match the live-tested package recorded by QA. The
+`release` GitHub Environment then requires a reviewer to approve promotion.
+Only after approval does the workflow create the annotated tag and draft
+GitHub release, download the attached ZIP again, and verify its checksum. Any
+failed test, incomplete QA record, manifest mismatch, invalid archive, reused
+version, or missing changelog section stops promotion.
 
 ## Required access and tools
 
@@ -109,32 +112,47 @@ every command with the version being prepared.
    git log --oneline --decorate -5
    ```
 
-2. Update `RGMS.toc`, `CHANGELOG.md`, and any affected behavior
-   documentation. Copy `MVP_SCENARIO_CHECKLIST.md` to a tester-specific record
-   under `docs/qa`, following [`docs/qa/README.md`](qa/README.md).
-3. From the repository root, run the one supported build command:
+2. Create and check out a dedicated release candidate branch. Make and commit
+   any required `CHANGELOG.md` or behavior-documentation updates so the branch
+   is clean before preparation.
 
    ```text
-   pwsh ./scripts/build-release.ps1 -Version 0.1.0-rc.1
+   git switch -c release/0.1.0-rc.1
    ```
 
-   Expected result: the command reports zero Lua test failures, lists every ZIP
-   entry, prints a SHA-256 checksum, and creates
-   `.release/RGMS-0.1.0-rc.1.zip`. A second invocation with the same output
-   location must fail instead of replacing that file.
+3. From Git Bash at the repository root, run the release preparation command.
+   Pass the values observed from `GetBuildInfo()` when they are available:
+
+   ```text
+   bash ./scripts/prepare-release.sh \
+     --version 0.1.0-rc.1 \
+     --tester YOUR-NAME \
+     --retail-version "12.1.0 (build 12345)" \
+     --interface 120100
+   ```
+
+   The Bash entry point updates `RGMS.toc`, invokes the repository-owned
+   PowerShell builder, and creates a prepopulated tester-specific record under
+   `docs/qa`. Expected result: the command reports zero Lua test failures,
+   lists every ZIP entry, records its SHA-256 in the QA record, and creates
+   `.release/RGMS-0.1.0-rc.1.zip`. It does not commit, push, tag, or install the
+   addon. A second invocation with the same version must fail rather than
+   replace the QA record or artifact.
 4. Inspect the printed list. It must contain exactly one `RGMS/` root with
    `RGMS.toc`, all manifest-listed runtime Lua files, `README.md`,
    `CHANGELOG.md`, and `LICENSE`. It must not contain `.github`, `.git`,
    `.release`, `docs`, `scripts`, `Tests`, fixtures, caches, local tooling,
    repository metadata, SavedVariables, or credentials.
-5. Record the printed SHA-256 checksum in the candidate QA record. To confirm
-   it later on PowerShell, run:
+5. Confirm the SHA-256 printed by the builder matches the value that the
+   preparation script placed in the candidate QA record. To confirm it later
+   from Git Bash, run:
 
    ```text
-   Get-FileHash -Algorithm SHA256 .release/RGMS-0.1.0-rc.1.zip
+   sha256sum .release/RGMS-0.1.0-rc.1.zip
    ```
 
-The command stages nothing outside `.release`, which is ignored by Git.
+The generated ZIP is under `.release`, which is ignored by Git. The manifest
+and QA record are intentional candidate-branch changes.
 
 ## Test the exact package in Retail
 
@@ -164,36 +182,51 @@ record. That dry run does not require a tag or remote release.
 Only continue after automated checks, package inspection, live QA, and release
 approval all pass.
 
-1. Commit the completed candidate work and QA evidence. Confirm the working
-   tree is clean, then rebuild once from that exact commit. If an older local
-   file occupies the default artifact path, preserve it elsewhere or remove
-   that exact ignored file before rebuilding; the builder will never overwrite
-   it.
-2. Create an annotated tag whose version exactly matches `RGMS.toc`:
+Before the first promotion, create a GitHub Environment named `release` in the
+repository settings and configure at least one required reviewer. The workflow
+checks this configuration before it performs any release mutation.
+
+1. Finish the candidate QA record. Every checkbox must be checked, documented
+   exceptions must be explained, and the final line must be exactly:
 
    ```text
-   git tag -a v0.1.0-rc.1 -m "RGMS 0.1.0-rc.1"
+   - [x] Final release-candidate disposition: PASS
    ```
 
-3. Push the reviewed commit, then the tag:
+2. Commit and push the completed candidate work and QA evidence. Open a pull
+   request and merge it into `main` after review and required checks pass.
+3. Copy the full 40-character SHA of the resulting commit on `main`, then
+   manually dispatch the **Release** workflow from GitHub Actions. Supply the
+   version, commit SHA, and QA-record path. The equivalent authenticated GitHub
+   CLI command is:
 
    ```text
-   git push origin HEAD
-   git push origin v0.1.0-rc.1
+   gh workflow run Release \
+     --repo segfaultsoftware/retail-guild-management-system \
+     --ref main \
+     -f version=0.1.0-rc.1 \
+     -f commit=FULL_40_CHARACTER_MAIN_COMMIT_SHA \
+     -f qa_record=docs/qa/0.1.0-rc.1-YOUR-NAME.md
    ```
 
-4. Wait for the **Release** workflow. It runs tests and the same builder before
-   creating a draft named `RGMS 0.1.0-rc.1`. It never uploads to CurseForge or
+4. Wait for preflight. It validates that the commit is on `main`, the manifest
+   and QA version match, every checklist item is complete, the disposition is
+   `PASS`, and a clean rebuild has the exact live-tested checksum.
+5. Approve the waiting `release` Environment deployment. The promotion job
+   rechecks version availability, creates and pushes the annotated tag, creates
+   a draft named `RGMS 0.1.0-rc.1`, downloads its ZIP, and verifies the tag,
+   metadata, asset name, and checksum. It never uploads to CurseForge or
    publishes the GitHub release.
-5. Inspect the draft's tag, target commit, title, changelog notes, SHA-256, and
-   ZIP. Download the asset and confirm its SHA-256 matches the locally verified
-   package. The fixed archive metadata makes clean builds of the same revision
+6. Review the workflow's verified-release summary and the resulting draft.
+   The fixed archive metadata makes clean builds of the same revision
    byte-for-byte reproducible across supported PowerShell environments.
 
-If the tag workflow fails, do not create or upload an artifact manually under
-that version. Fix the cause and use the next RC identifier after any tag has
-been shared. If a draft already exists, the workflow stops rather than
-overwriting or reusing it; inspect and resolve that draft explicitly.
+If preflight fails before the tag exists, correct only the QA or workflow input
+and rerun it against the same artifact. If source or packaged content changes,
+prepare and test the next RC identifier. If promotion fails after creating the
+tag, do not create or upload a replacement artifact under that version; fix the
+cause and use the next RC. The workflow never overwrites or reuses a tag,
+release, or asset.
 
 For a final version, repeat every preparation, automated, package, live-QA,
 checksum, and draft-inspection step on a final `vX.Y.Z` tag. Do not rename an RC

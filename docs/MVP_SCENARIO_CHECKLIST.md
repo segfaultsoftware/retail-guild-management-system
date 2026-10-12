@@ -27,6 +27,7 @@ transition that failed.
 - Test start in Pacific time: ______________________
 - Test end in Pacific time: ________________________
 - Automated result and test count: _________________
+- Package SHA-256: _________________________________
 - Evidence location: ______________________________
 
 ## Deterministic fixture clock
@@ -69,8 +70,9 @@ mapping and use it consistently.
 
 Required setup:
 
-- [ ] Install this checkout as `_retail_/Interface/AddOns/RGMS` and enable only
-  RGMS while collecting failure evidence.
+- [ ] Extract the candidate ZIP so it installs as
+  `_retail_/Interface/AddOns/RGMS` and enable only RGMS while collecting
+  failure evidence.
 - [ ] Enable Lua errors with `/console scriptErrors 1`.
 - [ ] Arrange permission to invite/remove the roster test member, rename ranks,
   promote/demote the member, and change the test bank slots.

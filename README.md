@@ -76,18 +76,19 @@ do not replace Retail client verification.
 
 ## Build a release package
 
-After setting `## Version` in `RGMS.toc`, run the repository-owned release
-builder from the repository root:
+On a clean release candidate branch, use the Git Bash preparation entry point:
 
 ```text
-pwsh ./scripts/build-release.ps1 -Version 0.1.0-rc.1
+bash ./scripts/prepare-release.sh --version 0.1.0-rc.1 --tester YOUR-NAME
 ```
 
-The command runs the complete Lua suite, validates the manifest and runtime
-files, builds the archive twice to prove deterministic output, and writes the
-verified `RGMS-<version>.zip` under `.release`. It refuses to overwrite an
-existing artifact. See [`docs/RELEASING.md`](docs/RELEASING.md) for tagging,
-live-client verification, automated draft releases, and manual CurseForge
+The command updates the manifest version, creates a tester-specific QA record,
+and invokes the repository-owned PowerShell builder. The builder runs the
+complete Lua suite, validates the manifest and runtime files, builds the archive
+twice to prove deterministic output, and writes the verified
+`RGMS-<version>.zip` under `.release`. It refuses to overwrite an existing
+artifact. See [`docs/RELEASING.md`](docs/RELEASING.md) for live-client
+verification, approval-gated tags and draft releases, and manual CurseForge
 upload.
 
 ## Current exclusions

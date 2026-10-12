@@ -1,73 +1,186 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix (for example, 0.1.0-rc.1)
+        required: true
+        type: string
+      commit:
+        description: Full 40-character commit SHA already merged into main
+        required: true
+        type: string
+      qa_record:
+        description: Completed QA record path under docs/qa
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  preflight:
     runs-on: ubuntu-latest
+    outputs:
+      artifact_name: ${{ steps.metadata.outputs.artifact_name }}
+      checksum: ${{ steps.metadata.outputs.checksum }}
+      tag: ${{ steps.metadata.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.commit }}
+
+      - name: Validate requested release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          QA_RECORD: ${{ inputs.qa_record }}
+          WORKFLOW_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
+          commit_pattern='^[0-9a-fA-F]{40}$'
+          qa_pattern='^docs/qa/[A-Za-z0-9._-]+\.md$'
+
+          [[ "$RELEASE_VERSION" =~ $version_pattern ]] || {
+            echo "Version must be X.Y.Z or X.Y.Z-rc.N." >&2
+            exit 1
+          }
+          [[ "$RELEASE_COMMIT" =~ $commit_pattern ]] || {
+            echo "Commit must be a full 40-character SHA." >&2
+            exit 1
+          }
+          [[ "$QA_RECORD" =~ $qa_pattern ]] || {
+            echo "QA record must be a simple Markdown path directly under docs/qa." >&2
+            exit 1
+          }
+          [[ "$WORKFLOW_REF_NAME" == "main" ]] || {
+            echo "The Release workflow must be dispatched from main." >&2
+            exit 1
+          }
+
+          actual_commit="$(git rev-parse HEAD)"
+          [[ "${actual_commit,,}" == "${RELEASE_COMMIT,,}" ]] || {
+            echo "Checked-out commit does not match the requested commit." >&2
+            exit 1
+          }
+
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$actual_commit" origin/main || {
+            echo "Requested commit is not contained in origin/main." >&2
+            exit 1
+          }
+
+          [[ -f "$QA_RECORD" ]] || {
+            echo "QA record does not exist at the requested commit: $QA_RECORD" >&2
+            exit 1
+          }
+
+          manifest_version="$(sed -n 's/^## Version:[[:space:]]*\([^[:space:]]\+\)[[:space:]]*$/\1/p' RGMS.toc)"
+          [[ "$manifest_version" == "$RELEASE_VERSION" ]] || {
+            echo "RGMS.toc version '$manifest_version' does not match '$RELEASE_VERSION'." >&2
+            exit 1
+          }
+
+          grep -Fqx -- "- Release candidate: $RELEASE_VERSION" "$QA_RECORD" || {
+            echo "QA record release candidate does not match $RELEASE_VERSION." >&2
+            exit 1
+          }
+          grep -Eq '^- \[[xX]\] Final release-candidate disposition: PASS[[:space:]]*$' "$QA_RECORD" || {
+            echo "QA record does not have a checked PASS disposition." >&2
+            exit 1
+          }
+          if grep -Eq '^- \[ \]' "$QA_RECORD"; then
+            echo "QA record still contains unchecked checklist items." >&2
+            exit 1
+          fi
+
+          recorded_checksum="$(sed -n 's/^- Package SHA-256:[[:space:]]*\([0-9a-fA-F]\{64\}\)[[:space:]]*$/\1/p' "$QA_RECORD" | tr '[:upper:]' '[:lower:]')"
+          [[ "$recorded_checksum" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "QA record does not contain exactly one valid package SHA-256." >&2
+            exit 1
+          }
+          [[ "$(grep -Ec '^- Package SHA-256:' "$QA_RECORD")" -eq 1 ]] || {
+            echo "QA record must contain exactly one Package SHA-256 field." >&2
+            exit 1
+          }
+
+          tag="v$RELEASE_VERSION"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            echo "Tag already exists: $tag" >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release already exists: $tag" >&2
+            exit 1
+          fi
 
       - name: Install Lua 5.1
         run: |
           sudo apt-get update
           sudo apt-get install --yes lua5.1
 
-      - name: Validate tag and select version
-        shell: pwsh
+      - name: Build and compare the verified package
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          QA_RECORD: ${{ inputs.qa_record }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $releaseTagPattern = '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.(0|[1-9][0-9]*))?$'
-          if ($tag -cnotmatch $releaseTagPattern) {
-            throw "Release tag must be vX.Y.Z or vX.Y.Z-rc.N."
-          }
-          $version = $tag.Substring(1)
-          "RGMS_VERSION=$version" >> $env:GITHUB_ENV
-
-      - name: Run tests and build verified package
-        shell: pwsh
-        run: |
-          ./scripts/build-release.ps1 `
-            -Version $env:RGMS_VERSION `
+          set -euo pipefail
+          pwsh -NoProfile -File ./scripts/build-release.ps1 \
+            -Version "$RELEASE_VERSION" \
             -LuaCommand lua5.1
 
-      - name: Prepare release notes
+          artifact=".release/RGMS-$RELEASE_VERSION.zip"
+          actual_checksum="$(sha256sum "$artifact" | awk '{ print tolower($1) }')"
+          recorded_checksum="$(sed -n 's/^- Package SHA-256:[[:space:]]*\([0-9a-fA-F]\{64\}\)[[:space:]]*$/\1/p' "$QA_RECORD" | tr '[:upper:]' '[:lower:]')"
+          [[ "$actual_checksum" == "$recorded_checksum" ]] || {
+            echo "Rebuilt package does not match the live-tested package." >&2
+            echo "QA record: $recorded_checksum" >&2
+            echo "Rebuilt:   $actual_checksum" >&2
+            exit 1
+          }
+
+      - name: Prepare release notes and metadata
+        id: metadata
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
+          $version = $env:RELEASE_VERSION
+          $tag = "v$version"
           $changelog = Get-Content -Raw CHANGELOG.md
-          $versionHeading = [regex]::Escape("## [$env:RGMS_VERSION]")
+          $versionHeading = [regex]::Escape("## [$version]")
           $match = [regex]::Match(
             $changelog,
             "(?ms)^$versionHeading[^\r\n]*\r?\n(.*?)(?=^## \[|\z)"
           )
-          if (-not $match.Success -and $env:RGMS_VERSION.Contains("-")) {
+          if (-not $match.Success -and $version.Contains("-")) {
             $match = [regex]::Match(
               $changelog,
               '(?ms)^## \[Unreleased\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)'
             )
           }
           if (-not $match.Success) {
-            throw "CHANGELOG.md has no section for $env:RGMS_VERSION."
+            throw "CHANGELOG.md has no section for $version."
           }
 
-          $artifact = ".release/RGMS-$env:RGMS_VERSION.zip"
+          $artifactName = "RGMS-$version.zip"
+          $artifact = ".release/$artifactName"
           $checksum = (Get-FileHash -Algorithm SHA256 $artifact).Hash.ToLowerInvariant()
           $notes = @"
-          Built automatically from tag ${{ github.ref_name }} after the full test and package validation workflow passed.
+          Built automatically from approved commit ${{ inputs.commit }} after the full test, package validation, and QA checksum gates passed.
 
           SHA-256: ``$checksum``
+
+          QA record: ``${{ inputs.qa_record }}``
 
           ## Changelog
 
@@ -75,30 +188,149 @@ jobs:
           "@
           Set-Content -Path .release/release-notes.md -Value $notes -Encoding utf8NoBOM
 
-      - name: Create draft GitHub release
-        shell: pwsh
+          "artifact_name=$artifactName" >> $env:GITHUB_OUTPUT
+          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Preserve approved release inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: approved-release-inputs
+          path: |
+            .release/${{ steps.metadata.outputs.artifact_name }}
+            .release/release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  promote:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.commit }}
+
+      - name: Require configured release approvers
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          & gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            throw "Release $tag already exists; refusing to overwrite or reuse it."
+          set -euo pipefail
+          reviewer_count="$(
+            gh api "repos/$GITHUB_REPOSITORY/environments/release" \
+              --jq '[.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]?] | length'
+          )"
+          [[ "$reviewer_count" =~ ^[1-9][0-9]*$ ]] || {
+            echo "The release environment has no required reviewers configured." >&2
+            echo "Configure at least one required reviewer before promoting a release." >&2
+            exit 1
           }
 
-          $arguments = @(
-            "release", "create", $tag,
-            ".release/RGMS-$env:RGMS_VERSION.zip",
-            "--verify-tag",
-            "--draft",
-            "--title", "RGMS $env:RGMS_VERSION",
-            "--notes-file", ".release/release-notes.md"
+      - name: Download approved release inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: approved-release-inputs
+          path: .release
+
+      - name: Recheck version availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "Tag appeared after preflight: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release appeared after preflight: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Create and push the approved tag
+        env:
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_TAG" "$RELEASE_COMMIT" -m "RGMS $RELEASE_VERSION"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Create the draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          ARTIFACT_NAME: ${{ needs.preflight.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          arguments=(
+            release create "$RELEASE_TAG"
+            ".release/$ARTIFACT_NAME"
+            --verify-tag
+            --draft
+            --title "RGMS $RELEASE_VERSION"
+            --notes-file .release/release-notes.md
           )
-          if ($env:RGMS_VERSION.Contains("-")) {
-            $arguments += "--prerelease"
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            arguments+=(--prerelease)
+          fi
+          gh "${arguments[@]}"
+
+      - name: Verify the tag, draft, and downloaded asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          ARTIFACT_NAME: ${{ needs.preflight.outputs.artifact_name }}
+          EXPECTED_CHECKSUM: ${{ needs.preflight.outputs.checksum }}
+        run: |
+          set -euo pipefail
+
+          tagged_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          [[ "${tagged_commit,,}" == "${RELEASE_COMMIT,,}" ]] || {
+            echo "Tag does not resolve to the approved commit." >&2
+            exit 1
           }
-          & gh @arguments
-          if ($LASTEXITCODE -ne 0) {
-            throw "GitHub draft release creation failed."
+
+          release_json="$(gh release view "$RELEASE_TAG" --json tagName,name,isDraft,isPrerelease,assets,url)"
+          [[ "$(jq -r '.tagName' <<<"$release_json")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.name' <<<"$release_json")" == "RGMS $RELEASE_VERSION" ]]
+          [[ "$(jq -r '.isDraft' <<<"$release_json")" == "true" ]]
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            [[ "$(jq -r '.isPrerelease' <<<"$release_json")" == "true" ]]
+          else
+            [[ "$(jq -r '.isPrerelease' <<<"$release_json")" == "false" ]]
+          fi
+          [[ "$(jq --arg name "$ARTIFACT_NAME" '[.assets[] | select(.name == $name)] | length' <<<"$release_json")" -eq 1 ]]
+
+          mkdir -p .release/downloaded
+          gh release download "$RELEASE_TAG" \
+            --pattern "$ARTIFACT_NAME" \
+            --dir .release/downloaded
+          downloaded_checksum="$(sha256sum ".release/downloaded/$ARTIFACT_NAME" | awk '{ print tolower($1) }')"
+          [[ "$downloaded_checksum" == "$EXPECTED_CHECKSUM" ]] || {
+            echo "Downloaded release asset checksum does not match the approved artifact." >&2
+            exit 1
           }
+
+          release_url="$(jq -r '.url' <<<"$release_json")"
+          {
+            echo "## Verified draft release"
+            echo
+            echo "- Tag: \`$RELEASE_TAG\`"
+            echo "- Commit: \`$RELEASE_COMMIT\`"
+            echo "- Asset: \`$ARTIFACT_NAME\`"
+            echo "- SHA-256: \`$EXPECTED_CHECKSUM\`"
+            echo "- Draft: $release_url"
+          } >> "$GITHUB_STEP_SUMMARY"
