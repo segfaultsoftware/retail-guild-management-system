@@ -8,9 +8,9 @@ local TAB_TITLES = {
     bank = "Bank",
 }
 
-local PLACEHOLDER_COPY = {
-    roster = "Roster report placeholder",
-    bank = "Bank report placeholder",
+local INITIAL_COPY = {
+    roster = "No roster data yet",
+    bank = "No bank scan yet",
 }
 
 local RANK_TAB_WIDTH = 242
@@ -43,22 +43,6 @@ local function normalizeTabId(tabId)
         return tabId
     end
     return nil
-end
-
-local function placeholderText(tabId)
-    local lines = {
-        PLACEHOLDER_COPY[tabId],
-        "",
-        "This scrollable region is ready for the "
-            .. string.lower(TAB_TITLES[tabId])
-            .. " report.",
-        "",
-        "Scrollable placeholder rows:",
-    }
-    for index = 1, 30 do
-        lines[#lines + 1] = string.format("%02d. Placeholder content", index)
-    end
-    return table.concat(lines, "\n")
 end
 
 local function getScreenSize()
@@ -673,7 +657,7 @@ local function createView(parent, tabId)
     view.status:SetPoint("TOPLEFT", 2, 0)
     view.status:SetPoint("TOPRIGHT", -94, 0)
     view.status:SetJustifyH("LEFT")
-    view.status:SetText("Ready")
+    view.status:SetText(INITIAL_COPY[tabId])
 
     if tabId == "roster" or tabId == "bank" then
         view.refreshButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
@@ -681,6 +665,8 @@ local function createView(parent, tabId)
         view.refreshButton:SetPoint("TOPRIGHT", 0, 4)
         view.refreshButton:SetText("Refresh")
         if tabId == "roster" then
+            view.rosterAvailable = true
+            view.rosterScanInProgress = false
             view.refreshButton:SetScript("OnClick", function()
                 RGMS.Roster.RequestManualScan()
             end)
@@ -764,7 +750,7 @@ local function createView(parent, tabId)
     view.text:SetPoint("TOPLEFT", 4, -4)
     view.text:SetJustifyH("LEFT")
     view.text:SetJustifyV("TOP")
-    view.text:SetText(placeholderText(tabId))
+    view.text:SetText(INITIAL_COPY[tabId])
 
     if tabId == "bank" then
         view.bankTitle = view.scrollChild:CreateFontString(
@@ -1012,9 +998,17 @@ function UI.SetViewContent(tabId, content)
     local view = UI.frame.views[tabId]
     if tabId == "roster" then
         hideRosterLines(view)
+        for _, button in ipairs(view.rankButtons or {}) do
+            button:Hide()
+        end
+        refreshRankScrollChild(view)
         view.text:Show()
     elseif tabId == "bank" then
         hideBankLines(view)
+        for _, button in ipairs(view.bankTabButtons or {}) do
+            button:Hide()
+        end
+        refreshBankTabScrollChild(view)
         view.text:Show()
     end
     view.text:SetText(tostring(content or ""))
@@ -1218,14 +1212,41 @@ function UI.SetRosterScanInProgress(inProgress)
         return nil, "the RGMS window has not been initialized"
     end
 
-    UI.frame.views.roster.refreshButton:SetEnabled(not inProgress)
+    local view = UI.frame.views.roster
+    view.rosterScanInProgress = inProgress == true
+    view.refreshButton:SetEnabled(
+        UI.dataEnabled ~= false
+            and view.rosterAvailable ~= false
+            and not view.rosterScanInProgress
+    )
     return true
 end
 
 local function updateBankRefreshButton(view)
     view.refreshButton:SetEnabled(
-        view.bankOpen == true and view.bankScanInProgress ~= true
+        UI.dataEnabled ~= false
+            and view.bankOpen == true
+            and view.bankScanInProgress ~= true
     )
+end
+
+local function updateRosterRefreshButton(view)
+    view.refreshButton:SetEnabled(
+        UI.dataEnabled ~= false
+            and view.rosterAvailable ~= false
+            and view.rosterScanInProgress ~= true
+    )
+end
+
+function UI.SetRosterAvailable(isAvailable)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.roster
+    view.rosterAvailable = isAvailable == true
+    updateRosterRefreshButton(view)
+    return true
 end
 
 function UI.SetGuildBankOpen(isOpen)
@@ -1247,6 +1268,30 @@ function UI.SetBankScanInProgress(inProgress)
     local view = UI.frame.views.bank
     view.bankScanInProgress = inProgress == true
     updateBankRefreshButton(view)
+    return true
+end
+
+function UI.SetDataState(enabled, state)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    UI.dataEnabled = enabled == true
+    updateRosterRefreshButton(UI.frame.views.roster)
+    updateBankRefreshButton(UI.frame.views.bank)
+
+    if UI.dataEnabled then
+        return true
+    end
+
+    local stateLabel = tostring(state or "unavailable")
+    local message = "Saved data is "
+        .. stateLabel
+        .. ". Reports and scans are unavailable until /rgms reset is accepted."
+    for _, tabId in ipairs(TAB_ORDER) do
+        UI.SetViewContent(tabId, message)
+        UI.SetViewStatus(tabId, "Reports and scans unavailable")
+    end
     return true
 end
 

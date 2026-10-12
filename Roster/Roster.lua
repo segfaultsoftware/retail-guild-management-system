@@ -218,9 +218,35 @@ function Roster.IsScanInProgress()
         and scanner:IsInProgress()
 end
 
+function Roster.IsAvailable()
+    if type(IsInGuild) ~= "function" then
+        return true
+    end
+
+    local checked, isInGuild = pcall(IsInGuild)
+    return checked and isInGuild == true
+end
+
 function Roster.RefreshStatus()
     if type(RGMS.UI) ~= "table" or type(RGMS.UI.SetViewStatus) ~= "function" then
         return
+    end
+
+    if type(RGMS.SavedDataState) == "table"
+        and RGMS.SavedDataState.enabled == false then
+        if type(RGMS.UI.SetDataState) == "function" then
+            RGMS.UI.SetDataState(false, RGMS.SavedDataState.status)
+        end
+        return
+    end
+
+    if type(RGMS.UI.SetDataState) == "function" then
+        RGMS.UI.SetDataState(true)
+    end
+
+    local available = Roster.IsAvailable()
+    if type(RGMS.UI.SetRosterAvailable) == "function" then
+        RGMS.UI.SetRosterAvailable(available)
     end
 
     if type(RGMS.UI.SetRosterReport) == "function"
@@ -236,27 +262,45 @@ function Roster.RefreshStatus()
         if report then
             RGMS.UI.SetRosterReport(report)
         else
-            RGMS.UI.SetViewContent(
+            RGMS.UI.SetViewStatus(
                 "roster",
                 "Roster report unavailable: " .. tostring(reportError)
             )
+            return
         end
-    end
-
-    if Roster.IsScanInProgress() then
-        RGMS.UI.SetViewStatus("roster", "Scanning...")
-        return
     end
 
     local scannedAt = type(RGMS.DB) == "table"
         and type(RGMS.DB.roster) == "table"
         and RGMS.DB.roster.scannedAt
+    local lastSuccessful
     if scannedAt then
-        local formatted = RGMS.DateTime.formatPacificTimestamp(scannedAt.unixSeconds)
-        RGMS.UI.SetViewStatus("roster", "Last successful scan: " .. formatted)
-    else
-        RGMS.UI.SetViewStatus("roster", "No roster data yet")
+        lastSuccessful = RGMS.DateTime.formatPacificTimestamp(
+            scannedAt.unixSeconds
+        )
     end
+
+    if Roster.IsScanInProgress() then
+        local status = "Updating..."
+        if lastSuccessful then
+            status = status .. " Last successful update: " .. lastSuccessful
+        else
+            status = status .. " No successful update yet."
+        end
+        RGMS.UI.SetViewStatus("roster", status)
+        return
+    end
+
+    local status
+    if lastSuccessful then
+        status = "Last successful update: " .. lastSuccessful
+    else
+        status = "No roster data yet"
+    end
+    if not available then
+        status = "Not in a guild. " .. status
+    end
+    RGMS.UI.SetViewStatus("roster", status)
 end
 
 local function scannerUnavailable(source)
@@ -316,6 +360,7 @@ if type(Roster.Scanner) ~= "table"
     eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
     eventFrame:RegisterEvent("INITIAL_CLUBS_LOADED")
     eventFrame:RegisterEvent("CLUB_MEMBERS_UPDATED")
+    eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
     eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "PLAYER_LOGIN" then
             Roster.RequestAutomaticScan()
@@ -330,6 +375,8 @@ if type(Roster.Scanner) ~= "table"
             Roster.Scanner:RequestRosterUpdate()
         elseif event == "CLUB_MEMBERS_UPDATED" then
             Roster.Scanner:OnDataUpdated()
+        elseif event == "PLAYER_GUILD_UPDATE" then
+            Roster.RefreshStatus()
         end
     end)
     eventFrame:SetScript("OnUpdate", function(_, elapsed)

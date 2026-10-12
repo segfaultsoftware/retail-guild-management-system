@@ -199,16 +199,46 @@ function Bank.IsScanInProgress()
         and scanner:IsInProgress()
 end
 
+function Bank.IsAvailable()
+    if Bank.bankOpen ~= nil then
+        return Bank.bankOpen
+    end
+    return GuildBankFrame ~= nil
+        and type(GuildBankFrame.IsShown) == "function"
+        and GuildBankFrame:IsShown()
+end
+
 function Bank.RefreshStatus()
     if type(RGMS.UI) ~= "table" or type(RGMS.UI.SetViewStatus) ~= "function" then
         return
     end
 
+    if type(RGMS.SavedDataState) == "table"
+        and RGMS.SavedDataState.enabled == false then
+        if type(RGMS.UI.SetDataState) == "function" then
+            RGMS.UI.SetDataState(false, RGMS.SavedDataState.status)
+        end
+        return
+    end
+
+    if type(RGMS.UI.SetDataState) == "function" then
+        RGMS.UI.SetDataState(true)
+    end
+
+    local available = Bank.IsAvailable()
+    if type(RGMS.UI.SetGuildBankOpen) == "function" then
+        RGMS.UI.SetGuildBankOpen(available)
+    end
+
+    local scannedAt = type(RGMS.DB) == "table"
+        and type(RGMS.DB.bank) == "table"
+        and RGMS.DB.bank.scannedAt
     if type(RGMS.UI.SetBankReport) == "function"
         and type(RGMS.BankReport) == "table"
         and type(RGMS.BankReport.build) == "function"
         and type(RGMS.DB) == "table"
-        and type(RGMS.DB.bank) == "table" then
+        and type(RGMS.DB.bank) == "table"
+        and scannedAt ~= nil then
         local report, reportError = RGMS.BankReport.build(
             RGMS.DB.bank,
             nil,
@@ -217,27 +247,42 @@ function Bank.RefreshStatus()
         if report then
             RGMS.UI.SetBankReport(report)
         else
-            RGMS.UI.SetViewContent(
+            RGMS.UI.SetViewStatus(
                 "bank",
                 "Bank report unavailable: " .. tostring(reportError)
             )
+            return
         end
     end
 
+    local lastSuccessful
+    if scannedAt then
+        lastSuccessful = RGMS.DateTime.formatPacificTimestamp(
+            scannedAt.unixSeconds
+        )
+    end
+
     if Bank.IsScanInProgress() then
-        RGMS.UI.SetViewStatus("bank", "Scanning...")
+        local status = "Scanning..."
+        if lastSuccessful then
+            status = status .. " Last successful scan: " .. lastSuccessful
+        else
+            status = status .. " No successful scan yet."
+        end
+        RGMS.UI.SetViewStatus("bank", status)
         return
     end
 
-    local scannedAt = type(RGMS.DB) == "table"
-        and type(RGMS.DB.bank) == "table"
-        and RGMS.DB.bank.scannedAt
-    if scannedAt then
-        local formatted = RGMS.DateTime.formatPacificTimestamp(scannedAt.unixSeconds)
-        RGMS.UI.SetViewStatus("bank", "Last successful scan: " .. formatted)
+    local status
+    if lastSuccessful then
+        status = "Last successful scan: " .. lastSuccessful
     else
-        RGMS.UI.SetViewStatus("bank", "No bank data yet")
+        status = "No bank scan yet"
     end
+    if not available then
+        status = "Guild bank closed. " .. status
+    end
+    RGMS.UI.SetViewStatus("bank", status)
 end
 
 local function scannerUnavailable(source)
@@ -272,9 +317,10 @@ function Bank.CancelScan()
 end
 
 local function setGuildBankOpen(isOpen)
+    Bank.bankOpen = isOpen == true
     if type(RGMS.UI) == "table"
         and type(RGMS.UI.SetGuildBankOpen) == "function" then
-        RGMS.UI.SetGuildBankOpen(isOpen)
+        RGMS.UI.SetGuildBankOpen(Bank.bankOpen)
     end
 end
 

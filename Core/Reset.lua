@@ -59,6 +59,12 @@ function Reset.create(dependencies)
         end
 
         dependencies.commit(model, state)
+        if type(dependencies.setDataState) == "function" then
+            dependencies.setDataState(true)
+        end
+        if type(dependencies.refreshViews) == "function" then
+            dependencies.refreshViews()
+        end
         if request.recovery then
             dependencies.print(
                 "Saved data reset completed; scans and reports are enabled."
@@ -167,6 +173,22 @@ if type(RGMS) == "table" then
         end,
         showConfirmation = showConfirmation,
         print = RGMS.Print,
+        setDataState = function(enabled)
+            if type(RGMS.UI) == "table"
+                and type(RGMS.UI.SetDataState) == "function" then
+                RGMS.UI.SetDataState(enabled)
+            end
+        end,
+        refreshViews = function()
+            if type(RGMS.Roster) == "table"
+                and type(RGMS.Roster.RefreshStatus) == "function" then
+                RGMS.Roster.RefreshStatus()
+            end
+            if type(RGMS.Bank) == "table"
+                and type(RGMS.Bank.RefreshStatus) == "function" then
+                RGMS.Bank.RefreshStatus()
+            end
+        end,
     })
 
     RGMS.Reset = controller

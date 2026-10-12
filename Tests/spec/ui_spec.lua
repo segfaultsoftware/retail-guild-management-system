@@ -327,7 +327,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
 end
 
 return {
-    test.case("window initializes hidden at a fixed size with scrollable placeholders", function()
+    test.case("window initializes hidden at a fixed size with explicit fresh states", function()
         local harness = newHarness()
         test.assert_true(harness.ui.Initialize())
 
@@ -341,10 +341,10 @@ return {
         test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 218)
         test.assert_false(frame.resizable)
         test.assert_nil(harness.database.ui.windowPosition)
-        test.assert_true(
-            frame.views.roster.scrollChild:GetHeight()
-                > frame.views.roster.scrollFrame:GetHeight()
-        )
+        test.assert_equal(frame.views.roster.text.text, "No roster data yet")
+        test.assert_equal(frame.views.roster.status.text, "No roster data yet")
+        test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
+        test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
     end),
 
     test.case("primary tabs content status and close behavior use the public API", function()
@@ -381,6 +381,11 @@ return {
         test.assert_false(refreshButton:IsEnabled())
         test.assert_true(harness.ui.SetRosterScanInProgress(false))
         test.assert_true(refreshButton:IsEnabled())
+
+        test.assert_true(harness.ui.SetRosterAvailable(false))
+        test.assert_false(refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetRosterAvailable(true))
+        test.assert_true(refreshButton:IsEnabled())
     end),
 
     test.case("bank refresh follows bank-open and scan lifecycle restrictions", function()
@@ -400,6 +405,75 @@ return {
         test.assert_true(refreshButton:IsEnabled())
         test.assert_true(harness.ui.SetGuildBankOpen(false))
         test.assert_false(refreshButton:IsEnabled())
+    end),
+
+    test.case("disabled saved data explains the recovery path and disables controls", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.SetGuildBankOpen(true)
+
+        test.assert_true(harness.ui.SetDataState(false, "corrupt"))
+
+        local frame = harness.frame()
+        test.assert_false(frame.views.roster.refreshButton:IsEnabled())
+        test.assert_false(frame.views.bank.refreshButton:IsEnabled())
+        test.assert_equal(
+            frame.views.roster.status.text,
+            "Reports and scans unavailable"
+        )
+        test.assert_equal(
+            frame.views.bank.status.text,
+            "Reports and scans unavailable"
+        )
+        test.assert_matches(frame.views.roster.text.text, "Saved data is corrupt")
+        test.assert_matches(frame.views.roster.text.text, "/rgms reset")
+        test.assert_equal(frame.views.bank.text.text, frame.views.roster.text.text)
+
+        test.assert_true(harness.ui.SetDataState(true))
+        test.assert_true(frame.views.roster.refreshButton:IsEnabled())
+        test.assert_true(frame.views.bank.refreshButton:IsEnabled())
+
+        test.assert_true(harness.ui.SetDataState(false, "incompatible"))
+        test.assert_matches(frame.views.bank.text.text, "Saved data is incompatible")
+    end),
+
+    test.case("activity and recovery status changes keep committed reports visible", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local rosterReport = { ranks = { rosterRank(1, "Guild Master") } }
+        local bankReport = {
+            tabs = {
+                {
+                    index = 1,
+                    name = "Materials",
+                    icon = 9001,
+                    isViewable = true,
+                    lastAccessibleText = "2024-06-22 09:30 PT",
+                    rows = {},
+                },
+            },
+        }
+        harness.ui.SetRosterReport(rosterReport)
+        harness.ui.SetBankReport(bankReport)
+        local frame = harness.frame()
+
+        harness.ui.SetRosterScanInProgress(true)
+        harness.ui.SetViewStatus("roster", "Updating...")
+        harness.ui.SetBankScanInProgress(true)
+        harness.ui.SetViewStatus("bank", "Scanning...")
+        test.assert_true(frame.views.roster.rosterReport == rosterReport)
+        test.assert_true(frame.views.roster.rosterLines[1].frame:IsShown())
+        test.assert_true(frame.views.bank.bankReport == bankReport)
+        test.assert_true(frame.views.bank.bankTitle:IsShown())
+
+        harness.ui.SetRosterScanInProgress(false)
+        harness.ui.SetViewStatus("roster", "Last successful update: prior")
+        harness.ui.SetBankScanInProgress(false)
+        harness.ui.SetViewStatus("bank", "Last successful scan: prior")
+        test.assert_true(frame.views.roster.rosterReport == rosterReport)
+        test.assert_true(frame.views.roster.rosterLines[1].frame:IsShown())
+        test.assert_true(frame.views.bank.bankReport == bankReport)
+        test.assert_true(frame.views.bank.bankTitle:IsShown())
     end),
 
     test.case("bank tabs render access state rows stale styling tooltips and links", function()
@@ -445,6 +519,14 @@ return {
                     isViewable = false,
                     rows = {},
                 },
+                {
+                    index = 4,
+                    name = "Empty",
+                    icon = 9004,
+                    isViewable = true,
+                    lastAccessibleText = "2024-06-22 09:35 PT",
+                    rows = {},
+                },
             },
         }
 
@@ -477,6 +559,10 @@ return {
         view.bankTabButtons[3].scripts.OnClick()
         test.assert_equal(view.bankMessage.text, "|cffff5555No access|r")
         test.assert_equal(view.bankTitle.text, "No successful access yet")
+
+        view.bankTabButtons[4].scripts.OnClick()
+        test.assert_equal(view.bankMessage.text, "|cff888888No occupied slots|r")
+        test.assert_equal(view.bankTitle.text, "Last accessible: 2024-06-22 09:35 PT")
     end),
 
     test.case("large bank tab and inventory lists scroll inside the fixed view", function()

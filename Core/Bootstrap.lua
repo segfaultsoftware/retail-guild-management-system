@@ -45,7 +45,14 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
     local initialized, initializeError = RGMS.UI.Initialize()
     if not initialized then
         RGMS.Print("Could not initialize the main window: " .. tostring(initializeError) .. ".")
+    elseif not savedDataState.enabled then
+        if type(RGMS.UI.SetDataState) == "function" then
+            RGMS.UI.SetDataState(false, savedDataState.status)
+        end
     else
+        if type(RGMS.UI.SetDataState) == "function" then
+            RGMS.UI.SetDataState(true)
+        end
         if type(RGMS.Roster) == "table"
             and type(RGMS.Roster.RefreshStatus) == "function" then
             RGMS.Roster.RefreshStatus()

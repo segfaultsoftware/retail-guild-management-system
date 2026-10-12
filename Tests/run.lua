@@ -16,6 +16,7 @@ local defaultSuites = {
     "Tests.spec.roster_tenure_spec",
     "Tests.spec.roster_report_spec",
     "Tests.spec.roster_scanner_spec",
+    "Tests.spec.roster_spec",
     "Tests.spec.ui_layout_spec",
     "Tests.spec.ui_spec",
     "Tests.spec.bank_adapter_spec",

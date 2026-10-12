@@ -146,12 +146,115 @@ return {
         harness.bank.RefreshStatus()
 
         test.assert_equal(harness.actions, {
+            { action = "bank-open", value = true },
             { action = "report", report = projected },
             {
                 action = "status",
                 tabId = "bank",
                 status = "Last successful scan: 2024-06-01 05:34 PT",
             },
+        })
+        harness.restore()
+    end),
+
+    test.case("bank status keeps its timestamp visible while scanning", function()
+        local projected = { tabs = { { index = 1, rows = {} } } }
+        local harness = newHarness({
+            database = {
+                bank = {
+                    scannedAt = { unixSeconds = 100 },
+                    tabs = {},
+                    slots = {},
+                },
+            },
+            bankReport = {
+                build = function()
+                    return projected
+                end,
+            },
+            dateTime = {
+                formatPacificTimestamp = function()
+                    return "2024-06-01 05:34 PT"
+                end,
+            },
+        })
+        harness.bank.Scanner.inProgress = true
+
+        harness.bank.RefreshStatus()
+
+        test.assert_equal(harness.actions[#harness.actions], {
+            action = "status",
+            tabId = "bank",
+            status = "Scanning... Last successful scan: 2024-06-01 05:34 PT",
+        })
+        harness.restore()
+    end),
+
+    test.case("fresh bank state stays distinct from a successful zero-tab scan", function()
+        local builds = 0
+        local harness = newHarness({
+            guildBankShown = false,
+            database = {
+                bank = {
+                    tabs = {},
+                    slots = {},
+                },
+            },
+            bankReport = {
+                build = function()
+                    builds = builds + 1
+                    return { tabs = {} }
+                end,
+            },
+            dateTime = {},
+        })
+
+        harness.bank.RefreshStatus()
+
+        test.assert_equal(builds, 0)
+        test.assert_equal(harness.actions, {
+            { action = "bank-open", value = false },
+            {
+                action = "status",
+                tabId = "bank",
+                status = "Guild bank closed. No bank scan yet",
+            },
+        })
+        harness.restore()
+    end),
+
+    test.case("closed bank status preserves prior timestamp and disables availability", function()
+        local harness = newHarness({
+            guildBankShown = false,
+            database = {
+                bank = {
+                    scannedAt = { unixSeconds = 100 },
+                    tabs = {},
+                    slots = {},
+                },
+            },
+            bankReport = {
+                build = function()
+                    return { tabs = {} }
+                end,
+            },
+            dateTime = {
+                formatPacificTimestamp = function()
+                    return "2024-06-01 05:34 PT"
+                end,
+            },
+        })
+
+        harness.bank.RefreshStatus()
+
+        test.assert_equal(harness.actions[1], {
+            action = "bank-open",
+            value = false,
+        })
+        test.assert_equal(harness.actions[#harness.actions], {
+            action = "status",
+            tabId = "bank",
+            status = "Guild bank closed. Last successful scan: 2024-06-01 05:34 PT",
         })
         harness.restore()
     end),

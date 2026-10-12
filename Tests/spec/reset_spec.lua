@@ -9,6 +9,8 @@ local function newHarness(saved)
         saved = saved,
         state = savedData.load(saved),
         messages = {},
+        dataStates = {},
+        viewRefreshes = 0,
     }
     if harness.state.enabled then
         harness.saved = harness.state.model
@@ -33,6 +35,12 @@ local function newHarness(saved)
         end,
         print = function(message)
             harness.messages[#harness.messages + 1] = message
+        end,
+        setDataState = function(enabled)
+            harness.dataStates[#harness.dataStates + 1] = enabled
+        end,
+        refreshViews = function()
+            harness.viewRefreshes = harness.viewRefreshes + 1
         end,
     })
 
@@ -120,6 +128,8 @@ return {
         test.assert_equal(harness.saved.roster.members, {})
         test.assert_equal(harness.saved.bank.slots, {})
         test.assert_true(savedData.load(harness.saved).enabled)
+        test.assert_equal(harness.dataStates, { true })
+        test.assert_equal(harness.viewRefreshes, 1)
     end),
 
     test.case("declining recovery preserves data and blocks roster bank and reports", function()
