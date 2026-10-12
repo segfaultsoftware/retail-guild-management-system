@@ -275,6 +275,13 @@ if type(Roster.Scanner) ~= "table"
     Roster.Scanner = RGMS.RosterScanner.create({
         api = createRetailApi(),
         ownership = RGMS.DatasetOwnership,
+        reduceRoster = function(previousDataset, snapshot)
+            return RGMS.RosterTenure.reduce(
+                previousDataset,
+                snapshot,
+                RGMS.DateTime
+            )
+        end,
         canScan = Roster.CanScan,
         print = RGMS.Print,
         setInProgress = function(inProgress)

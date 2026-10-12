@@ -8,7 +8,9 @@ The repository includes the addon shell, per-character saved data, and a
 transactional Retail guild-roster scanner. Each login attempts one background
 roster scan for guilded characters; `/rgms scanroster` and the Roster refresh
 button start the same transaction manually. Incomplete and failed scans leave
-the last successful observation untouched. `/rgms reset` provides a
+the last successful observation untouched. Successful scans track each current
+member's tenure at their numeric rank position using Pacific calendar dates.
+`/rgms reset` provides a
 confirmation-protected observation reset and also recovers from corrupt or
 incompatible saved data.
 

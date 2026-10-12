@@ -134,9 +134,14 @@ function Scanner.create(dependencies)
             return self:FinishFailure(beginError, "transaction-failure")
         end
 
-        transaction.dataset.scannedAt = snapshot.scannedAt
-        transaction.dataset.ranks = snapshot.ranks
-        transaction.dataset.members = snapshot.members
+        local reducedDataset, reduceError = dependencies.reduceRoster(
+            transaction.dataset,
+            snapshot
+        )
+        if not reducedDataset then
+            return self:FinishFailure(reduceError, "transaction-failure")
+        end
+        transaction.dataset = reducedDataset
 
         local committed, commitResult = dependencies.ownership:finish(
             transaction,

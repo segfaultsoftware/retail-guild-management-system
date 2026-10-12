@@ -5,13 +5,13 @@ RGMS persists one global named `RGMSCharacterDB`. `RGMS.toc` declares it with
 each `CharacterName-Realm`. RGMS does not add an account-level character map;
 observations from two characters therefore cannot be combined accidentally.
 
-## Current schema: version 2
+## Current schema: version 3
 
 The complete persisted shape is:
 
 ```text
 {
-  schemaVersion = 2,
+  schemaVersion = 3,
   roster = {
     guild = GuildIdentity | nil,
     scannedAt = Timestamp | nil,
@@ -50,11 +50,14 @@ configured rank is retained, including Guild Master and ranks with no current
 members. Each `RosterMember` stores the character and realm components plus a
 canonical `displayName` in `Name-Realm` form, the current displayed `rankName`
 and one-based `rankIndex`, basic character metadata, online state, and the scan
-timestamp in `observedAt`. An offline member may include the game's approximate
-`lastOnline` components (`years`, `months`, `days`, and `hours`); an absent
-value does not invent precision the client did not provide. Collection records
-use the shapes built in `Tests/fixtures.lua` and checked by
-`Core/SavedData.lua`.
+timestamp in `observedAt`. `rankTenureStartDate` stores the Pacific
+`YYYY-MM-DD` date on which that `Name-Realm` was first successfully observed at
+its current numeric rank index. Rank-name changes preserve it; a different
+rank index resets it. Tenure days are derived from this date rather than stored.
+An offline member may include the game's approximate `lastOnline` components
+(`years`, `months`, `days`, and `hours`); an absent value does not invent
+precision the client did not provide. Collection records use the shapes built
+in `Tests/fixtures.lua` and checked by `Core/SavedData.lua`.
 
 `WindowPosition` contains `point`, `relativePoint`, `x`, and `y`. It lives
 under the separate `ui` subtree. Resetting observations creates empty roster
@@ -85,8 +88,8 @@ position survives every automatic replacement.
 ## Loading, validation, and recovery
 
 All existing values are copied before migration and validation. RGMS replaces
-`RGMSCharacterDB` only after the copy reaches schema version 2 and passes full
-validation. A fresh character receives a valid empty version 2 model.
+`RGMSCharacterDB` only after the copy reaches schema version 3 and passes full
+validation. A fresh character receives a valid empty version 3 model.
 
 Unsupported future versions enter the `incompatible` state. Malformed values,
 unknown unversioned values, and failed migrations enter the `corrupt` state.
@@ -120,9 +123,13 @@ not share account or character names from its path.
   displayed rank names, or approximate last-online components. Migration
   derives `displayName` and `rankName` from the existing member, realm, and
   configured-rank data; prior last-online precision remains unknown.
+- Schema version 2 roster members did not store `rankTenureStartDate`.
+  Migration initializes it to the Pacific date of that member's saved
+  `observedAt` timestamp, the earliest observation available in the retained
+  snapshot.
 - The pre-schema development placeholder contained only `loadCount` and/or
   `lastLoadedAt`. Those diagnostic values did not contain observations and are
-  migrated to a fresh empty version 2 model. Any other unversioned shape is
+  migrated to a fresh empty version 3 model. Any other unversioned shape is
   preserved and classified as corrupt.
 
 Every migration is deterministic and operates on a deep copy. There is no

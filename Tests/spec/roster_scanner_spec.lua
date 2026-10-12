@@ -1,7 +1,9 @@
 local datasetOwnership = require("Core.DatasetOwnership")
+local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
 local savedData = require("Core.SavedData")
 local scannerModule = require("Roster.Scanner")
+local tenure = require("Roster.Tenure")
 local test = require("Tests.lib.runner")
 
 local function successfulSnapshot(memberName)
@@ -10,6 +12,14 @@ local function successfulSnapshot(memberName)
         unixSeconds = 1717245356,
         iso8601 = "2024-06-01T12:35:56Z",
     })
+    local member = fixtures.roster_member({
+        name = memberName or "Newmember",
+        displayName = (memberName or "Newmember") .. "-Example Realm",
+        rankName = "Member",
+        rankIndex = 2,
+        observedAt = scannedAt,
+    })
+    member.rankTenureStartDate = nil
     return {
         guild = guild,
         scannedAt = scannedAt,
@@ -18,15 +28,7 @@ local function successfulSnapshot(memberName)
             fixtures.roster_rank({ index = 2, name = "Member" }),
             fixtures.roster_rank({ index = 3, name = "Empty Rank" }),
         },
-        members = {
-            fixtures.roster_member({
-                name = memberName or "Newmember",
-                displayName = (memberName or "Newmember") .. "-Example Realm",
-                rankName = "Member",
-                rankIndex = 2,
-                observedAt = scannedAt,
-            }),
-        },
+        members = { member },
     }
 end
 
@@ -37,6 +39,7 @@ local function newHarness(options)
     local messages = {}
     local progress = {}
     local requests = 0
+    local reductions = 0
     local refreshes = 0
     local windowOpen = true
 
@@ -77,6 +80,10 @@ local function newHarness(options)
     local scanner = scannerModule.create({
         api = api,
         ownership = ownership,
+        reduceRoster = function(previousDataset, snapshot)
+            reductions = reductions + 1
+            return tenure.reduce(previousDataset, snapshot, dateTime)
+        end,
         timeoutSeconds = options.timeoutSeconds or 10,
         canScan = function()
             return options.canScan ~= false
@@ -103,6 +110,9 @@ local function newHarness(options)
         requests = function()
             return requests
         end,
+        reductions = function()
+            return reductions
+        end,
         refreshes = function()
             return refreshes
         end,
@@ -127,6 +137,11 @@ return {
         test.assert_equal(#harness.current().roster.ranks, 3)
         test.assert_equal(harness.current().roster.ranks[3].name, "Empty Rank")
         test.assert_equal(harness.current().roster.scannedAt.unixSeconds, 1717245356)
+        test.assert_equal(
+            harness.current().roster.members[1].rankTenureStartDate,
+            "2024-06-01"
+        )
+        test.assert_equal(harness.reductions(), 1)
         test.assert_equal(harness.progress, { true, false })
         test.assert_matches(harness.messages[1], "scan complete")
     end),
@@ -169,6 +184,7 @@ return {
         test.assert_false(completed)
         test.assert_equal(state, "incomplete")
         test.assert_equal(harness.current(), harness.original)
+        test.assert_equal(harness.reductions(), 0)
         test.assert_true(harness.scanner:IsInProgress())
 
         harness.scanner:Update(2)
@@ -211,6 +227,7 @@ return {
         test.assert_nil(completed)
         test.assert_equal(reason, "api-failure")
         test.assert_equal(harness.current(), harness.original)
+        test.assert_equal(harness.reductions(), 0)
         test.assert_equal(harness.requests(), 1)
         test.assert_matches(harness.messages[1], "simulated client failure")
     end),

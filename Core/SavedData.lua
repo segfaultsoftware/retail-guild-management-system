@@ -5,8 +5,9 @@
 local _, RGMS = ...
 
 local SavedData = {}
+local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTime")
 
-SavedData.CURRENT_SCHEMA_VERSION = 2
+SavedData.CURRENT_SCHEMA_VERSION = 3
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -304,8 +305,8 @@ local function validateRosterRank(value, path)
     return true
 end
 
-local function validateRosterMember(value, path)
-    local valid, validationError = validateExactTable(value, {
+local function validateRosterMember(value, path, requireTenureStartDate)
+    local allowedKeys = {
         guid = true,
         name = true,
         realm = true,
@@ -318,7 +319,12 @@ local function validateRosterMember(value, path)
         isOnline = true,
         lastOnline = true,
         observedAt = true,
-    }, path)
+    }
+    if requireTenureStartDate then
+        allowedKeys.rankTenureStartDate = true
+    end
+
+    local valid, validationError = validateExactTable(value, allowedKeys, path)
     if not valid then
         return nil, validationError
     end
@@ -375,7 +381,39 @@ local function validateRosterMember(value, path)
         end
     end
 
-    return validateTimestamp(value.observedAt, path .. ".observedAt")
+    valid, validationError = validateTimestamp(value.observedAt, path .. ".observedAt")
+    if not valid then
+        return nil, validationError
+    end
+
+    if requireTenureStartDate then
+        local parsedDate, dateError = DateTime.parseStoredDate(
+            value.rankTenureStartDate
+        )
+        if not parsedDate then
+            return nil, path .. ".rankTenureStartDate " .. dateError
+        end
+
+        local observedDate, observedDateError = DateTime.currentPacificDate(
+            value.observedAt.unixSeconds
+        )
+        if not observedDate then
+            return nil, path .. ".observedAt " .. observedDateError
+        end
+        local tenureDays = DateTime.calendarDayDifference(
+            value.rankTenureStartDate,
+            observedDate
+        )
+        if tenureDays == nil then
+            return nil, path .. ".rankTenureStartDate must not follow observedAt"
+        end
+    end
+
+    return true
+end
+
+local function validateCurrentRosterMember(value, path)
+    return validateRosterMember(value, path, true)
 end
 
 local function validateBankTab(value, path)
@@ -558,7 +596,7 @@ function SavedData.validate(model)
 
     valid, validationError = validateDataset(model.roster, "saved data.roster", {
         ranks = validateRosterRank,
-        members = validateRosterMember,
+        members = validateCurrentRosterMember,
     })
     if not valid then
         return nil, validationError
@@ -746,9 +784,65 @@ local function migrateVersionOne(model)
     return model
 end
 
+local function migrateVersionTwo(model)
+    if model.schemaVersion ~= 2 then
+        return nil, "schema version 2 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 2 data")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.roster, "schema version 2 data.roster", {
+        ranks = validateRosterRank,
+        members = validateRosterMember,
+    })
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.bank, "schema version 2 data.bank", {
+        tabs = validateBankTab,
+        slots = validateBankSlot,
+    })
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+    }, "schema version 2 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 2 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    for _, member in ipairs(model.roster.members or {}) do
+        local observedDate, observedDateError = DateTime.currentPacificDate(
+            member.observedAt.unixSeconds
+        )
+        if not observedDate then
+            return nil, observedDateError
+        end
+        member.rankTenureStartDate = observedDate
+    end
+    model.schemaVersion = 3
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
+    [2] = migrateVersionTwo,
 }
 
 local function isLegacyDevelopmentState(value)

@@ -10,7 +10,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 2,
+            schemaVersion = 3,
             roster = {
                 ranks = {},
                 members = {},
@@ -56,7 +56,7 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 2)
+        test.assert_equal(first.model.schemaVersion, 3)
         test.assert_equal(first.model.roster.guild, original.roster.guildIdentity)
         test.assert_equal(first.model.roster.scannedAt, original.roster.scanTimestamp)
         test.assert_equal(first.model.bank.guild, original.bank.guildIdentity)
@@ -71,15 +71,34 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 2)
+        test.assert_equal(state.model.schemaVersion, 3)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
         )
         test.assert_equal(state.model.roster.members[1].rankName, "Officer")
         test.assert_nil(state.model.roster.members[1].lastOnline)
+        test.assert_equal(
+            state.model.roster.members[1].rankTenureStartDate,
+            "2024-06-01"
+        )
         test.assert_equal(original.schemaVersion, 1)
         test.assert_nil(original.roster.members[1].displayName)
+    end),
+
+    test.case("schema version two backfills rank tenure from the observation date", function()
+        local original = fixtures.saved_model_v2()
+        local state = savedData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 2)
+        test.assert_equal(state.model.schemaVersion, 3)
+        test.assert_equal(
+            state.model.roster.members[1].rankTenureStartDate,
+            "2024-06-01"
+        )
+        test.assert_equal(original.schemaVersion, 2)
+        test.assert_nil(original.roster.members[1].rankTenureStartDate)
     end),
 
     test.case("the previous development placeholder migrates to an empty model", function()
@@ -120,6 +139,16 @@ return {
         test.assert_equal(state.status, "corrupt")
         test.assert_matches(state.error, "must represent the same time")
         test.assert_equal(original.bank.scannedAt.iso8601, "2024-06-01T12:34:57Z")
+    end),
+
+    test.case("rank tenure start dates cannot follow their observations", function()
+        local original = fixtures.saved_model()
+        original.roster.members[1].rankTenureStartDate = "2024-06-02"
+        local state = savedData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "must not follow observedAt")
     end),
 
     test.case("unsupported versions disable use and preserve the original", function()
