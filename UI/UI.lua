@@ -57,6 +57,39 @@ local function getScreenSize()
     return UIParent:GetWidth(), UIParent:GetHeight()
 end
 
+local function getFrameRectangle(frame)
+    if frame == nil or type(frame.GetRect) ~= "function" then
+        return nil, "the anchor frame does not expose its bounds"
+    end
+
+    local left, bottom, width, height = frame:GetRect()
+    if type(left) ~= "number"
+        or type(bottom) ~= "number"
+        or type(width) ~= "number"
+        or type(height) ~= "number" then
+        return nil, "the anchor frame does not have resolved bounds"
+    end
+
+    local scale = 1
+    if type(frame.GetEffectiveScale) == "function"
+        and type(UIParent.GetEffectiveScale) == "function" then
+        local frameScale = frame:GetEffectiveScale()
+        local parentScale = UIParent:GetEffectiveScale()
+        if type(frameScale) == "number"
+            and type(parentScale) == "number"
+            and parentScale > 0 then
+            scale = frameScale / parentScale
+        end
+    end
+
+    return {
+        left = left * scale,
+        bottom = bottom * scale,
+        width = width * scale,
+        height = height * scale,
+    }
+end
+
 local function savePosition(position)
     if type(RGMS.DB) ~= "table" or type(RGMS.DB.ui) ~= "table" then
         return
@@ -573,6 +606,36 @@ function UI.ClampToScreen()
     }, type(RGMS.DB) == "table"
         and type(RGMS.DB.ui) == "table"
         and RGMS.DB.ui.windowPosition ~= nil)
+end
+
+function UI.HasSavedPosition()
+    return type(RGMS.DB) == "table"
+        and type(RGMS.DB.ui) == "table"
+        and RGMS.DB.ui.windowPosition ~= nil
+end
+
+function UI.AlignToRightOf(frame)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if UI.HasSavedPosition() then
+        return false, "the saved RGMS window position takes precedence"
+    end
+
+    local rectangle, rectangleError = getFrameRectangle(frame)
+    if not rectangle then
+        return nil, rectangleError
+    end
+
+    local position, positionError = RGMS.UILayout.positionToRightOfRectangle(
+        rectangle,
+        UI.frame:GetHeight()
+    )
+    if not position then
+        return nil, positionError
+    end
+
+    return applyClampedPosition(position, false)
 end
 
 function UI.SelectPrimaryTab(tabId)

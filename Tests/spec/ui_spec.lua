@@ -104,6 +104,14 @@ local function newRegion(parent)
         return self.bottom
     end
 
+    function region:GetRect()
+        return self.left, self.bottom, self.width, self.height
+    end
+
+    function region:GetEffectiveScale()
+        return self.effectiveScale or 1
+    end
+
     function region:SetScript(scriptName, callback)
         self.scripts[scriptName] = callback
     end
@@ -489,6 +497,47 @@ return {
             x = 125,
             y = 90,
         })
+    end),
+
+    test.case("guild bank alignment uses scaled bounds without saving a position", function()
+        local harness = newHarness(nil, 1920, 1080)
+        harness.ui.Initialize()
+        local guildBankFrame = newRegion(UIParent)
+        guildBankFrame.left = 10
+        guildBankFrame.bottom = 130
+        guildBankFrame.width = 380
+        guildBankFrame.height = 280
+        guildBankFrame.effectiveScale = 2
+
+        local aligned = harness.ui.AlignToRightOf(guildBankFrame)
+
+        test.assert_not_nil(aligned)
+        test.assert_equal(harness.database.ui.windowPosition, nil)
+        test.assert_equal(harness.frame().left, 792)
+        test.assert_equal(harness.frame().bottom, 260)
+    end),
+
+    test.case("guild bank alignment preserves a saved manual position", function()
+        local savedPosition = {
+            point = "BOTTOMLEFT",
+            relativePoint = "BOTTOMLEFT",
+            x = 125,
+            y = 90,
+        }
+        local harness = newHarness(savedPosition)
+        harness.ui.Initialize()
+        local guildBankFrame = newRegion(UIParent)
+        guildBankFrame.left = 20
+        guildBankFrame.bottom = 260
+        guildBankFrame.width = 760
+        guildBankFrame.height = 560
+
+        local aligned = harness.ui.AlignToRightOf(guildBankFrame)
+
+        test.assert_false(aligned)
+        test.assert_equal(harness.database.ui.windowPosition, savedPosition)
+        test.assert_equal(harness.frame().left, 125)
+        test.assert_equal(harness.frame().bottom, 90)
     end),
 
     test.case("saved off-screen positions are recovered and persisted", function()

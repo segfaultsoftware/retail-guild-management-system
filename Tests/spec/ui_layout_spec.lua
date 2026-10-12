@@ -46,6 +46,60 @@ return {
         assertClose(position.y, 440)
     end),
 
+    test.case("guild bank placement aligns top edges with a consistent gap", function()
+        local position = layout.positionToRightOfRectangle({
+            left = 20,
+            bottom = 260,
+            width = 760,
+            height = 560,
+        }, layout.WINDOW_HEIGHT)
+
+        test.assert_equal(position, {
+            point = "BOTTOMLEFT",
+            relativePoint = "BOTTOMLEFT",
+            x = 792,
+            y = 260,
+        })
+        local clamped = layout.clampPosition(
+            position,
+            layout.WINDOW_WIDTH,
+            layout.WINDOW_HEIGHT,
+            1920,
+            1080
+        )
+        test.assert_equal(clamped, position)
+    end),
+
+    test.case("guild bank placement clamps RGMS on smaller screens", function()
+        local position = layout.positionToRightOfRectangle({
+            left = 20,
+            bottom = 100,
+            width = 760,
+            height = 560,
+        }, layout.WINDOW_HEIGHT)
+        local clamped = layout.clampPosition(
+            position,
+            layout.WINDOW_WIDTH,
+            layout.WINDOW_HEIGHT,
+            1280,
+            720
+        )
+
+        test.assert_equal(clamped, {
+            point = "BOTTOMLEFT",
+            relativePoint = "BOTTOMLEFT",
+            x = 428,
+            y = 100,
+        })
+        test.assert_true(layout.isFullyVisible(
+            clamped,
+            layout.WINDOW_WIDTH,
+            layout.WINDOW_HEIGHT,
+            1280,
+            720
+        ))
+    end),
+
     test.case("off-screen positions recover to a fully visible location", function()
         local position = layout.clampPosition({
             point = "BOTTOMLEFT",

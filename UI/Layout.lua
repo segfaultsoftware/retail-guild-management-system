@@ -8,6 +8,7 @@ local Layout = {}
 Layout.WINDOW_WIDTH = 840
 Layout.WINDOW_HEIGHT = 560
 Layout.EDGE_MARGIN = 12
+Layout.WINDOW_GAP = 12
 
 local ANCHOR_FACTORS = {
     TOPLEFT = { 0, 1 },
@@ -40,6 +41,24 @@ function Layout.defaultPosition()
         relativePoint = "CENTER",
         x = 0,
         y = 0,
+    }
+end
+
+function Layout.positionToRightOfRectangle(rectangle, height, gap)
+    if type(rectangle) ~= "table"
+        or type(rectangle.left) ~= "number"
+        or type(rectangle.bottom) ~= "number"
+        or type(rectangle.width) ~= "number"
+        or type(rectangle.height) ~= "number" then
+        return nil, "anchor rectangle must contain numeric bounds"
+    end
+
+    gap = gap or Layout.WINDOW_GAP
+    return {
+        point = "BOTTOMLEFT",
+        relativePoint = "BOTTOMLEFT",
+        x = rectangle.left + rectangle.width + gap,
+        y = rectangle.bottom + rectangle.height - height,
     }
 end
 
