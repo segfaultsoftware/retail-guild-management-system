@@ -90,6 +90,14 @@ local function newRegion(parent)
         self.text = value
     end
 
+    function region:SetEnabled(enabled)
+        self.enabled = enabled
+    end
+
+    function region:IsEnabled()
+        return self.enabled ~= false
+    end
+
     function region:GetStringHeight()
         return countLines(self.text) * 14
     end
@@ -152,6 +160,7 @@ end
 
 local function newHarness(savedPosition, screenWidth, screenHeight)
     local mainFrame
+    local refreshRequests = 0
     local uiParent = newRegion()
     uiParent.width = screenWidth or 1920
     uiParent.height = screenHeight or 1080
@@ -183,6 +192,11 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local rgms = {
         DB = database,
         UILayout = layout,
+        Roster = {
+            RequestManualScan = function()
+                refreshRequests = refreshRequests + 1
+            end,
+        },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
     local ui = chunk("RGMS", rgms)
@@ -191,6 +205,9 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         database = database,
         frame = function()
             return mainFrame
+        end,
+        refreshRequests = function()
+            return refreshRequests
         end,
         ui = ui,
     }
@@ -232,6 +249,21 @@ return {
 
         harness.frame().closeButton.scripts.OnClick()
         test.assert_false(harness.ui.IsShown())
+    end),
+
+    test.case("roster refresh button starts manual scans and disables while scanning", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local refreshButton = harness.frame().views.roster.refreshButton
+
+        test.assert_true(refreshButton:IsEnabled())
+        refreshButton.scripts.OnClick()
+        test.assert_equal(harness.refreshRequests(), 1)
+
+        test.assert_true(harness.ui.SetRosterScanInProgress(true))
+        test.assert_false(refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetRosterScanInProgress(false))
+        test.assert_true(refreshButton:IsEnabled())
     end),
 
     test.case("dragging saves a canonical per-character position", function()

@@ -6,7 +6,7 @@ local _, RGMS = ...
 
 local SavedData = {}
 
-SavedData.CURRENT_SCHEMA_VERSION = 1
+SavedData.CURRENT_SCHEMA_VERSION = 2
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -309,18 +309,28 @@ local function validateRosterMember(value, path)
         guid = true,
         name = true,
         realm = true,
+        displayName = true,
+        rankName = true,
         rankIndex = true,
         level = true,
         classId = true,
         classFileName = true,
         isOnline = true,
+        lastOnline = true,
         observedAt = true,
     }, path)
     if not valid then
         return nil, validationError
     end
 
-    for _, field in ipairs({ "guid", "name", "realm", "classFileName" }) do
+    for _, field in ipairs({
+        "guid",
+        "name",
+        "realm",
+        "displayName",
+        "rankName",
+        "classFileName",
+    }) do
         valid, validationError = requireString(value[field], path .. "." .. field)
         if not valid then
             return nil, validationError
@@ -335,6 +345,34 @@ local function validateRosterMember(value, path)
     valid, validationError = requireBoolean(value.isOnline, path .. ".isOnline")
     if not valid then
         return nil, validationError
+    end
+    if value.displayName ~= value.name .. "-" .. value.realm then
+        return nil, path .. ".displayName must match name and realm"
+    end
+
+    if value.lastOnline ~= nil then
+        if value.isOnline then
+            return nil, path .. ".lastOnline must be absent for an online member"
+        end
+        valid, validationError = validateExactTable(value.lastOnline, {
+            years = true,
+            months = true,
+            days = true,
+            hours = true,
+        }, path .. ".lastOnline")
+        if not valid then
+            return nil, validationError
+        end
+        for _, field in ipairs({ "years", "months", "days", "hours" }) do
+            valid, validationError = requireInteger(
+                value.lastOnline[field],
+                path .. ".lastOnline." .. field,
+                0
+            )
+            if not valid then
+                return nil, validationError
+            end
+        end
     end
 
     return validateTimestamp(value.observedAt, path .. ".observedAt")
@@ -603,8 +641,114 @@ local function migrateVersionZero(model)
     }
 end
 
+local function splitMemberName(name, fallbackRealm)
+    local characterName, realm = string.match(name or "", "^([^%-]+)%-(.+)$")
+    if characterName and realm then
+        return characterName, realm, name
+    end
+
+    characterName = name
+    realm = fallbackRealm
+    return characterName, realm, characterName .. "-" .. realm
+end
+
+local function validateVersionOneRosterMember(value, path)
+    local valid, validationError = validateExactTable(value, {
+        guid = true,
+        name = true,
+        realm = true,
+        rankIndex = true,
+        level = true,
+        classId = true,
+        classFileName = true,
+        isOnline = true,
+        observedAt = true,
+    }, path)
+    if not valid then
+        return nil, validationError
+    end
+
+    for _, field in ipairs({ "guid", "name", "realm", "classFileName" }) do
+        valid, validationError = requireString(value[field], path .. "." .. field)
+        if not valid then
+            return nil, validationError
+        end
+    end
+    for _, field in ipairs({ "rankIndex", "level", "classId" }) do
+        valid, validationError = requireInteger(value[field], path .. "." .. field, 0)
+        if not valid then
+            return nil, validationError
+        end
+    end
+    valid, validationError = requireBoolean(value.isOnline, path .. ".isOnline")
+    if not valid then
+        return nil, validationError
+    end
+
+    return validateTimestamp(value.observedAt, path .. ".observedAt")
+end
+
+local function migrateVersionOne(model)
+    if model.schemaVersion ~= 1 then
+        return nil, "schema version 1 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 1 data")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.roster, "schema version 1 data.roster", {
+        ranks = validateRosterRank,
+        members = validateVersionOneRosterMember,
+    })
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.bank, "schema version 1 data.bank", {
+        tabs = validateBankTab,
+        slots = validateBankSlot,
+    })
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+    }, "schema version 1 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 1 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    local rankNames = {}
+    for _, rank in ipairs(model.roster.ranks or {}) do
+        rankNames[rank.index] = rank.name
+    end
+
+    for _, member in ipairs(model.roster.members or {}) do
+        local name, realm, displayName = splitMemberName(member.name, member.realm)
+        member.name = name
+        member.realm = realm
+        member.displayName = displayName
+        member.rankName = rankNames[member.rankIndex] or "Unknown Rank"
+    end
+    model.schemaVersion = 2
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
+    [1] = migrateVersionOne,
 }
 
 local function isLegacyDevelopmentState(value)

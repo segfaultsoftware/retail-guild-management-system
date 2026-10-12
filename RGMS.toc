@@ -13,5 +13,6 @@ Core\Reset.lua
 Core\DatasetOwnership.lua
 Core\Commands.lua
 UI\UI.lua
+Roster\Scanner.lua
 Roster\Roster.lua
 Bank\Bank.lua

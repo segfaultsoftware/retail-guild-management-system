@@ -165,28 +165,6 @@ return {
         SLASH_RGMS1 = previousSlashName
     end),
 
-    test.case("manual roster scan rejects an unguilded character clearly", function()
-        local harness = loadRosterHarness({ inGuild = false })
-        local started, reason = harness.roster.RequestManualScan()
-
-        test.assert_nil(started)
-        test.assert_equal(reason, "not-in-guild")
-        test.assert_equal(harness.requests, {})
-        test.assert_matches(harness.messages[1], "not in a guild")
-        harness.restore()
-    end),
-
-    test.case("manual roster scan rejects a duplicate request with feedback", function()
-        local harness = loadRosterHarness({ inProgress = true })
-        local started, reason = harness.roster.RequestManualScan()
-
-        test.assert_nil(started)
-        test.assert_equal(reason, "scan-in-progress")
-        test.assert_equal(harness.requests, {})
-        test.assert_matches(harness.messages[1], "already in progress")
-        harness.restore()
-    end),
-
     test.case("manual roster scan reaches the transactional scanner once", function()
         local harness = loadRosterHarness()
         local started, reason = harness.roster.RequestManualScan()

@@ -59,11 +59,19 @@ function Fixtures.roster_member(overrides)
         guid = "Player-0000-00000001",
         name = "Aeloria",
         realm = "Example Realm",
+        displayName = "Aeloria-Example Realm",
+        rankName = "Officer",
         rankIndex = 1,
         level = 80,
         classId = 8,
         classFileName = "MAGE",
         isOnline = false,
+        lastOnline = {
+            years = 0,
+            months = 0,
+            days = 2,
+            hours = 3,
+        },
         observedAt = Fixtures.timestamp(),
     }, overrides)
 end
@@ -105,7 +113,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 1,
+        schemaVersion = 2,
         roster = {
             guild = guild,
             scannedAt = timestamp,
@@ -127,6 +135,10 @@ end
 function Fixtures.saved_model_v0(overrides)
     local guild = Fixtures.guild_identity()
     local timestamp = Fixtures.timestamp()
+    local member = Fixtures.roster_member()
+    member.displayName = nil
+    member.rankName = nil
+    member.lastOnline = nil
 
     return withOverrides({
         schemaVersion = 0,
@@ -134,7 +146,7 @@ function Fixtures.saved_model_v0(overrides)
             guildIdentity = guild,
             scanTimestamp = timestamp,
             ranks = { Fixtures.roster_rank() },
-            members = { Fixtures.roster_member() },
+            members = { member },
         },
         bank = {
             guildIdentity = guild,
@@ -144,6 +156,17 @@ function Fixtures.saved_model_v0(overrides)
         },
         windowPosition = Fixtures.window_position(),
     }, overrides)
+end
+
+function Fixtures.saved_model_v1(overrides)
+    local model = Fixtures.saved_model(overrides)
+    model.schemaVersion = 1
+    for _, member in ipairs(model.roster.members) do
+        member.displayName = nil
+        member.rankName = nil
+        member.lastOnline = nil
+    end
+    return model
 end
 
 

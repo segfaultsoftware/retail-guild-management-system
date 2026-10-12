@@ -108,9 +108,19 @@ local function createView(parent, tabId)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     view.status:SetPoint("TOPLEFT", 2, 0)
-    view.status:SetPoint("TOPRIGHT", -2, 0)
+    view.status:SetPoint("TOPRIGHT", tabId == "roster" and -94 or -2, 0)
     view.status:SetJustifyH("LEFT")
     view.status:SetText("Ready")
+
+    if tabId == "roster" then
+        view.refreshButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
+        view.refreshButton:SetSize(84, 22)
+        view.refreshButton:SetPoint("TOPRIGHT", 0, 4)
+        view.refreshButton:SetText("Refresh")
+        view.refreshButton:SetScript("OnClick", function()
+            RGMS.Roster.RequestManualScan()
+        end)
+    end
 
     view.scrollFrame = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
     view.scrollFrame:SetPoint("TOPLEFT", 0, -24)
@@ -331,6 +341,15 @@ function UI.SetViewStatus(tabId, status)
     end
 
     UI.frame.views[tabId].status:SetText(tostring(status or ""))
+    return true
+end
+
+function UI.SetRosterScanInProgress(inProgress)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    UI.frame.views.roster.refreshButton:SetEnabled(not inProgress)
     return true
 end
 

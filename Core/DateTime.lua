@@ -171,6 +171,39 @@ function DateTime.formatPacificTimestamp(unixSeconds)
     )
 end
 
+function DateTime.utcTimestamp(unixSeconds)
+    local validated, validationError = validatedUnixSeconds(unixSeconds)
+    if not validated then
+        return nil, validationError
+    end
+    if validated < 0 then
+        return nil, "timestamp must not precede the Unix epoch"
+    end
+
+    local utcDay = math.floor(validated / SECONDS_PER_DAY)
+    local secondsSinceMidnight = validated - utcDay * SECONDS_PER_DAY
+    local year, month, day = calendarDateFromUnixDay(utcDay)
+    if year < 1 or year > 9999 then
+        return nil, "timestamp is outside the supported years 0001 through 9999"
+    end
+
+    local hour = math.floor(secondsSinceMidnight / (60 * 60))
+    local minute = math.floor(secondsSinceMidnight / 60) % 60
+    local second = secondsSinceMidnight % 60
+    return {
+        unixSeconds = validated,
+        iso8601 = string.format(
+            "%04d-%02d-%02dT%02d:%02d:%02dZ",
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second
+        ),
+    }
+end
+
 function DateTime.parseStoredDate(value)
     if type(value) ~= "string" then
         return nil, "date must be a string in YYYY-MM-DD form"

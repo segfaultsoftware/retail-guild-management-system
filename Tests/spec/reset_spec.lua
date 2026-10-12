@@ -68,7 +68,7 @@ return {
 
         test.assert_true(confirmed, resetError)
         test.assert_equal(harness.saved, {
-            schemaVersion = 1,
+            schemaVersion = 2,
             roster = {
                 ranks = {},
                 members = {},

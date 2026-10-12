@@ -56,10 +56,14 @@ local function newHarness(model)
 end
 
 local function completeRoster(transaction, memberName)
+    memberName = memberName or "Aeloria"
     transaction.dataset.scannedAt = laterTimestamp()
     transaction.dataset.ranks = { fixtures.roster_rank() }
     transaction.dataset.members = {
-        fixtures.roster_member({ name = memberName or "Aeloria" }),
+        fixtures.roster_member({
+            name = memberName,
+            displayName = memberName .. "-Example Realm",
+        }),
     }
 end
 
@@ -112,6 +116,7 @@ return {
 
         test.assert_equal(transaction.dataset.members, model.roster.members)
         transaction.dataset.members[1].isOnline = true
+        transaction.dataset.members[1].lastOnline = nil
         transaction.dataset.scannedAt = laterTimestamp()
         local committed = harness.controller:finish(transaction, "success")
 

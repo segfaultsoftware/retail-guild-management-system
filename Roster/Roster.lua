@@ -1,53 +1,317 @@
 local _, RGMS = ...
 
--- Guild roster collection and reporting will live in this module.
-RGMS.Roster = RGMS.Roster or {}
+local Roster = RGMS.Roster or {}
 
-function RGMS.Roster.CanScan()
+local REGION_NAMES = {
+    [1] = "US",
+    [2] = "KR",
+    [3] = "EU",
+    [4] = "TW",
+    [5] = "CN",
+}
+
+local function incomplete(message)
+    return nil, "incomplete", message
+end
+
+local function splitDisplayName(value, defaultRealm)
+    local displayName = tostring(value or "")
+    local name, realm = string.match(displayName, "^([^%-]+)%-(.+)$")
+    if not name then
+        name = displayName
+        realm = defaultRealm
+        displayName = name .. "-" .. realm
+    end
+    return name, realm, displayName
+end
+
+local function copyTimestamp(timestamp)
+    return {
+        unixSeconds = timestamp.unixSeconds,
+        iso8601 = timestamp.iso8601,
+    }
+end
+
+local function createRetailApi()
+    local api = {}
+
+    function api:isInGuild()
+        return IsInGuild() == true
+    end
+
+    function api:requestRoster()
+        C_GuildInfo.GuildRoster()
+    end
+
+    function api:captureSnapshot()
+        local clubId = C_Club.GetGuildClubId()
+        if clubId == nil then
+            return incomplete("the guild club is not initialized")
+        end
+
+        local clubInfo = C_Club.GetClubInfo(clubId)
+        if type(clubInfo) ~= "table"
+            or type(clubInfo.name) ~= "string"
+            or clubInfo.name == ""
+            or type(clubInfo.memberCount) ~= "number" then
+            return incomplete("guild identity or member count is unavailable")
+        end
+
+        local guildName, _, _, guildRealm = GetGuildInfo("player")
+        guildName = clubInfo.name or guildName
+        local normalizedRealm = guildRealm or GetNormalizedRealmName()
+        local displayRealm = guildRealm or GetRealmName()
+        if type(guildName) ~= "string" or guildName == ""
+            or type(normalizedRealm) ~= "string" or normalizedRealm == ""
+            or type(displayRealm) ~= "string" or displayRealm == "" then
+            return incomplete("guild name or realm is unavailable")
+        end
+
+        local numberOfRanks = GuildControlGetNumRanks()
+        if type(numberOfRanks) ~= "number" or numberOfRanks < 1 then
+            return incomplete("configured guild ranks are unavailable")
+        end
+
+        local ranks = {}
+        local rankNames = {}
+        for rankOrder = 1, numberOfRanks do
+            local rankName = GuildControlGetRankName(rankOrder)
+            if type(rankName) ~= "string" or rankName == "" then
+                return incomplete("a configured guild rank is unavailable")
+            end
+
+            local permissions = {}
+            if type(C_GuildInfo.GuildControlGetRankFlags) == "function" then
+                local flagsAvailable, flags = pcall(
+                    C_GuildInfo.GuildControlGetRankFlags,
+                    rankOrder
+                )
+                if flagsAvailable and type(flags) == "table" then
+                    permissions = flags
+                end
+            end
+
+            ranks[#ranks + 1] = {
+                index = rankOrder,
+                name = rankName,
+                permissions = {
+                    invite = permissions[5] == true,
+                    remove = permissions[7] == true,
+                    editOfficerNote = permissions[22] == true,
+                },
+            }
+            rankNames[rankOrder] = rankName
+        end
+
+        local memberIds = C_Club.GetClubMembers(clubId)
+        if type(memberIds) ~= "table" or #memberIds ~= clubInfo.memberCount then
+            return incomplete("the guild member list is partial")
+        end
+
+        local scannedAt, timestampError = RGMS.DateTime.utcTimestamp(GetServerTime())
+        if not scannedAt then
+            return nil, "api-failure", timestampError
+        end
+
+        local members = {}
+        local seenNames = {}
+        for _, memberId in ipairs(memberIds) do
+            local info = C_Club.GetMemberInfo(clubId, memberId)
+            if type(info) ~= "table"
+                or type(info.name) ~= "string"
+                or info.name == ""
+                or type(info.guid) ~= "string"
+                or info.guid == ""
+                or type(info.guildRank) ~= "string"
+                or info.guildRank == ""
+                or type(info.guildRankOrder) ~= "number"
+                or type(info.level) ~= "number"
+                or type(info.classID) ~= "number" then
+                return incomplete("one or more guild members are partial")
+            end
+
+            local configuredRankName = rankNames[info.guildRankOrder]
+            if configuredRankName == nil or configuredRankName ~= info.guildRank then
+                return incomplete("a guild member refers to an unavailable rank")
+            end
+
+            local classInfo = C_CreatureInfo.GetClassInfo(info.classID)
+            if type(classInfo) ~= "table"
+                or type(classInfo.classFile) ~= "string"
+                or classInfo.classFile == "" then
+                return incomplete("a guild member class is unavailable")
+            end
+
+            local name, realm, displayName = splitDisplayName(
+                info.name,
+                GetNormalizedRealmName()
+            )
+            if name == "" or realm == "" or seenNames[displayName] then
+                return incomplete("guild member names are incomplete or duplicated")
+            end
+            seenNames[displayName] = true
+
+            local lastOnline
+            if info.lastOnlineHour ~= nil then
+                if type(info.lastOnlineYear) ~= "number"
+                    or type(info.lastOnlineMonth) ~= "number"
+                    or type(info.lastOnlineDay) ~= "number"
+                    or type(info.lastOnlineHour) ~= "number" then
+                    return incomplete("a guild member last-online value is partial")
+                end
+                lastOnline = {
+                    years = info.lastOnlineYear,
+                    months = info.lastOnlineMonth,
+                    days = info.lastOnlineDay,
+                    hours = info.lastOnlineHour,
+                }
+            end
+
+            members[#members + 1] = {
+                guid = info.guid,
+                name = name,
+                realm = realm,
+                displayName = displayName,
+                rankName = info.guildRank,
+                rankIndex = info.guildRankOrder,
+                level = info.level,
+                classId = info.classID,
+                classFileName = classInfo.classFile,
+                isOnline = info.lastOnlineHour == nil,
+                lastOnline = lastOnline,
+                observedAt = copyTimestamp(scannedAt),
+            }
+        end
+
+        table.sort(members, function(left, right)
+            return left.displayName < right.displayName
+        end)
+
+        return {
+            guild = {
+                id = tostring(clubId),
+                name = guildName,
+                realm = {
+                    name = displayRealm,
+                    slug = normalizedRealm,
+                },
+                region = REGION_NAMES[GetCurrentRegion()] or "Unknown",
+            },
+            scannedAt = scannedAt,
+            ranks = ranks,
+            members = members,
+        }
+    end
+
+    return api
+end
+
+function Roster.CanScan()
     return RGMS.Reset:canScan("the guild roster")
 end
 
-function RGMS.Roster.CanReport()
+function Roster.CanReport()
     return RGMS.Reset:canReport("the roster report")
 end
 
-function RGMS.Roster.IsScanInProgress()
-    local scanner = RGMS.Roster.Scanner
-    if type(scanner) ~= "table" then
-        return false
-    end
-
-    if type(scanner.IsInProgress) == "function" then
-        return scanner:IsInProgress()
-    end
-
-    return scanner.inProgress == true
+function Roster.IsScanInProgress()
+    local scanner = Roster.Scanner
+    return type(scanner) == "table"
+        and type(scanner.IsInProgress) == "function"
+        and scanner:IsInProgress()
 end
 
-function RGMS.Roster.RequestManualScan()
-    if not IsInGuild() then
-        RGMS.Print(
-            "Cannot scan the guild roster because this character is not in a guild."
-        )
-        return nil, "not-in-guild"
+function Roster.RefreshStatus()
+    if type(RGMS.UI) ~= "table" or type(RGMS.UI.SetViewStatus) ~= "function" then
+        return
     end
 
-    if RGMS.Roster.IsScanInProgress() then
-        RGMS.Print(
-            "A guild roster scan is already in progress; no second scan was started."
-        )
-        return nil, "scan-in-progress"
+    if Roster.IsScanInProgress() then
+        RGMS.UI.SetViewStatus("roster", "Scanning...")
+        return
     end
 
-    if not RGMS.Roster.CanScan() then
-        return nil, "scanning-disabled"
+    local scannedAt = type(RGMS.DB) == "table"
+        and type(RGMS.DB.roster) == "table"
+        and RGMS.DB.roster.scannedAt
+    if scannedAt then
+        local formatted = RGMS.DateTime.formatPacificTimestamp(scannedAt.unixSeconds)
+        RGMS.UI.SetViewStatus("roster", "Last successful scan: " .. formatted)
+    else
+        RGMS.UI.SetViewStatus("roster", "No roster data yet")
     end
+end
 
-    local scanner = RGMS.Roster.Scanner
-    if type(scanner) ~= "table" or type(scanner.Request) ~= "function" then
+local function scannerUnavailable(source)
+    if source ~= "automatic" then
         RGMS.Print("Could not start the guild roster scan because the scanner is unavailable.")
-        return nil, "scanner-unavailable"
     end
-
-    return scanner:Request("manual")
+    return nil, "scanner-unavailable"
 end
+
+function Roster.RequestScan(source)
+    local scanner = Roster.Scanner
+    if type(scanner) ~= "table" or type(scanner.Request) ~= "function" then
+        return scannerUnavailable(source)
+    end
+    return scanner:Request(source)
+end
+
+function Roster.RequestManualScan()
+    return Roster.RequestScan("manual")
+end
+
+function Roster.RequestAutomaticScan()
+    return Roster.RequestScan("automatic")
+end
+
+Roster.CreateRetailApi = createRetailApi
+RGMS.Roster = Roster
+
+if type(Roster.Scanner) ~= "table"
+    and type(RGMS.RosterScanner) == "table"
+    and type(C_GuildInfo) == "table"
+    and type(C_Club) == "table" then
+    Roster.Scanner = RGMS.RosterScanner.create({
+        api = createRetailApi(),
+        ownership = RGMS.DatasetOwnership,
+        canScan = Roster.CanScan,
+        print = RGMS.Print,
+        setInProgress = function(inProgress)
+            if type(RGMS.UI) == "table"
+                and type(RGMS.UI.SetRosterScanInProgress) == "function" then
+                RGMS.UI.SetRosterScanInProgress(inProgress)
+            end
+            Roster.RefreshStatus()
+        end,
+        refreshStatus = Roster.RefreshStatus,
+    })
+
+    local eventFrame = CreateFrame("Frame")
+    eventFrame:RegisterEvent("PLAYER_LOGIN")
+    eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
+    eventFrame:RegisterEvent("INITIAL_CLUBS_LOADED")
+    eventFrame:RegisterEvent("CLUB_MEMBERS_UPDATED")
+    eventFrame:SetScript("OnEvent", function(_, event, ...)
+        if event == "PLAYER_LOGIN" then
+            Roster.RequestAutomaticScan()
+        elseif event == "GUILD_ROSTER_UPDATE" then
+            local canRequestRosterUpdate = ...
+            if canRequestRosterUpdate then
+                Roster.Scanner:RequestRosterUpdate()
+            else
+                Roster.Scanner:OnDataUpdated()
+            end
+        elseif event == "INITIAL_CLUBS_LOADED" then
+            Roster.Scanner:RequestRosterUpdate()
+        elseif event == "CLUB_MEMBERS_UPDATED" then
+            Roster.Scanner:OnDataUpdated()
+        end
+    end)
+    eventFrame:SetScript("OnUpdate", function(_, elapsed)
+        Roster.Scanner:Update(elapsed)
+    end)
+    Roster.EventFrame = eventFrame
+end
+
+return Roster

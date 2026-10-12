@@ -11,6 +11,8 @@ local defaultSuites = {
     "Tests.spec.reset_spec",
     "Tests.spec.dataset_ownership_spec",
     "Tests.spec.commands_spec",
+    "Tests.spec.roster_adapter_spec",
+    "Tests.spec.roster_scanner_spec",
     "Tests.spec.ui_layout_spec",
     "Tests.spec.ui_spec",
 }

@@ -135,5 +135,9 @@ return {
             dateTime.formatPacificTimestamp(1735718400),
             "2025-01-01 00:00 PT"
         )
+        test.assert_equal(dateTime.utcTimestamp(1717245296), {
+            unixSeconds = 1717245296,
+            iso8601 = "2024-06-01T12:34:56Z",
+        })
     end),
 }
