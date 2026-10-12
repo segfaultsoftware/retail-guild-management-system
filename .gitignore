@@ -7,3 +7,4 @@ luacov.stats.out
 # Local release staging and distributable archives
 .release/
 
+.idea
