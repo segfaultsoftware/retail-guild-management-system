@@ -6,8 +6,9 @@ local _, RGMS = ...
 
 local SavedData = {}
 local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTime")
+local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
 
-SavedData.CURRENT_SCHEMA_VERSION = 4
+SavedData.CURRENT_SCHEMA_VERSION = 5
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -229,7 +230,7 @@ local function validateTimestamp(value, path)
     return true
 end
 
-local function validateGuildIdentity(value, path)
+local function validateGuildIdentity(value, path, requireCanonicalRealm)
     local valid, validationError = validateExactTable(value, {
         id = true,
         name = true,
@@ -259,6 +260,10 @@ local function validateGuildIdentity(value, path)
         valid, validationError = requireString(value.realm[field], path .. ".realm." .. field)
         if not valid then
             return nil, validationError
+        end
+        if requireCanonicalRealm
+            and Realm.normalize(value.realm[field]) ~= value.realm[field] then
+            return nil, path .. ".realm." .. field .. " must be canonical"
         end
     end
 
@@ -309,7 +314,8 @@ local function validateRosterMember(
     value,
     path,
     requireTenureStartDate,
-    requireMissingState
+    requireMissingState,
+    requireCanonicalRealm
 )
     local allowedKeys = {
         guid = true,
@@ -363,6 +369,9 @@ local function validateRosterMember(
     end
     if value.displayName ~= value.name .. "-" .. value.realm then
         return nil, path .. ".displayName must match name and realm"
+    end
+    if requireCanonicalRealm and Realm.normalize(value.realm) ~= value.realm then
+        return nil, path .. ".realm must be canonical"
     end
 
     if value.lastOnline ~= nil then
@@ -445,7 +454,7 @@ local function validateRosterMember(
 end
 
 local function validateCurrentRosterMember(value, path)
-    return validateRosterMember(value, path, true, true)
+    return validateRosterMember(value, path, true, true, true)
 end
 
 local function validateBankTab(value, path)
@@ -546,7 +555,12 @@ local function validateWindowPosition(value, path)
     return true
 end
 
-local function validateDataset(value, path, collectionValidators)
+local function validateDataset(
+    value,
+    path,
+    collectionValidators,
+    requireCanonicalRealm
+)
     local allowedKeys = {
         guild = true,
         scannedAt = true,
@@ -564,7 +578,11 @@ local function validateDataset(value, path, collectionValidators)
         return nil, path .. ".guild and " .. path .. ".scannedAt must both be present or absent"
     end
     if value.guild ~= nil then
-        valid, validationError = validateGuildIdentity(value.guild, path .. ".guild")
+        valid, validationError = validateGuildIdentity(
+            value.guild,
+            path .. ".guild",
+            requireCanonicalRealm
+        )
         if not valid then
             return nil, validationError
         end
@@ -629,7 +647,7 @@ function SavedData.validate(model)
     valid, validationError = validateDataset(model.roster, "saved data.roster", {
         ranks = validateRosterRank,
         members = validateCurrentRosterMember,
-    })
+    }, true)
     if not valid then
         return nil, validationError
     end
@@ -637,7 +655,7 @@ function SavedData.validate(model)
     valid, validationError = validateDataset(model.bank, "saved data.bank", {
         tabs = validateBankTab,
         slots = validateBankSlot,
-    })
+    }, true)
     if not valid then
         return nil, validationError
     end
@@ -653,12 +671,22 @@ function SavedData.validate(model)
 end
 
 function SavedData.copyGuildIdentity(identity)
-    local valid, validationError = validateGuildIdentity(identity, "guild identity")
+    local valid, validationError = validateGuildIdentity(
+        identity,
+        "guild identity",
+        false
+    )
     if not valid then
         return nil, validationError
     end
 
-    return deepCopy(identity)
+    local copied, copyError = deepCopy(identity)
+    if not copied then
+        return nil, copyError
+    end
+    copied.realm.name = Realm.normalize(copied.realm.name)
+    copied.realm.slug = Realm.normalize(copied.realm.slug)
+    return copied
 end
 
 local function migrateVersionZero(model)
@@ -931,11 +959,103 @@ local function migrateVersionThree(model)
     return model
 end
 
+local function validateVersionFourRosterMember(value, path)
+    return validateRosterMember(value, path, true, true, false)
+end
+
+local function normalizeGuildRealm(dataset)
+    if dataset.guild == nil then
+        return
+    end
+
+    dataset.guild.realm.name = Realm.normalize(dataset.guild.realm.name)
+    dataset.guild.realm.slug = Realm.normalize(dataset.guild.realm.slug)
+end
+
+local function preferDuplicateMember(existing, candidate)
+    if existing.isMissing ~= candidate.isMissing then
+        return not candidate.isMissing
+    end
+
+    return candidate.observedAt.unixSeconds > existing.observedAt.unixSeconds
+end
+
+local function normalizeRosterMembers(members)
+    local normalized = {}
+    local indexesByIdentity = {}
+
+    for _, member in ipairs(members) do
+        member.realm = Realm.normalize(member.realm)
+        member.displayName = member.name .. "-" .. member.realm
+        local identity = string.lower(member.displayName)
+        local existingIndex = indexesByIdentity[identity]
+
+        if existingIndex == nil then
+            normalized[#normalized + 1] = member
+            indexesByIdentity[identity] = #normalized
+        elseif preferDuplicateMember(normalized[existingIndex], member) then
+            normalized[existingIndex] = member
+        end
+    end
+
+    return normalized
+end
+
+local function migrateVersionFour(model)
+    if model.schemaVersion ~= 4 then
+        return nil, "schema version 4 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 4 data")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.roster, "schema version 4 data.roster", {
+        ranks = validateRosterRank,
+        members = validateVersionFourRosterMember,
+    }, false)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.bank, "schema version 4 data.bank", {
+        tabs = validateBankTab,
+        slots = validateBankSlot,
+    }, false)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+    }, "schema version 4 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 4 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    normalizeGuildRealm(model.roster)
+    normalizeGuildRealm(model.bank)
+    model.roster.members = normalizeRosterMembers(model.roster.members)
+    model.schemaVersion = 5
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
     [2] = migrateVersionTwo,
     [3] = migrateVersionThree,
+    [4] = migrateVersionFour,
 }
 
 local function isLegacyDevelopmentState(value)

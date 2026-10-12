@@ -5,6 +5,9 @@
 local _, RGMS = ...
 
 local DatasetOwnership = {}
+local Realm = type(RGMS) == "table"
+    and RGMS.Realm
+    or require("Core.Realm")
 
 local DATASET_CHANGE_MESSAGES = {
     roster = "Detected guild change; resetting roster data",
@@ -15,9 +18,9 @@ local function validDatasetName(datasetName)
     return DATASET_CHANGE_MESSAGES[datasetName] ~= nil
 end
 
--- realm.slug is the normalized realm value captured from the Retail API. The
--- remaining identity fields are metadata and deliberately do not affect
--- ownership.
+-- realm.slug is the canonical realm value captured from the Retail API. Realm
+-- identity is case-insensitive; the remaining fields are metadata and
+-- deliberately do not affect ownership.
 function DatasetOwnership.sameGuild(left, right)
     return type(left) == "table"
         and type(right) == "table"
@@ -28,7 +31,7 @@ function DatasetOwnership.sameGuild(left, right)
         and left.name == right.name
         and type(left.realm.slug) == "string"
         and left.realm.slug ~= ""
-        and left.realm.slug == right.realm.slug
+        and Realm.key(left.realm.slug) == Realm.key(right.realm.slug)
 end
 
 function DatasetOwnership.create(dependencies)

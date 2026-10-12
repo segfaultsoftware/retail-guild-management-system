@@ -23,6 +23,11 @@ local function withRetailStubs(callback)
 
     local requested = 0
     local memberCount = 2
+    local guildRealm = "ExampleRealm"
+    local memberNames = {
+        [101] = "Zed-OtherRealm",
+        [202] = "Ada",
+    }
     C_GuildInfo = {
         GuildRoster = function()
             requested = requested + 1
@@ -47,7 +52,7 @@ local function withRetailStubs(callback)
         GetMemberInfo = function(_, memberId)
             if memberId == 101 then
                 return {
-                    name = "Zed-OtherRealm",
+                    name = memberNames[memberId],
                     guid = "Player-0000-00000101",
                     guildRank = "Guild Master",
                     guildRankOrder = 1,
@@ -56,7 +61,7 @@ local function withRetailStubs(callback)
                 }
             end
             return {
-                name = "Ada",
+                name = memberNames[memberId],
                 guid = "Player-0000-00000202",
                 guildRank = "Member",
                 guildRankOrder = 2,
@@ -80,7 +85,7 @@ local function withRetailStubs(callback)
         return true
     end
     GetGuildInfo = function()
-        return "Example Guild", nil, nil, "ExampleRealm"
+        return "Example Guild", nil, nil, guildRealm
     end
     GetNormalizedRealmName = function()
         return "ExampleRealm"
@@ -116,6 +121,12 @@ local function withRetailStubs(callback)
         end,
         setMemberCount = function(value)
             memberCount = value
+        end,
+        setGuildRealm = function(value)
+            guildRealm = value
+        end,
+        setMemberName = function(memberId, value)
+            memberNames[memberId] = value
         end,
     })
 
@@ -164,6 +175,27 @@ return {
             test.assert_nil(snapshot)
             test.assert_equal(state, "incomplete")
             test.assert_matches(message, "partial")
+        end)
+    end),
+
+    test.case("Retail adapter canonicalizes truncated repeated guild and member realms", function()
+        withRetailStubs(function(harness)
+            local corruptedRealm = "Ner'zhul-Ner'zhul-Ner'zhul-Ner'zh"
+            harness.setGuildRealm(corruptedRealm)
+            harness.setMemberName(101, "Nalla-" .. corruptedRealm)
+
+            local snapshot = assert(harness.api:captureSnapshot())
+            local nalla
+            for _, member in ipairs(snapshot.members) do
+                if member.name == "Nalla" then
+                    nalla = member
+                end
+            end
+
+            test.assert_equal(snapshot.guild.realm.name, "Ner'zhul")
+            test.assert_equal(snapshot.guild.realm.slug, "Ner'zhul")
+            test.assert_equal(nalla.realm, "Ner'zhul")
+            test.assert_equal(nalla.displayName, "Nalla-Ner'zhul")
         end)
     end),
 }

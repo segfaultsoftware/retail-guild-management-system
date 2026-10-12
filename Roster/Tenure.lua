@@ -63,7 +63,7 @@ local function indexMembers(members, source, repairEquivalentNames)
             or member.displayName == "" then
             return nil, source .. " member displayName must be a non-empty string"
         end
-        local identity = Names.displayName(member.name, member.realm)
+        local identity = Names.identity(member.name, member.realm)
         if indexed[identity] ~= nil then
             if not repairEquivalentNames then
                 return nil, source .. " contains duplicate member " .. identity
@@ -173,7 +173,9 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
     end
 
     for _, member in ipairs(nextDataset.members) do
-        local identity = Names.displayName(member.name, member.realm)
+        member.realm = Names.collapseRepeatedRealm(member.realm)
+        member.displayName = Names.displayName(member.name, member.realm)
+        local identity = Names.identity(member.name, member.realm)
         local previous = previousMembers[identity]
         if previous ~= nil
             and not previous.isMissing
@@ -199,7 +201,7 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
     end
 
     for _, previous in ipairs(previousDataset.members) do
-        local identity = Names.displayName(previous.name, previous.realm)
+        local identity = Names.identity(previous.name, previous.realm)
         if previousMembers[identity] == previous
             and currentMembers[identity] == nil then
             local currentRank = currentRanks[previous.rankIndex]
@@ -227,6 +229,11 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
                     end
                     retained.rankName = currentRank.name
                     retained.isMissing = true
+                    retained.realm = Names.collapseRepeatedRealm(retained.realm)
+                    retained.displayName = Names.displayName(
+                        retained.name,
+                        retained.realm
+                    )
                     carryLastOnlineForward(retained, elapsedDays)
                     nextDataset.members[#nextDataset.members + 1] = retained
                 end

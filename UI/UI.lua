@@ -21,6 +21,9 @@ local ROSTER_TITLE_HEIGHT = 26
 local ROSTER_GROUP_HEIGHT = 22
 local ROSTER_ROW_HEIGHT = 20
 local ROSTER_GROUP_GAP = 8
+local MISSING_WARNING_SIZE = 16
+local MISSING_WARNING_GAP = 4
+local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
 
 local function normalizeTabId(tabId)
     if type(tabId) ~= "string" then
@@ -114,9 +117,24 @@ local function layoutRosterLines(view, availableWidth)
         line.primary:ClearAllPoints()
         line.secondary:ClearAllPoints()
         line.tertiary:ClearAllPoints()
-        line.primary:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+        line.warningIndicator:ClearAllPoints()
+        if line.memberRow then
+            line.warningIndicator:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+            line.primary:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                MISSING_WARNING_SIZE + MISSING_WARNING_GAP,
+                0
+            )
+        else
+            line.primary:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+        end
         if line.columns then
-            line.primary:SetWidth(nameWidth)
+            local warningSpace = line.memberRow
+                and (MISSING_WARNING_SIZE + MISSING_WARNING_GAP)
+                or 0
+            line.primary:SetWidth(math.max(1, nameWidth - warningSpace))
             line.secondary:SetPoint(
                 "LEFT",
                 line.frame,
@@ -165,8 +183,15 @@ local function refreshRankScrollChild(view)
     view.rankScrollChild:SetHeight(math.max(viewportHeight, contentHeight))
 end
 
+local function hideTooltipIfOwned(owner)
+    if GameTooltip:IsOwned(owner) then
+        GameTooltip:Hide()
+    end
+end
+
 local function hideRosterLines(view)
     for _, line in ipairs(view.rosterLines or {}) do
+        hideTooltipIfOwned(line.warningIndicator)
         line.frame:Hide()
     end
     view.rosterTableHeight = nil
@@ -182,6 +207,12 @@ local function acquireRosterLine(view, index)
     local primary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     local secondary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     local tertiary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local warningIndicator = CreateFrame("Button", nil, frame)
+    warningIndicator:SetSize(MISSING_WARNING_SIZE, MISSING_WARNING_SIZE)
+    local warningTexture = warningIndicator:CreateTexture(nil, "ARTWORK")
+    warningTexture:SetAllPoints()
+    warningTexture:SetTexture(MISSING_WARNING_TEXTURE)
+    warningIndicator:Hide()
     primary:SetJustifyH("LEFT")
     secondary:SetJustifyH("LEFT")
     tertiary:SetJustifyH("LEFT")
@@ -198,7 +229,33 @@ local function acquireRosterLine(view, index)
         primary = primary,
         secondary = secondary,
         tertiary = tertiary,
+        warningIndicator = warningIndicator,
     }
+    warningIndicator:SetScript("OnEnter", function()
+        if line.missingLastSeenDate == nil then
+            return
+        end
+        GameTooltip:SetOwner(warningIndicator, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Missing roster member", 1, 0.82, 0)
+        GameTooltip:AddLine(
+            "Not found in the current successful roster snapshot.",
+            1,
+            1,
+            1,
+            true
+        )
+        GameTooltip:AddLine(
+            "Last appeared (Pacific): " .. line.missingLastSeenDate,
+            1,
+            1,
+            1,
+            true
+        )
+        GameTooltip:Show()
+    end)
+    warningIndicator:SetScript("OnLeave", function()
+        hideTooltipIfOwned(warningIndicator)
+    end)
     view.rosterLines[index] = line
     return line
 end
@@ -208,10 +265,26 @@ local function renderRosterRank(view, rank)
     local lineIndex = 0
     local offset = 4
 
-    local function addLine(height, primary, secondary, tertiary, columns)
+    local function addLine(
+        height,
+        primary,
+        secondary,
+        tertiary,
+        columns,
+        member
+    )
         lineIndex = lineIndex + 1
         local line = acquireRosterLine(view, lineIndex)
         line.columns = columns == true
+        line.memberRow = member ~= nil
+        line.missingLastSeenDate = member
+            and member.isMissing
+            and member.missingLastSeenDate
+            or nil
+        if line.missingLastSeenDate == nil then
+            hideTooltipIfOwned(line.warningIndicator)
+        end
+        line.warningIndicator:SetShown(line.missingLastSeenDate ~= nil)
         line.frame:ClearAllPoints()
         line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
         line.frame:SetHeight(height)
@@ -245,7 +318,8 @@ local function renderRosterRank(view, rank)
                     member.displayName,
                     member.lastOnlineText,
                     string.format("%d %s", member.tenureDays, dayLabel),
-                    true
+                    true,
+                    member
                 )
             end
         end
@@ -255,6 +329,7 @@ local function renderRosterRank(view, rank)
     end
 
     for index = lineIndex + 1, #view.rosterLines do
+        hideTooltipIfOwned(view.rosterLines[index].warningIndicator)
         view.rosterLines[index].frame:Hide()
     end
     view.rosterTableHeight = offset + 4

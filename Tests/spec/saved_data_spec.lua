@@ -10,7 +10,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 4,
+            schemaVersion = 5,
             roster = {
                 ranks = {},
                 members = {},
@@ -56,7 +56,7 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 4)
+        test.assert_equal(first.model.schemaVersion, 5)
         test.assert_equal(first.model.roster.guild, original.roster.guildIdentity)
         test.assert_equal(first.model.roster.scannedAt, original.roster.scanTimestamp)
         test.assert_equal(first.model.bank.guild, original.bank.guildIdentity)
@@ -71,7 +71,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 4)
+        test.assert_equal(state.model.schemaVersion, 5)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
@@ -94,7 +94,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
-        test.assert_equal(state.model.schemaVersion, 4)
+        test.assert_equal(state.model.schemaVersion, 5)
         test.assert_equal(
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
@@ -109,12 +109,55 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 4)
+        test.assert_equal(state.model.schemaVersion, 5)
         test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
         test.assert_false(state.model.roster.members[1].isMissing)
         test.assert_equal(original.schemaVersion, 3)
         test.assert_nil(original.roster.members[1].lastSeenDate)
         test.assert_nil(original.roster.members[1].isMissing)
+    end),
+
+    test.case("schema version four repairs repeated realms and duplicate members", function()
+        local corruptedRealm = "Ner'zhul-Ner'zhul-Ner'zhul-Ner'zh"
+        local original = fixtures.saved_model_v4()
+        original.roster.guild.realm.name = corruptedRealm
+        original.roster.guild.realm.slug = corruptedRealm
+        original.bank.guild.realm.name = "Deep-Rock-deep-rock-De"
+        original.bank.guild.realm.slug = "deep-rock-Deep-Rock-de"
+        original.roster.members = {
+            fixtures.roster_member({
+                name = "Nalla",
+                realm = "Ner'zhul",
+                displayName = "Nalla-Ner'zhul",
+                isMissing = true,
+            }),
+            fixtures.roster_member({
+                name = "Nalla",
+                realm = corruptedRealm,
+                displayName = "Nalla-" .. corruptedRealm,
+                isMissing = false,
+            }),
+        }
+
+        local state = savedData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 4)
+        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_equal(state.model.roster.guild.realm.name, "Ner'zhul")
+        test.assert_equal(state.model.roster.guild.realm.slug, "Ner'zhul")
+        test.assert_equal(state.model.bank.guild.realm.name, "Deep-Rock")
+        test.assert_equal(state.model.bank.guild.realm.slug, "deep-rock")
+        test.assert_equal(#state.model.roster.members, 1)
+        test.assert_equal(state.model.roster.members[1].realm, "Ner'zhul")
+        test.assert_equal(
+            state.model.roster.members[1].displayName,
+            "Nalla-Ner'zhul"
+        )
+        test.assert_false(state.model.roster.members[1].isMissing)
+        test.assert_equal(original.schemaVersion, 4)
+        test.assert_equal(#original.roster.members, 2)
+        test.assert_equal(original.roster.members[2].realm, corruptedRealm)
     end),
 
     test.case("the previous development placeholder migrates to an empty model", function()
@@ -144,6 +187,20 @@ return {
         test.assert_equal(state.original, original)
         test.assert_equal(original, before)
         test.assert_nil(state.model)
+    end),
+
+    test.case("current saved data rejects noncanonical realms", function()
+        local original = fixtures.saved_model()
+        local corruptedRealm = "Area52-Area52-Area"
+        original.roster.members[1].realm = corruptedRealm
+        original.roster.members[1].displayName = "Aeloria-" .. corruptedRealm
+
+        local state = savedData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "realm must be canonical")
+        test.assert_equal(original.roster.members[1].realm, corruptedRealm)
     end),
 
     test.case("inconsistent scan timestamps fail validation", function()

@@ -5,6 +5,7 @@
 ## Version: 0.0.1-dev
 ## SavedVariablesPerCharacter: RGMSCharacterDB
 
+Core\Realm.lua
 Core\DateTime.lua
 Core\SavedData.lua
 UI\Layout.lua

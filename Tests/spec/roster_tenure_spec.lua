@@ -240,7 +240,7 @@ return {
     test.case("a current member with a repeated realm suffix reconciles canonically", function()
         local startedAt = dateFixtures.pacificMidnight.after
         local previous = reduce(emptyDataset(), completedSnapshot(startedAt))
-        previous.members[1].realm = "Example Realm-Example Realm-Example Realm"
+        previous.members[1].realm = "Example Realm-example realm-Example"
         previous.members[1].displayName = previous.members[1].name
             .. "-"
             .. previous.members[1].realm

@@ -198,13 +198,17 @@ function Report.build(dataset, currentDate, dateTime)
             elapsedDays
         )
         local group = projectedRank.groups[groupIndexForAge(ageDays)]
-        group.members[#group.members + 1] = {
+        local projectedMember = {
             name = member.name,
             displayName = Names.displayName(member.name, member.realm),
             lastOnlineText = lastOnlineText,
             tenureDays = tenureDays,
             isMissing = member.isMissing == true,
         }
+        if projectedMember.isMissing then
+            projectedMember.missingLastSeenDate = member.lastSeenDate
+        end
+        group.members[#group.members + 1] = projectedMember
     end
 
     for _, rank in ipairs(result.ranks) do

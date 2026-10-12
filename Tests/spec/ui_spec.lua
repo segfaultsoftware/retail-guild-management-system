@@ -131,6 +131,10 @@ local function newRegion(parent)
         self.text = value
     end
 
+    function region:SetTexture(value)
+        self.texture = value
+    end
+
     function region:SetEnabled(enabled)
         self.enabled = enabled
     end
@@ -144,6 +148,10 @@ local function newRegion(parent)
     end
 
     function region:CreateFontString()
+        return newRegion(self)
+    end
+
+    function region:CreateTexture()
         return newRegion(self)
     end
 
@@ -187,6 +195,7 @@ local function newRegion(parent)
         "SetBackdropColor",
         "SetJustifyH",
         "SetJustifyV",
+        "SetAllPoints",
     }
     for _, methodName in ipairs(noOpMethods) do
         region[methodName] = function() end
@@ -202,11 +211,36 @@ end
 local function newHarness(savedPosition, screenWidth, screenHeight)
     local mainFrame
     local refreshRequests = 0
+    local tooltip = {
+        lines = {},
+        shown = false,
+    }
+    function tooltip:SetOwner(owner, anchor)
+        self.owner = owner
+        self.anchor = anchor
+    end
+    function tooltip:SetText(value)
+        self.lines = { value }
+    end
+    function tooltip:AddLine(value)
+        self.lines[#self.lines + 1] = value
+    end
+    function tooltip:Show()
+        self.shown = true
+    end
+    function tooltip:IsOwned(owner)
+        return self.owner == owner
+    end
+    function tooltip:Hide()
+        self.shown = false
+        self.owner = nil
+    end
     local uiParent = newRegion()
     uiParent.width = screenWidth or 1920
     uiParent.height = screenHeight or 1080
 
     UIParent = uiParent
+    GameTooltip = tooltip
     UISpecialFrames = {}
     CreateFrame = function(_, name, parent)
         local frame = newRegion(parent)
@@ -250,6 +284,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         refreshRequests = function()
             return refreshRequests
         end,
+        tooltip = tooltip,
         ui = ui,
     }
 end
@@ -347,6 +382,71 @@ return {
         test.assert_equal(harness.database.roster, expectedObservations)
         tableText = rosterTableText(view)
         test.assert_equal(select(2, string.gsub(tableText, EMPTY_TEXT, "")), 4)
+    end),
+
+    test.case("missing roster rows show a warning with the standard hover tooltip", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local first = rosterRank(1, "Guild Master")
+        first.groups[1].members = {
+            {
+                displayName = "Current-Example Realm",
+                lastOnlineText = "Online",
+                tenureDays = 30,
+                isMissing = false,
+            },
+            {
+                displayName = "Missing-Example Realm",
+                lastOnlineText = "10 days ago",
+                tenureDays = 20,
+                isMissing = true,
+                missingLastSeenDate = "2024-05-22",
+            },
+        }
+
+        test.assert_true(harness.ui.SetRosterReport({ ranks = { first } }))
+        local view = harness.frame().views.roster
+        local currentLine = view.rosterLines[4]
+        local missingLine = view.rosterLines[5]
+
+        test.assert_false(currentLine.warningIndicator:IsShown())
+        test.assert_true(missingLine.warningIndicator:IsShown())
+        test.assert_equal(
+            missingLine.warningIndicator.points[1].x,
+            0
+        )
+
+        missingLine.warningIndicator.scripts.OnEnter()
+        test.assert_true(harness.tooltip.shown)
+        test.assert_equal(harness.tooltip.owner, missingLine.warningIndicator)
+        test.assert_equal(harness.tooltip.anchor, "ANCHOR_RIGHT")
+        test.assert_equal(harness.tooltip.lines, {
+            "Missing roster member",
+            "Not found in the current successful roster snapshot.",
+            "Last appeared (Pacific): 2024-05-22",
+        })
+
+        missingLine.warningIndicator.scripts.OnLeave()
+        test.assert_false(harness.tooltip.shown)
+
+        local otherOwner = {}
+        harness.tooltip.owner = otherOwner
+        harness.tooltip.shown = true
+        missingLine.warningIndicator.scripts.OnLeave()
+        test.assert_true(harness.tooltip.shown)
+        test.assert_equal(harness.tooltip.owner, otherOwner)
+
+        missingLine.warningIndicator.scripts.OnEnter()
+        local reappeared = rosterRank(1, "Guild Master")
+        reappeared.groups[1].members[1] = {
+            displayName = "Missing-Example Realm",
+            lastOnlineText = "Online",
+            tenureDays = 0,
+            isMissing = false,
+        }
+        test.assert_true(harness.ui.SetRosterReport({ ranks = { reappeared } }))
+        test.assert_false(view.rosterLines[4].warningIndicator:IsShown())
+        test.assert_false(harness.tooltip.shown)
     end),
 
     test.case("long rank and member lists scroll inside the fixed roster view", function()

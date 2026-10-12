@@ -116,7 +116,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 4,
+        schemaVersion = 5,
         roster = {
             guild = guild,
             scannedAt = timestamp,
@@ -196,6 +196,12 @@ function Fixtures.saved_model_v3(overrides)
         member.lastSeenDate = nil
         member.isMissing = nil
     end
+    return model
+end
+
+function Fixtures.saved_model_v4(overrides)
+    local model = Fixtures.saved_model(overrides)
+    model.schemaVersion = 4
     return model
 end
 

@@ -57,7 +57,7 @@ return {
         local current = fixtures.saved_model()
         local previous = fixtures.saved_model_v0()
 
-        test.assert_equal(current.schemaVersion, 4)
+        test.assert_equal(current.schemaVersion, 5)
         test.assert_equal(current.roster.guild.name, "Example Guild")
         test.assert_equal(current.ui.windowPosition.point, "TOPLEFT")
         test.assert_equal(previous.schemaVersion, 0)

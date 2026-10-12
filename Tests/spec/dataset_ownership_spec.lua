@@ -88,6 +88,10 @@ return {
         })
 
         test.assert_true(datasetOwnership.sameGuild(original, metadataChanged))
+        test.assert_true(datasetOwnership.sameGuild(
+            original,
+            guild("Night Shift", "AREA-52-area-52-ar")
+        ))
         test.assert_false(datasetOwnership.sameGuild(original, guild("Night shift", "area-52")))
         test.assert_false(datasetOwnership.sameGuild(original, guild("Night Shift", "illidan")))
     end),

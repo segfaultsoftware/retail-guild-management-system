@@ -5,13 +5,13 @@ RGMS persists one global named `RGMSCharacterDB`. `RGMS.toc` declares it with
 each `CharacterName-Realm`. RGMS does not add an account-level character map;
 observations from two characters therefore cannot be combined accidentally.
 
-## Current schema: version 4
+## Current schema: version 5
 
 The complete persisted shape is:
 
 ```text
 {
-  schemaVersion = 4,
+  schemaVersion = 5,
   roster = {
     guild = GuildIdentity | nil,
     scannedAt = Timestamp | nil,
@@ -41,8 +41,9 @@ be mistaken for one another.
 `YYYY-MM-DDTHH:MM:SSZ` rendering in `iso8601`. `GuildIdentity` contains the
 guild `id`, `name`, `region`, and a `realm` with `name` and `slug`. The `slug`
 stores the normalized realm value supplied by the Retail API. Dataset ownership
-compares the exact guild name and this normalized realm value; the other fields
-are metadata.
+compares the exact guild name and a case-insensitive canonical realm value; the
+other fields are metadata. Repeated realm suffixes, including values truncated
+partway through a final repetition, are collapsed before persistence.
 
 Each `RosterRank` stores its one-based guild-order `index`, displayed `name`,
 and the subset of rank permissions already represented by RGMS. Every
@@ -97,8 +98,8 @@ position survives every automatic replacement.
 ## Loading, validation, and recovery
 
 All existing values are copied before migration and validation. RGMS replaces
-`RGMSCharacterDB` only after the copy reaches schema version 4 and passes full
-validation. A fresh character receives a valid empty version 4 model.
+`RGMSCharacterDB` only after the copy reaches schema version 5 and passes full
+validation. A fresh character receives a valid empty version 5 model.
 
 Unsupported future versions enter the `incompatible` state. Malformed values,
 unknown unversioned values, and failed migrations enter the `corrupt` state.
@@ -139,9 +140,14 @@ not share account or character names from its path.
 - Schema version 3 roster members did not store `lastSeenDate` or `isMissing`.
   Migration initializes the date from each member's saved `observedAt`
   timestamp and marks every migrated member current.
+- Schema version 4 could persist repeated realm suffixes returned by the game,
+  including suffixes truncated at the client string limit. Migration
+  canonicalizes roster and bank guild realms, canonicalizes member realms and
+  display names, and coalesces equivalent members. When both a current and a
+  retained-missing duplicate exist, the current observation wins.
 - The pre-schema development placeholder contained only `loadCount` and/or
   `lastLoadedAt`. Those diagnostic values did not contain observations and are
-  migrated to a fresh empty version 4 model. Any other unversioned shape is
+  migrated to a fresh empty version 5 model. Any other unversioned shape is
   preserved and classified as corrupt.
 
 Every migration is deterministic and operates on a deep copy. There is no

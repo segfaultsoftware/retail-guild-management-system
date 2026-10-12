@@ -6,28 +6,22 @@
 local _, RGMS = ...
 
 local Names = {}
+local Realm = type(RGMS) == "table"
+    and RGMS.Realm
+    or require("Core.Realm")
 
 function Names.collapseRepeatedRealm(value)
-    local realm = tostring(value or "")
-    local separator = string.find(realm, "-", 1, true)
-    while separator do
-        local candidate = string.sub(realm, 1, separator - 1)
-        local repeated = candidate
-        while #repeated < #realm do
-            repeated = repeated .. "-" .. candidate
-        end
-        if repeated == realm then
-            return candidate
-        end
-        separator = string.find(realm, "-", separator + 1, true)
-    end
-    return realm
+    return Realm.normalize(value)
 end
 
 function Names.displayName(name, realm)
     local normalizedName = tostring(name or "")
     local normalizedRealm = Names.collapseRepeatedRealm(realm)
     return normalizedName .. "-" .. normalizedRealm
+end
+
+function Names.identity(name, realm)
+    return string.lower(Names.displayName(name, realm))
 end
 
 function Names.splitDisplayName(value, defaultRealm)

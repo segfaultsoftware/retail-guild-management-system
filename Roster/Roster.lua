@@ -4,6 +4,9 @@ local Roster = RGMS.Roster or {}
 local Names = type(RGMS.RosterNames) == "table"
     and RGMS.RosterNames
     or require("Roster.Names")
+local Realm = type(RGMS.Realm) == "table"
+    and RGMS.Realm
+    or require("Core.Realm")
 
 local REGION_NAMES = {
     [1] = "US",
@@ -58,6 +61,8 @@ local function createRetailApi()
             or type(displayRealm) ~= "string" or displayRealm == "" then
             return incomplete("guild name or realm is unavailable")
         end
+        normalizedRealm = Realm.normalize(normalizedRealm)
+        displayRealm = Realm.normalize(displayRealm)
 
         local numberOfRanks = GuildControlGetNumRanks()
         if type(numberOfRanks) ~= "number" or numberOfRanks < 1 then

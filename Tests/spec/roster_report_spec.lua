@@ -124,6 +124,39 @@ return {
         test.assert_equal(rows[3].lastOnlineText, "Online")
     end),
 
+    test.case("missing rows expose their last-appeared date without mutating observations", function()
+        local dataset = comprehensiveDataset()
+        local missingMember
+        local currentMember
+        for _, rosterMember in ipairs(dataset.members) do
+            if rosterMember.name == "RetainedMissing" then
+                missingMember = rosterMember
+                missingMember.lastSeenDate = "2024-05-22"
+            elseif rosterMember.name == "DayZero" then
+                currentMember = rosterMember
+            end
+        end
+
+        local rendered = assert(report.build(dataset, CURRENT_DATE, dateTime))
+        local renderedByName = {}
+        for _, group in ipairs(rendered.ranks[2].groups) do
+            for _, row in ipairs(group.members) do
+                renderedByName[row.name] = row
+            end
+        end
+
+        test.assert_true(renderedByName.RetainedMissing.isMissing)
+        test.assert_equal(
+            renderedByName.RetainedMissing.missingLastSeenDate,
+            "2024-05-22"
+        )
+        test.assert_false(renderedByName.DayZero.isMissing)
+        test.assert_nil(renderedByName.DayZero.missingLastSeenDate)
+        test.assert_equal(missingMember.lastSeenDate, "2024-05-22")
+        test.assert_nil(missingMember.missingLastSeenDate)
+        test.assert_equal(currentMember.lastSeenDate, "2024-06-01")
+    end),
+
     test.case("large rosters retain every row and leave observations unchanged", function()
         local dataset = comprehensiveDataset()
         dataset.members = {}
