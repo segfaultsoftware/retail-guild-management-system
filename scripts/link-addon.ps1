@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$RetailPath = (Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\_retail_")
+    [string]$RetailPath = (Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\_retail_"),
+    [switch]$Unlink
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,9 +19,38 @@ if (-not (Test-Path -LiteralPath $RetailPath -PathType Container)) {
 }
 
 $addonsPath = Join-Path $RetailPath "Interface\AddOns"
+$linkPath = Join-Path $addonsPath "RGMS"
+
+if ($Unlink) {
+    $linkItem = Get-Item -LiteralPath $linkPath -Force -ErrorAction SilentlyContinue
+    if ($null -eq $linkItem) {
+        Write-Host "RGMS addon is already unlinked:"
+        Write-Host "  $linkPath"
+        return
+    }
+
+    if ($linkItem.LinkType -ne "Junction") {
+        throw "Refusing to remove a target that is not a directory junction: $linkPath"
+    }
+
+    $junctionTargets = @($linkItem.Target)
+    if ($junctionTargets.Count -ne 1) {
+        throw "Unable to determine the junction target safely: $linkPath"
+    }
+
+    $junctionTarget = (Resolve-Path -LiteralPath $junctionTargets[0]).Path
+    if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals($junctionTarget, $repositoryPath)) {
+        throw "Refusing to remove a junction to another location: $linkPath`nExpected: $repositoryPath`nActual:   $junctionTarget"
+    }
+
+    [System.IO.Directory]::Delete($linkPath)
+    Write-Host "Unlinked RGMS addon:"
+    Write-Host "  $linkPath"
+    return
+}
+
 New-Item -ItemType Directory -Path $addonsPath -Force | Out-Null
 
-$linkPath = Join-Path $addonsPath "RGMS"
 if (Test-Path -LiteralPath $linkPath) {
     throw "The target already exists: $linkPath`nMove or remove it after confirming it is safe, then run this script again."
 }

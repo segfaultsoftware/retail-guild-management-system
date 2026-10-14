@@ -47,6 +47,8 @@ Bank scans are started from the default guild-bank window and the Bank
 3. Link the checkout into Retail's `Interface/AddOns` directory:
    - Windows: `powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1`
    - macOS: `sh ./scripts/link-addon.sh`
+   - To safely remove the Windows junction later, rerun the command with
+     `-Unlink`.
 4. Enable **Retail Guild Management System (RGMS)** at character selection and
    log in.
 5. Confirm that the RGMS development load message appears, then run
