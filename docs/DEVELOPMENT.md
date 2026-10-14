@@ -98,6 +98,17 @@ The script creates an `RGMS` directory junction. Creating a junction normally
 does not require Administrator privileges. It refuses to replace an existing
 file or directory.
 
+To remove the junction before testing an installed package, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Unlink
+```
+
+Pass the same `-RetailPath` value when unlinking from a custom Retail location.
+Unlinking is safe to repeat: the script succeeds when the junction is already
+absent. It refuses to remove a regular file or directory, or a junction that
+does not point to the current checkout.
+
 ### macOS: create a symbolic link
 
 From the repository root, run:
