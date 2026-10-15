@@ -20,7 +20,9 @@ transition that failed.
 ## Test record
 
 - Release candidate: ______________________________
-- Commit: _________________________________________
+- Candidate commit: _______________________________
+- Candidate build run: ____________________________
+- Candidate artifact ID: __________________________
 - Retail version/build from `/dump GetBuildInfo()`: __________________________
 - Retail interface number from `/dump select(4, GetBuildInfo())`: ____________
 - Tester: _________________________________________

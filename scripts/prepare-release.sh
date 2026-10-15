@@ -4,7 +4,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Prepare an RGMS release candidate from Git Bash.
+Prepare RGMS release-candidate metadata from Git Bash.
 
 Usage:
   bash ./scripts/prepare-release.sh --version VERSION --tester TESTER [options]
@@ -21,9 +21,9 @@ Options:
   -h, --help              Show this help.
 
 --retail-version and --interface must be supplied together. The script updates
-RGMS.toc, invokes the existing PowerShell release builder, and creates a
-prepopulated QA record containing the verified package SHA-256. It never
-commits, pushes, tags, or installs files into the Retail client.
+RGMS.toc and creates a prepopulated QA record for review and merge to main.
+GitHub builds the canonical package only after that merge. This script never
+builds, commits, pushes, tags, or installs files into the Retail client.
 EOF
 }
 
@@ -94,8 +94,6 @@ fi
 
 command -v git >/dev/null 2>&1 || fail "git was not found"
 command -v awk >/dev/null 2>&1 || fail "awk was not found"
-command -v sha256sum >/dev/null 2>&1 || fail "sha256sum was not found"
-command -v pwsh >/dev/null 2>&1 || fail "PowerShell 7 (pwsh) was not found"
 
 repository_path="$(git rev-parse --show-toplevel 2>/dev/null)" || \
     fail "run this command from an RGMS Git checkout"
@@ -133,19 +131,14 @@ qa_record="${qa_record//\\//}"
     fail "QA record must be a simple Markdown path directly under docs/qa"
 [[ ! -e "$qa_record" ]] || fail "QA record already exists: $qa_record"
 
-artifact=".release/RGMS-$version.zip"
-[[ ! -e "$artifact" ]] || fail "release artifact already exists: $artifact"
-
 manifest_backup="$(mktemp "${TMPDIR:-/tmp}/rgms-manifest.XXXXXX")"
 manifest_replacement="$(mktemp "${TMPDIR:-/tmp}/rgms-manifest-new.XXXXXX")"
 qa_replacement="$(mktemp "${TMPDIR:-/tmp}/rgms-qa.XXXXXX")"
-build_log="$(mktemp "${TMPDIR:-/tmp}/rgms-build.XXXXXX")"
 cp RGMS.toc "$manifest_backup"
 
 completed=false
 manifest_changed=false
 qa_created=false
-artifact_created=false
 
 cleanup() {
     exit_code=$?
@@ -156,11 +149,8 @@ cleanup() {
         if [[ "$qa_created" == true ]]; then
             rm -f -- "$qa_record"
         fi
-        if [[ "$artifact_created" == true ]]; then
-            rm -f -- "$artifact"
-        fi
     fi
-    rm -f -- "$manifest_backup" "$manifest_replacement" "$qa_replacement" "$build_log"
+    rm -f -- "$manifest_backup" "$manifest_replacement" "$qa_replacement"
     exit "$exit_code"
 }
 trap cleanup EXIT
@@ -176,7 +166,7 @@ awk -v version="$version" -v interface_number="$interface_number" '
         if (interface_number != "") {
             print "## Interface: " interface_number
         } else {
-            print
+            print $0
         }
         interface_count += 1
         next
@@ -192,20 +182,11 @@ awk -v version="$version" -v interface_number="$interface_number" '
 mv "$manifest_replacement" RGMS.toc
 manifest_changed=true
 
-printf 'Preparing RGMS %s on branch %s...\n' "$version" "$branch"
-pwsh -NoProfile -File ./scripts/build-release.ps1 -Version "$version" 2>&1 | tee "$build_log"
-[[ -f "$artifact" ]] || fail "the release builder did not create $artifact"
-artifact_created=true
-
-checksum="$(sha256sum "$artifact" | awk '{ print tolower($1) }')"
-[[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || fail "could not calculate the package SHA-256"
-
 awk \
     -v version="$version" \
     -v tester="$tester" \
     -v retail_version="$retail_version" \
-    -v interface_number="$interface_number" \
-    -v checksum="$checksum" '
+    -v interface_number="$interface_number" '
     /^- Release candidate:/ {
         print "- Release candidate: " version
         next
@@ -223,11 +204,7 @@ awk \
         next
     }
     /^- Automated result and test count:/ {
-        print "- Automated result and test count: PASS (release builder and Lua suite)"
-        next
-    }
-    /^- Package SHA-256:/ {
-        print "- Package SHA-256: " checksum
+        print "- Automated result and test count: PENDING (Build Release Candidate workflow)"
         next
     }
     { print }
@@ -241,11 +218,10 @@ completed=true
 printf '\nPrepared release candidate files:\n'
 printf '  Manifest: RGMS.toc\n'
 printf '  QA record: %s\n' "$qa_record"
-printf '  Package: %s\n' "$artifact"
-printf '  SHA-256: %s\n' "$checksum"
 printf '\nNext steps:\n'
-printf '  1. Extract %s into _retail_/Interface/AddOns.\n' "$artifact"
-printf '  2. Complete %s and set its final disposition to PASS.\n' "$qa_record"
-printf '  3. Commit and push this candidate branch, then merge its reviewed PR.\n'
-printf '  4. Dispatch the Release workflow with version %s, the merged commit SHA, and %s.\n' \
+printf '  1. Commit and push this candidate branch, then merge its reviewed PR to main.\n'
+printf '  2. Dispatch Build Release Candidate for version %s and the merged main SHA.\n' "$version"
+printf '  3. Download and test that workflow artifact; copy its evidence values into %s.\n' "$qa_record"
+printf '  4. Commit only completed QA records and merge them to main.\n'
+printf '  5. Dispatch Release with version %s, the QA commit SHA, and %s.\n' \
     "$version" "$qa_record"
