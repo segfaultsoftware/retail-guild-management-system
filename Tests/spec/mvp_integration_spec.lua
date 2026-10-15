@@ -206,6 +206,12 @@ local function newSession(options)
             if completed == nil or state == "incomplete" then
                 return completed, state
             end
+            if state == "empty-retry" then
+                local requested, requestState = self.bankScanner:Update(1)
+                if requested == nil then
+                    return requested, requestState
+                end
+            end
         end
         return true
     end
