@@ -7,6 +7,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Guild-bank scans now retry unexpectedly empty accessible tabs three times at
+  one-second intervals before accepting the tab as genuinely empty.
+
 ### Added
 
 - Contributor, testing, packaging, licensing, and manual release documentation.

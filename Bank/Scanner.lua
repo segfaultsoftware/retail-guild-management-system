@@ -6,6 +6,8 @@ local _, RGMS = ...
 
 local Scanner = {}
 Scanner.DEFAULT_TIMEOUT_SECONDS = 20
+Scanner.EMPTY_RETRY_DELAY_SECONDS = 1
+Scanner.MAX_EMPTY_ATTEMPTS = 4
 
 local function copyTimestamp(timestamp)
     return {
@@ -132,13 +134,7 @@ function Scanner.create(dependencies)
         return true, commitResult
     end
 
-    function scanner:RequestNextTab()
-        self.work.accessiblePosition = self.work.accessiblePosition + 1
-        local tabIndex = self.work.accessibleTabs[self.work.accessiblePosition]
-        if tabIndex == nil then
-            return self:Complete()
-        end
-
+    function scanner:RequestTab(tabIndex)
         self.work.requestedTab = tabIndex
         local requested, requestError = pcall(function()
             dependencies.api:requestTab(tabIndex)
@@ -154,6 +150,18 @@ function Scanner.create(dependencies)
             )
         end
         return true
+    end
+
+    function scanner:RequestNextTab()
+        self.work.accessiblePosition = self.work.accessiblePosition + 1
+        local tabIndex = self.work.accessibleTabs[self.work.accessiblePosition]
+        if tabIndex == nil then
+            return self:Complete()
+        end
+
+        self.work.emptyAttempts = 0
+        self.work.retryAfter = nil
+        return self:RequestTab(tabIndex)
     end
 
     function scanner:Request(source)
@@ -216,6 +224,8 @@ function Scanner.create(dependencies)
             accessibleCount = #accessibleTabs,
             accessiblePosition = 0,
             requestedTab = nil,
+            emptyAttempts = 0,
+            retryAfter = nil,
         }
         self:SetProgress(true)
         return self:RequestNextTab()
@@ -224,6 +234,9 @@ function Scanner.create(dependencies)
     function scanner:OnSlotsChanged()
         if not self.inProgress or self.work.requestedTab == nil then
             return false
+        end
+        if self.work.retryAfter ~= nil then
+            return false, "empty-retry"
         end
 
         local tabIndex = self.work.requestedTab
@@ -250,6 +263,14 @@ function Scanner.create(dependencies)
             )
         end
 
+        if #slots == 0 then
+            self.work.emptyAttempts = self.work.emptyAttempts + 1
+            if self.work.emptyAttempts < Scanner.MAX_EMPTY_ATTEMPTS then
+                self.work.retryAfter = Scanner.EMPTY_RETRY_DELAY_SECONDS
+                return false, "empty-retry"
+            end
+        end
+
         for _, slot in ipairs(slots) do
             self.work.slots[#self.work.slots + 1] = slot
         end
@@ -262,12 +283,27 @@ function Scanner.create(dependencies)
             return false
         end
 
-        self.elapsed = self.elapsed + (tonumber(elapsed) or 0)
+        elapsed = tonumber(elapsed) or 0
+        if elapsed < 0 then
+            elapsed = 0
+        end
+        if self.work.retryAfter ~= nil then
+            local retryElapsed = math.min(elapsed, self.work.retryAfter)
+            self.work.retryAfter = self.work.retryAfter - retryElapsed
+            elapsed = elapsed - retryElapsed
+        end
+        self.elapsed = self.elapsed + elapsed
         if self.elapsed >= self.timeoutSeconds then
             return self:FinishFailure(
                 "timed out before every accessible guild-bank tab was complete",
                 "timeout"
             )
+        end
+        if self.work.retryAfter ~= nil then
+            if self.work.retryAfter <= 0 then
+                self.work.retryAfter = nil
+                return self:RequestTab(self.work.requestedTab)
+            end
         end
         return false
     end

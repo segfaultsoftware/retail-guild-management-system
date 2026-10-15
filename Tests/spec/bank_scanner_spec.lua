@@ -77,6 +77,9 @@ local function newHarness(options)
             if options.partialTab == tabIndex then
                 return nil, "incomplete", "slot data is partial"
             end
+            if type(options.captureTab) == "function" then
+                return options.captureTab(tabIndex, captures[tabIndex])
+            end
             return (options.slotsByTab or {})[tabIndex] or {}
         end,
         captureTimestamp = function()
@@ -123,7 +126,18 @@ local function newHarness(options)
         refreshes = function()
             return refreshes
         end,
+        captures = captures,
     }
+end
+
+local function completeEmptyTab(harness)
+    for _ = 1, 3 do
+        local completed, state = harness.scanner:OnSlotsChanged()
+        test.assert_false(completed)
+        test.assert_equal(state, "empty-retry")
+        test.assert_true(harness.scanner:Update(1))
+    end
+    return harness.scanner:OnSlotsChanged()
 end
 
 return {
@@ -211,6 +225,102 @@ return {
         test.assert_false(harness.scanner:IsInProgress())
     end),
 
+    test.case("empty tab reads retry after one second and accept later data", function()
+        local expectedSlot = slot(1, 4, 8)
+        local harness = newHarness({
+            captureTab = function(_, attempt)
+                if attempt < 3 then
+                    return {}
+                end
+                return { expectedSlot }
+            end,
+        })
+
+        test.assert_true(harness.scanner:Request("manual"))
+        local completed, state = harness.scanner:OnSlotsChanged()
+        test.assert_false(completed)
+        test.assert_equal(state, "empty-retry")
+        test.assert_equal(harness.requests, { 1 })
+
+        test.assert_false(harness.scanner:Update(0.5))
+        test.assert_equal(harness.requests, { 1 })
+        completed, state = harness.scanner:OnSlotsChanged()
+        test.assert_false(completed)
+        test.assert_equal(state, "empty-retry")
+        test.assert_equal(harness.captures[1], 1)
+
+        test.assert_true(harness.scanner:Update(0.5))
+        test.assert_equal(harness.requests, { 1, 1 })
+        completed, state = harness.scanner:OnSlotsChanged()
+        test.assert_false(completed)
+        test.assert_equal(state, "empty-retry")
+
+        test.assert_true(harness.scanner:Update(1))
+        test.assert_equal(harness.requests, { 1, 1, 1 })
+        test.assert_true(harness.scanner:OnSlotsChanged())
+
+        test.assert_equal(harness.captures[1], 3)
+        test.assert_equal(harness.commits(), 1)
+        test.assert_equal(#harness.current().bank.slots, 1)
+        test.assert_equal(harness.current().bank.slots[1].slotIndex, 4)
+    end),
+
+    test.case("four empty reads are accepted as a successful empty tab", function()
+        local harness = newHarness()
+
+        test.assert_true(harness.scanner:Request("manual"))
+        for attempt = 1, 3 do
+            local completed, state = harness.scanner:OnSlotsChanged()
+            test.assert_false(completed)
+            test.assert_equal(state, "empty-retry")
+            test.assert_true(harness.scanner:Update(1))
+            test.assert_equal(#harness.requests, attempt + 1)
+        end
+        test.assert_true(harness.scanner:OnSlotsChanged())
+
+        test.assert_equal(harness.captures[1], 4)
+        test.assert_equal(harness.requests, { 1, 1, 1, 1 })
+        test.assert_equal(harness.commits(), 1)
+        test.assert_equal(#harness.current().bank.slots, 0)
+    end),
+
+    test.case("intentional retry waits do not consume the scan timeout", function()
+        local harness = newHarness({ timeoutSeconds = 1 })
+
+        test.assert_true(harness.scanner:Request("manual"))
+        test.assert_false(harness.scanner:OnSlotsChanged())
+        test.assert_true(harness.scanner:Update(1))
+        test.assert_true(harness.scanner:IsInProgress())
+
+        local completed, reason = harness.scanner:Update(1)
+        test.assert_nil(completed)
+        test.assert_equal(reason, "timeout")
+        test.assert_false(harness.scanner:IsInProgress())
+    end),
+
+    test.case("empty retry attempts reset for each accessible tab", function()
+        local harness = newHarness({
+            catalog = {
+                guild = fixtures.guild_identity(),
+                tabs = { tab(1, true), tab(2, true) },
+            },
+        })
+
+        test.assert_true(harness.scanner:Request("manual"))
+        for _ = 1, 3 do
+            test.assert_false(harness.scanner:OnSlotsChanged())
+            test.assert_true(harness.scanner:Update(1))
+        end
+        test.assert_true(harness.scanner:OnSlotsChanged())
+        test.assert_equal(harness.requests, { 1, 1, 1, 1, 2 })
+
+        local completed, state = harness.scanner:OnSlotsChanged()
+        test.assert_false(completed)
+        test.assert_equal(state, "empty-retry")
+        test.assert_equal(harness.captures[2], 1)
+        test.assert_equal(harness.commits(), 0)
+    end),
+
     test.case("timeout discards all partial tab results and preserves prior state", function()
         local harness = newHarness({
             catalog = {
@@ -292,7 +402,7 @@ return {
             }),
         })
         test.assert_true(first.scanner:Request("manual"))
-        test.assert_true(first.scanner:OnSlotsChanged())
+        test.assert_true(completeEmptyTab(first))
 
         local second = newHarness({
             model = first.current(),
@@ -302,7 +412,7 @@ return {
             }),
         })
         test.assert_true(second.scanner:Request("manual"))
-        test.assert_true(second.scanner:OnSlotsChanged())
+        test.assert_true(completeEmptyTab(second))
 
         test.assert_equal(second.current().bank.scannedAt.unixSeconds, 1717248900)
     end),
