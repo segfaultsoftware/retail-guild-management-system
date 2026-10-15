@@ -1,9 +1,10 @@
 # RGMS release runbook
 
-This runbook takes a tested commit through a reproducible local package, live
-Retail verification, an automated draft GitHub release, and a **manual**
-CurseForge upload. The repository-owned builder is the only supported package
-path; local builds and tag builds use the same command and validation.
+This runbook takes a candidate already merged to `main` through a canonical
+GitHub-built package, live Retail verification, an automated draft GitHub
+release, and a **manual** CurseForge upload. Local package builds are useful for
+development validation, but only the retained **Build Release Candidate**
+artifact may be live-tested, promoted, or uploaded to CurseForge.
 
 GitHub automation uses only the repository-scoped `GITHUB_TOKEN`. RGMS does not
 store or use CurseForge credentials, and a maintainer can complete the entire
@@ -43,20 +44,25 @@ release-critical checks in one command:
 - reject duplicate, missing, contributor-only, generated, metadata,
   credential, and secret-like archive paths;
 - compare every archived file with its verified source content;
-- build twice with fixed entry order, timestamps, permissions, and storage,
-  then require identical SHA-256 hashes; and
+- build twice in the same environment with fixed entry order, timestamps,
+  permissions, and storage, then require identical SHA-256 hashes; and
 - refuse to overwrite an existing `RGMS-<version>.zip`.
 
 The **Tests** workflow runs the Lua suite and package validation for every pull
-request and push to `main`. A maintainer manually dispatches the **Release**
-workflow with a version, full commit SHA on `main`, and completed QA-record
-path. Before requesting approval, the workflow rebuilds that exact commit and
-requires its ZIP checksum to match the live-tested package recorded by QA. The
-`release` GitHub Environment then requires a reviewer to approve promotion.
-Only after approval does the workflow create the annotated tag and draft
-GitHub release, download the attached ZIP again, and verify its checksum. Any
-failed test, incomplete QA record, manifest mismatch, invalid archive, reused
-version, or missing changelog section stops promotion.
+request and push to `main`. After candidate source and a blank QA record are on
+`main`, a maintainer dispatches **Build Release Candidate** for that exact
+commit. GitHub runs the authoritative tests and builder once, then retains the
+canonical ZIP and signed-by-context metadata as one immutable Actions artifact.
+
+The tester downloads that artifact, live-tests its inner ZIP without
+rebuilding, and commits only completed QA records. The **Release** workflow
+validates the candidate run, artifact ID, checksum, commit ancestry, and
+QA-only diff before requesting `release` Environment approval. Promotion
+downloads the same retained artifact, tags the QA commit, attaches the original
+ZIP to a draft GitHub release, downloads it again, and verifies its checksum.
+Any failed build, expired or mismatched artifact, incomplete QA record,
+packaged-source change, reused version, or missing changelog section stops
+promotion.
 
 ## Required access and tools
 
@@ -65,15 +71,15 @@ The release maintainer needs:
 - push and release permission for
   `segfaultsoftware/retail-guild-management-system`;
 - Git and an authenticated GitHub CLI session (`gh auth status`);
-- PowerShell 7 (`pwsh`) on Windows, macOS, or Linux;
-- Lua 5.1 for the authoritative automated run;
+- PowerShell 7 (`pwsh`) and Lua for optional local validation;
 - the live Retail client and characters/permissions required by the
   [`MVP scenario checklist`](MVP_SCENARIO_CHECKLIST.md); and
 - a CurseForge account with owner or project-member permission for the manual
   upload, if a CurseForge release is being prepared.
 
-GitHub-hosted workflows install Lua 5.1 and already provide PowerShell 7. No
-package manager or downloaded packaging script is used by the builder.
+GitHub-hosted workflows install Lua 5.1 and already provide PowerShell 7 for the
+authoritative candidate build. No package manager or downloaded packaging
+script is used by the builder.
 
 ## Update Retail support and release metadata
 
@@ -98,7 +104,7 @@ support Classic, PTR, or Beta clients.
    release date and restore an empty `Unreleased` section. An RC may use the
    current `Unreleased` section in its generated draft notes.
 
-## Build and inspect a release candidate
+## Prepare and merge a release candidate
 
 Use a dedicated release branch or pull request. Replace the example version in
 every command with the version being prepared.
@@ -131,35 +137,55 @@ every command with the version being prepared.
      --interface 120100
    ```
 
-   The Bash entry point updates `RGMS.toc`, invokes the repository-owned
-   PowerShell builder, and creates a prepopulated tester-specific record under
-   `docs/qa`. Expected result: the command reports zero Lua test failures,
-   lists every ZIP entry, records its SHA-256 in the QA record, and creates
-   `.release/RGMS-0.1.0-rc.1.zip`. It does not commit, push, tag, or install the
-   addon. A second invocation with the same version must fail rather than
-   replace the QA record or artifact.
-4. Inspect the printed list. It must contain exactly one `RGMS/` root with
+   The Bash entry point updates `RGMS.toc` and creates a prepopulated,
+   tester-specific record under `docs/qa`. Candidate provenance, automated
+   result, and package checksum remain pending until GitHub builds the package.
+   The script does not build, commit, push, tag, or install the addon. A second
+   invocation with the same version must fail rather than replace the record.
+4. Review the manifest and blank QA record, commit all candidate source and
+   metadata, push the branch, and merge its reviewed pull request into `main`.
+5. Copy the full 40-character SHA of the resulting candidate commit at the tip
+   of `main`. Dispatch the build before merging anything else.
+
+## Build and inspect the canonical candidate
+
+1. Manually dispatch **Build Release Candidate** from `main` with the version
+   and candidate commit. The equivalent authenticated GitHub CLI command is:
+
+   ```text
+   gh workflow run "Build Release Candidate" \
+     --repo segfaultsoftware/retail-guild-management-system \
+     --ref main \
+     -f version=0.1.0-rc.1 \
+     -f commit=FULL_40_CHARACTER_CANDIDATE_COMMIT_SHA
+   ```
+
+2. Wait for the run to succeed. Its summary records the candidate commit,
+   workflow run ID, immutable artifact ID, automated test result, package
+   SHA-256, and authenticated artifact link.
+3. Download and extract the workflow artifact wrapper. It must contain exactly
+   `RGMS-0.1.0-rc.1.zip` and `candidate.json`. Do not rename or rebuild the
+   inner ZIP.
+4. Confirm the inner ZIP's SHA-256 matches both the workflow summary and
+   `candidate.json`. Inspect it: it must contain exactly one `RGMS/` root with
    `RGMS.toc`, all manifest-listed runtime Lua files, `README.md`,
    `CHANGELOG.md`, and `LICENSE`. It must not contain `.github`, `.git`,
    `.release`, `docs`, `scripts`, `Tests`, fixtures, caches, local tooling,
    repository metadata, SavedVariables, or credentials.
-5. Confirm the SHA-256 printed by the builder matches the value that the
-   preparation script placed in the candidate QA record. To confirm it later
-   from Git Bash, run:
+5. Copy the candidate commit, workflow run ID, artifact ID, automated result,
+   and package SHA-256 from the workflow summary into the QA record.
 
-   ```text
-   sha256sum .release/RGMS-0.1.0-rc.1.zip
-   ```
-
-The generated ZIP is under `.release`, which is ignored by Git. The manifest
-and QA record are intentional candidate-branch changes.
+Actions artifacts expire after the configured retention period, currently 90
+days. Finish QA and promotion before expiration. If the artifact expires, build
+and test a new RC identifier rather than substituting a local package.
 
 ## Test the exact package in Retail
 
-Do not treat testing the linked source checkout as package verification.
+Do not treat testing the linked source checkout or a local rebuild as package
+verification.
 
 1. Preserve the development link or directory outside `Interface/AddOns`.
-2. Extract the candidate ZIP so the resulting path is exactly
+2. Extract the canonical candidate ZIP so the resulting path is exactly
    `_retail_/Interface/AddOns/RGMS/RGMS.toc`.
 3. Start Retail with only RGMS enabled. Confirm the addon list displays the
    candidate version and does not mark it out of date.
@@ -171,11 +197,13 @@ Do not treat testing the linked source checkout as package verification.
 6. Set the record disposition to `PASS`, `FAIL`, or `BLOCKED`. Do not tag or
    release a failed or blocked candidate.
 7. Restore the development link only after Retail is closed.
+8. Commit only completed QA records. Open and merge a QA-only pull request into
+   `main`; do not include source, workflow, changelog, or manifest changes.
 
 Before the first public release, a second person must follow
 [`CONTRIBUTING.md`](../CONTRIBUTING.md) from a clean checkout and repeat this
-runbook through ZIP creation and inspection. Record the result in a second QA
-record. That dry run does not require a tag or remote release.
+runbook through canonical artifact download and inspection. Record the result
+in a second QA record. That dry run does not require a tag or remote release.
 
 ## Tag and create the automated draft
 
@@ -186,16 +214,17 @@ Before the first promotion, create a GitHub Environment named `release` in the
 repository settings and configure at least one required reviewer. The workflow
 checks this configuration before it performs any release mutation.
 
-1. Finish the candidate QA record. Every checkbox must be checked, documented
+1. Finish the candidate QA record. Every provenance field must exactly match
+   the successful candidate run, every checkbox must be checked, documented
    exceptions must be explained, and the final line must be exactly:
 
    ```text
    - [x] Final release-candidate disposition: PASS
    ```
 
-2. Commit and push the completed candidate work and QA evidence. Open a pull
-   request and merge it into `main` after review and required checks pass.
-3. Copy the full 40-character SHA of the resulting commit on `main`, then
+2. Commit and push only completed QA evidence. Open a pull request and
+   merge it into `main` after review and required checks pass.
+3. Copy the full 40-character SHA of the resulting QA commit on `main`, then
    manually dispatch the **Release** workflow from GitHub Actions. Supply the
    version, commit SHA, and QA-record path. The equivalent authenticated GitHub
    CLI command is:
@@ -205,28 +234,30 @@ checks this configuration before it performs any release mutation.
      --repo segfaultsoftware/retail-guild-management-system \
      --ref main \
      -f version=0.1.0-rc.1 \
-     -f commit=FULL_40_CHARACTER_MAIN_COMMIT_SHA \
+     -f commit=FULL_40_CHARACTER_QA_COMMIT_SHA \
      -f qa_record=docs/qa/0.1.0-rc.1-YOUR-NAME.md
    ```
 
-4. Wait for preflight. It validates that the commit is on `main`, the manifest
-   and QA version match, every checklist item is complete, the disposition is
-   `PASS`, and a clean rebuild has the exact live-tested checksum.
+4. Wait for preflight. It validates that both commits are on `main`, only QA
+   records changed since the candidate, the recorded workflow run
+   succeeded for that candidate, the immutable artifact remains available,
+   every checklist item is complete, the disposition is `PASS`, and the
+   downloaded ZIP has the exact live-tested checksum.
 5. Approve the waiting `release` Environment deployment. The promotion job
    rechecks version availability, creates and pushes the annotated tag, creates
-   a draft named `RGMS 0.1.0-rc.1`, downloads its ZIP, and verifies the tag,
-   metadata, asset name, and checksum. It never uploads to CurseForge or
-   publishes the GitHub release.
-6. Review the workflow's verified-release summary and the resulting draft.
-   The fixed archive metadata makes clean builds of the same revision
-   byte-for-byte reproducible across supported PowerShell environments.
+   a draft named `RGMS 0.1.0-rc.1`, attaches the original candidate ZIP,
+   downloads it again, and verifies the tag, metadata, asset name, and
+   checksum. It never uploads to CurseForge or publishes the GitHub release.
+6. Review the workflow's verified-release summary and resulting draft. Confirm
+   the candidate artifact, live-tested ZIP, GitHub release asset, and later
+   CurseForge upload all have the same SHA-256.
 
-If preflight fails before the tag exists, correct only the QA or workflow input
-and rerun it against the same artifact. If source or packaged content changes,
-prepare and test the next RC identifier. If promotion fails after creating the
-tag, do not create or upload a replacement artifact under that version; fix the
-cause and use the next RC. The workflow never overwrites or reuses a tag,
-release, or asset.
+If preflight fails before the tag exists, correct only the QA record or workflow
+input and rerun it against the same retained artifact. If source or packaged
+content changes, or the candidate artifact expires, prepare and test the next
+RC identifier. If promotion fails after creating the tag, do not create or
+upload a replacement artifact under that version; fix the cause and use the
+next RC. The workflow never overwrites or reuses a tag, release, or asset.
 
 For a final version, repeat every preparation, automated, package, live-QA,
 checksum, and draft-inspection step on a final `vX.Y.Z` tag. Do not rename an RC
