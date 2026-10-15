@@ -5,6 +5,12 @@ All notable user-visible changes to RGMS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.0-rc5
+
+### Added
+
+Several internal pipeline issues were addressed to try to get releases out quicker and more foolproof.
+
 ## 0.1.0-rc2
 
 ### Fixed
