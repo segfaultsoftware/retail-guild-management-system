@@ -8,6 +8,7 @@ local defaultSuites = {
     "Tests.spec.fixtures_spec",
     "Tests.spec.date_time_spec",
     "Tests.spec.saved_data_spec",
+    "Tests.spec.bootstrap_spec",
     "Tests.spec.reset_spec",
     "Tests.spec.dataset_ownership_spec",
     "Tests.spec.commands_spec",

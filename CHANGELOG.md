@@ -5,11 +5,18 @@ All notable user-visible changes to RGMS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Added session-only `/rgms debug` logging for guild-bank tab requests, slot-change
+  events, empty-tab retries, occupied-slot counts, and final per-tab totals.
+
 ## 0.1.0-rc.8
 
 ### Added
 
-Several internal pipeline issues were addressed to try to get releases out quicker and more foolproof.
+- Several internal pipeline issues were addressed to try to get releases out quicker and more foolproof.
 
 ## 0.1.0-rc2
 

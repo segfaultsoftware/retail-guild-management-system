@@ -30,6 +30,24 @@ function Scanner.create(dependencies)
         dependencies.print(message)
     end
 
+    local function debugMessage(message)
+        if type(dependencies.debug) == "function" then
+            dependencies.debug(message)
+        end
+    end
+
+    local function activeAttempt(work)
+        return work.emptyAttempts + 1
+    end
+
+    local function slotCountText(count)
+        return string.format(
+            "%d occupied slot%s",
+            count,
+            count == 1 and "" or "s"
+        )
+    end
+
     function scanner:IsInProgress()
         return self.inProgress
     end
@@ -45,6 +63,7 @@ function Scanner.create(dependencies)
     end
 
     function scanner:FinishFailure(message, reason)
+        debugMessage("Guild bank scan failed: " .. tostring(message) .. ".")
         if self.inProgress then
             self:SetProgress(false)
         end
@@ -59,6 +78,7 @@ function Scanner.create(dependencies)
             return false
         end
 
+        debugMessage("Guild bank scan canceled.")
         self:SetProgress(false)
         self:ClearWork()
         dependencies.refreshStatus()
@@ -94,6 +114,29 @@ function Scanner.create(dependencies)
             tabs = self.work.tabs,
             slots = self.work.slots,
         }
+        local countParts = {}
+        for _, tab in ipairs(snapshot.tabs) do
+            local count = self.work.tabCounts[tab.index]
+            if tab.isViewable then
+                countParts[#countParts + 1] = string.format(
+                    "tab %d=%d",
+                    tab.index,
+                    count or 0
+                )
+            else
+                countParts[#countParts + 1] = string.format(
+                    "tab %d=inaccessible",
+                    tab.index
+                )
+            end
+        end
+        debugMessage(
+            "Guild bank scan final counts: "
+                .. (#countParts > 0
+                    and table.concat(countParts, ", ")
+                    or "no purchased tabs")
+                .. "."
+        )
         local transaction, beginError = dependencies.ownership:begin(
             "bank",
             snapshot.guild
@@ -136,6 +179,12 @@ function Scanner.create(dependencies)
 
     function scanner:RequestTab(tabIndex)
         self.work.requestedTab = tabIndex
+        debugMessage(string.format(
+            "Requested guild bank tab %d (attempt %d/%d).",
+            tabIndex,
+            activeAttempt(self.work),
+            Scanner.MAX_EMPTY_ATTEMPTS
+        ))
         local requested, requestError = pcall(function()
             dependencies.api:requestTab(tabIndex)
         end)
@@ -226,7 +275,15 @@ function Scanner.create(dependencies)
             requestedTab = nil,
             emptyAttempts = 0,
             retryAfter = nil,
+            tabCounts = {},
         }
+        debugMessage(string.format(
+            "Guild bank scan started with %d purchased tab%s and %d accessible tab%s.",
+            #catalog.tabs,
+            #catalog.tabs == 1 and "" or "s",
+            #accessibleTabs,
+            #accessibleTabs == 1 and "" or "s"
+        ))
         self:SetProgress(true)
         return self:RequestNextTab()
     end
@@ -235,7 +292,17 @@ function Scanner.create(dependencies)
         if not self.inProgress or self.work.requestedTab == nil then
             return false
         end
+        debugMessage(string.format(
+            "Guild bank slot-change event received while tab %d attempt %d/%d is active.",
+            self.work.requestedTab,
+            activeAttempt(self.work),
+            Scanner.MAX_EMPTY_ATTEMPTS
+        ))
         if self.work.retryAfter ~= nil then
+            debugMessage(string.format(
+                "Ignored the slot-change event for guild bank tab %d while waiting to retry.",
+                self.work.requestedTab
+            ))
             return false, "empty-retry"
         end
 
@@ -255,6 +322,12 @@ function Scanner.create(dependencies)
         end
         if slots == nil then
             if captureState == "incomplete" then
+                debugMessage(string.format(
+                    "Guild bank tab %d attempt %d/%d was incomplete; waiting for another slot-change event.",
+                    tabIndex,
+                    activeAttempt(self.work),
+                    Scanner.MAX_EMPTY_ATTEMPTS
+                ))
                 return false, "incomplete"
             end
             return self:FinishFailure(
@@ -263,17 +336,51 @@ function Scanner.create(dependencies)
             )
         end
 
-        if #slots == 0 then
+        local attempt = activeAttempt(self.work)
+        local slotCount = #slots
+        if slotCount == 0 then
             self.work.emptyAttempts = self.work.emptyAttempts + 1
             if self.work.emptyAttempts < Scanner.MAX_EMPTY_ATTEMPTS then
                 self.work.retryAfter = Scanner.EMPTY_RETRY_DELAY_SECONDS
+                debugMessage(string.format(
+                    "Guild bank tab %d attempt %d/%d returned %s; retrying in %d second.",
+                    tabIndex,
+                    attempt,
+                    Scanner.MAX_EMPTY_ATTEMPTS,
+                    slotCountText(slotCount),
+                    Scanner.EMPTY_RETRY_DELAY_SECONDS
+                ))
                 return false, "empty-retry"
             end
+            debugMessage(string.format(
+                "Guild bank tab %d attempt %d/%d returned %s; accepting the tab as empty.",
+                tabIndex,
+                attempt,
+                Scanner.MAX_EMPTY_ATTEMPTS,
+                slotCountText(slotCount)
+            ))
+        elseif attempt > 1 then
+            debugMessage(string.format(
+                "Guild bank tab %d attempt %d/%d returned %s; accepting the retry result.",
+                tabIndex,
+                attempt,
+                Scanner.MAX_EMPTY_ATTEMPTS,
+                slotCountText(slotCount)
+            ))
+        else
+            debugMessage(string.format(
+                "Guild bank tab %d attempt %d/%d returned %s; accepting the result.",
+                tabIndex,
+                attempt,
+                Scanner.MAX_EMPTY_ATTEMPTS,
+                slotCountText(slotCount)
+            ))
         end
 
         for _, slot in ipairs(slots) do
             self.work.slots[#self.work.slots + 1] = slot
         end
+        self.work.tabCounts[tabIndex] = slotCount
         self.work.requestedTab = nil
         return self:RequestNextTab()
     end
