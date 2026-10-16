@@ -89,15 +89,15 @@ jobs:
         run: |
           $version = $env:RELEASE_VERSION
           $changelog = Get-Content -Raw CHANGELOG.md
-          $versionHeading = [regex]::Escape("## [$version]")
+          $escapedVersion = [regex]::Escape($version)
           $match = [regex]::Match(
             $changelog,
-            "(?ms)^$versionHeading[^\r\n]*\r?\n(.*?)(?=^## \[|\z)"
+            "(?ms)^## (?:\[${escapedVersion}\]|${escapedVersion})(?:[ \t]+[^\r\n]*)?\r?\n(.*?)(?=^## |\z)"
           )
           if (-not $match.Success -and $version.Contains("-")) {
             $match = [regex]::Match(
               $changelog,
-              '(?ms)^## \[Unreleased\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)'
+              '(?ms)^## (?:\[Unreleased\]|Unreleased)(?:[ \t]+[^\r\n]*)?\r?\n(.*?)(?=^## |\z)'
             )
           }
           if (-not $match.Success) {
