@@ -6,6 +6,7 @@ local HELP_LINES = {
     "RGMS commands:",
     "  /rgms - Toggle the main window and select Roster when opening.",
     "  /rgms help - Show this command list.",
+    "  /rgms debug - Toggle verbose diagnostic logging.",
     "  /rgms scanroster - Scan the guild roster.",
     "  /rgms reset - Open the reset confirmation.",
 }
@@ -35,6 +36,12 @@ function Commands.handle(input, api)
 
     if command == "scanroster" then
         api.Roster.RequestManualScan()
+        return
+    end
+
+    if command == "debug" then
+        local enabled = api.ToggleDebug()
+        api.Print("Debug logging " .. (enabled and "enabled." or "disabled."))
         return
     end
 

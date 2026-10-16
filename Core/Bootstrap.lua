@@ -1,9 +1,26 @@
 local addonName, RGMS = ...
 
 RGMS.name = addonName
+RGMS.DebugEnabled = false
 
 function RGMS.Print(message)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RGMS|r: " .. message)
+end
+
+function RGMS.Debug(message)
+    if not RGMS.DebugEnabled then
+        return false
+    end
+
+    DEFAULT_CHAT_FRAME:AddMessage(
+        "|cff33ff99RGMS|r [debug]: " .. tostring(message)
+    )
+    return true
+end
+
+function RGMS.ToggleDebug()
+    RGMS.DebugEnabled = not RGMS.DebugEnabled
+    return RGMS.DebugEnabled
 end
 
 local eventFrame = CreateFrame("Frame")

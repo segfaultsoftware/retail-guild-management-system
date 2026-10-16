@@ -5,11 +5,16 @@ local function newCommandHarness()
     local harness = {
         actions = {},
         messages = {},
+        debugEnabled = false,
     }
 
     harness.api = {
         Print = function(message)
             harness.messages[#harness.messages + 1] = message
+        end,
+        ToggleDebug = function()
+            harness.debugEnabled = not harness.debugEnabled
+            return harness.debugEnabled
         end,
         UI = {
             Toggle = function(tabId)
@@ -110,6 +115,21 @@ return {
             { action = "reset" },
         })
         test.assert_equal(harness.messages, {})
+    end),
+
+    test.case("debug command toggles session logging and reports its state", function()
+        local harness = newCommandHarness()
+
+        commands.handle("  DeBuG  ", harness.api)
+        test.assert_true(harness.debugEnabled)
+        test.assert_equal(harness.messages, { "Debug logging enabled." })
+
+        commands.handle("debug", harness.api)
+        test.assert_false(harness.debugEnabled)
+        test.assert_equal(harness.messages, {
+            "Debug logging enabled.",
+            "Debug logging disabled.",
+        })
     end),
 
     test.case("help and unknown arguments print equivalent complete listings", function()

@@ -29,6 +29,7 @@ local function newHarness(options)
     local original = options.model or fixtures.saved_model()
     local current = original
     local messages = {}
+    local debugMessages = {}
     local progress = {}
     local requests = {}
     local refreshes = 0
@@ -103,6 +104,9 @@ local function newHarness(options)
         print = function(message)
             messages[#messages + 1] = message
         end,
+        debug = function(message)
+            debugMessages[#debugMessages + 1] = message
+        end,
         setInProgress = function(inProgress)
             progress[#progress + 1] = inProgress
         end,
@@ -118,6 +122,7 @@ local function newHarness(options)
             return current
         end,
         messages = messages,
+        debugMessages = debugMessages,
         progress = progress,
         requests = requests,
         commits = function()
@@ -263,6 +268,19 @@ return {
         test.assert_equal(harness.commits(), 1)
         test.assert_equal(#harness.current().bank.slots, 1)
         test.assert_equal(harness.current().bank.slots[1].slotIndex, 4)
+        local debugText = table.concat(harness.debugMessages, "\n")
+        test.assert_matches(
+            debugText,
+            "attempt 1/4 returned 0 occupied slots; retrying"
+        )
+        test.assert_matches(
+            debugText,
+            "attempt 3/4 returned 1 occupied slot; accepting the retry result"
+        )
+        test.assert_matches(
+            debugText,
+            "final counts: tab 1=1"
+        )
     end),
 
     test.case("four empty reads are accepted as a successful empty tab", function()
@@ -282,6 +300,14 @@ return {
         test.assert_equal(harness.requests, { 1, 1, 1, 1 })
         test.assert_equal(harness.commits(), 1)
         test.assert_equal(#harness.current().bank.slots, 0)
+        test.assert_matches(
+            harness.debugMessages[#harness.debugMessages - 1],
+            "attempt 4/4 returned 0 occupied slots; accepting the tab as empty"
+        )
+        test.assert_matches(
+            harness.debugMessages[#harness.debugMessages],
+            "final counts: tab 1=0"
+        )
     end),
 
     test.case("intentional retry waits do not consume the scan timeout", function()

@@ -353,6 +353,7 @@ if type(Bank.Scanner) ~= "table"
         end,
         canScan = Bank.CanScan,
         print = RGMS.Print,
+        debug = RGMS.Debug,
         setInProgress = function(inProgress)
             if type(RGMS.UI) == "table"
                 and type(RGMS.UI.SetBankScanInProgress) == "function" then

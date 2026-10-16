@@ -11,6 +11,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Several internal pipeline issues were addressed to try to get releases out quicker and more foolproof.
 
+- Added session-only `/rgms debug` logging for guild-bank tab requests, slot-change
+  events, empty-tab retries, occupied-slot counts, and final per-tab totals.
+
 ## 0.1.0-rc2
 
 ### Fixed

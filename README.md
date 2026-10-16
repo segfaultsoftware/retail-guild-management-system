@@ -34,6 +34,7 @@ the addon has been tested on that client build.
 | --- | --- |
 | `/rgms` | Toggle the main window, selecting Roster when it opens. |
 | `/rgms help` | Print the supported command list. |
+| `/rgms debug` | Toggle verbose session-only diagnostic logging. |
 | `/rgms scanroster` | Start the same roster transaction as Roster **Refresh**. |
 | `/rgms reset` | Open a confirmation before clearing roster and bank observations; preserve a valid window position. |
 
