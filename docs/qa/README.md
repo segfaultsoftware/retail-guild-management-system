@@ -8,26 +8,32 @@ never mark steps complete from memory. Remove private account and character
 identifiers before committing the record.
 
 After the candidate source is merged to `main`, the **Build Release Candidate**
-workflow produces the only ZIP that may be live-tested or promoted. Copy its
-exact `Candidate commit`, `Candidate build run`, `Candidate artifact ID`,
-automated result, and `Package SHA-256` values into the QA record. Download and
-test the ZIP inside that workflow artifact; do not substitute a local rebuild.
+workflow produces the only ZIP that may be live-tested or promoted. Its
+workflow artifact also contains `qa-record.md`, with the candidate commit,
+build run, automated result, package checksum, and evidence path populated by
+automation. Replace the prepared record with that file at the recorded path,
+then test the ZIP in the same artifact; do not substitute a local rebuild.
 
-The release promotion workflow requires those exact candidate values, no
-unchecked checklist boxes, and this exact completed disposition line:
+Checkboxes and evidence fields are the tester's working record and are not
+automated release gates. Finish the record with exactly one signoff block:
 
 ```text
-- [x] Final release-candidate disposition: PASS
+## QA signoff
+
+- QA GitHub username: @YOUR-NAME
+- QA date (Pacific): YYYY-MM-DD
+- Result: PASS
 ```
 
-For a documented exception, check the applicable item and explain the exception
-next to it or in the evidence location. A blank checkbox cannot pass the
-automated promotion gate.
+`FAIL` is valid QA evidence but stops release promotion. Use the Pacific date
+on which the tester made the final determination. Document exceptions and
+failures next to the applicable item or in the evidence location.
 
-Commit completed QA records as the only file changes after the candidate
-commit. Merge that QA-only change to `main`, then promote the resulting commit.
-The workflow verifies the candidate run and immutable artifact, downloads the
-same ZIP, and refuses promotion if anything outside `docs/qa` changed.
+Commit exactly one completed QA record as the only file change. Merge that
+QA-only change to `main`, then dispatch **Release** with the full SHA of the
+resulting commit. The workflow infers the one changed record and its version,
+verifies the candidate run and immutable artifact, downloads the same ZIP, and
+refuses promotion if the commit changes anything else.
 
 Large screenshots, videos, and other binary evidence belong on the associated
 GitHub issue or release. Link them from the completed record. Do not put secrets,

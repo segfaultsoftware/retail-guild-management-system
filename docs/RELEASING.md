@@ -52,17 +52,20 @@ The **Tests** workflow runs the Lua suite and package validation for every pull
 request and push to `main`. After candidate source and a blank QA record are on
 `main`, a maintainer dispatches **Build Release Candidate** for that exact
 commit. GitHub runs the authoritative tests and builder once, then retains the
-canonical ZIP and signed-by-context metadata as one immutable Actions artifact.
+canonical ZIP, signed-by-context metadata, and an automation-populated QA
+record as one immutable Actions artifact.
 
 The tester downloads that artifact, live-tests its inner ZIP without
-rebuilding, and commits only completed QA records. The **Release** workflow
-validates the candidate run, artifact ID, checksum, commit ancestry, and
-QA-only diff before requesting `release` Environment approval. Promotion
+rebuilding, and commits exactly one completed QA record. The **Release**
+workflow infers that record and the release version from the QA commit, then
+validates the candidate run, artifact, checksum, commit ancestry, and QA-only
+diff before requesting `release` Environment approval. Promotion
 downloads the same retained artifact, tags the QA commit, attaches the original
 ZIP to a draft GitHub release, downloads it again, and verifies its checksum.
-Any failed build, expired or mismatched artifact, incomplete QA record,
-packaged-source change, reused version, or missing changelog section stops
-promotion.
+Any failed build, expired or mismatched artifact, failed or malformed QA
+signoff, packaged-source change, reused version, or missing changelog section
+stops promotion. Checklist boxes remain human evidence and are not automated
+release gates.
 
 ## Required access and tools
 
@@ -164,16 +167,18 @@ every command with the version being prepared.
    workflow run ID, immutable artifact ID, automated test result, package
    SHA-256, and authenticated artifact link.
 3. Download and extract the workflow artifact wrapper. It must contain exactly
-   `RGMS-0.1.0-rc.1.zip` and `candidate.json`. Do not rename or rebuild the
-   inner ZIP.
+   `RGMS-0.1.0-rc.1.zip`, `candidate.json`, and `qa-record.md`. Do not rename or
+   rebuild the inner ZIP.
 4. Confirm the inner ZIP's SHA-256 matches both the workflow summary and
    `candidate.json`. Inspect it: it must contain exactly one `RGMS/` root with
    `RGMS.toc`, all manifest-listed runtime Lua files, `README.md`,
    `CHANGELOG.md`, and `LICENSE`. It must not contain `.github`, `.git`,
    `.release`, `docs`, `scripts`, `Tests`, fixtures, caches, local tooling,
    repository metadata, SavedVariables, or credentials.
-5. Copy the candidate commit, workflow run ID, artifact ID, automated result,
-   and package SHA-256 from the workflow summary into the QA record.
+5. Replace the prepared QA record at the path shown in the workflow summary
+   with `qa-record.md`. Its candidate commit, workflow run ID, automated result,
+   package SHA-256, and evidence path are already populated. Do not copy or
+   retype these values.
 
 Actions artifacts expire after the configured retention period, currently 90
 days. Finish QA and promotion before expiration. If the artifact expires, build
@@ -194,16 +199,19 @@ verification.
    record.
 5. Confirm there are no Lua errors and roster, bank, reset/recovery, UI
    position, and per-character isolation match the documented expectations.
-6. Set the record disposition to `PASS`, `FAIL`, or `BLOCKED`. Do not tag or
-   release a failed or blocked candidate.
+6. Complete the QA signoff with the tester's GitHub username, Pacific date, and
+   `PASS` or `FAIL`. Use `FAIL` and record an owner when testing is blocked. Do
+   not tag or release a failed candidate.
 7. Restore the development link only after Retail is closed.
-8. Commit only completed QA records. Open and merge a QA-only pull request into
-   `main`; do not include source, workflow, changelog, or manifest changes.
+8. Commit exactly one completed QA record as the only file change. Open and
+   merge that QA-only pull request into `main`; do not include source, workflow,
+   changelog, manifest, or another QA-record change.
 
 Before the first public release, a second person must follow
 [`CONTRIBUTING.md`](../CONTRIBUTING.md) from a clean checkout and repeat this
-runbook through canonical artifact download and inspection. Record the result
-in a second QA record. That dry run does not require a tag or remote release.
+runbook through canonical artifact download and inspection. Record that review
+in the evidence section of the same QA record. That dry run does not require a
+tag or remote release, and the final QA signoff remains a single-person record.
 
 ## Tag and create the automated draft
 
@@ -214,35 +222,40 @@ Before the first promotion, create a GitHub Environment named `release` in the
 repository settings and configure at least one required reviewer. The workflow
 checks this configuration before it performs any release mutation.
 
-1. Finish the candidate QA record. Every provenance field must exactly match
-   the successful candidate run, every checkbox must be checked, documented
-   exceptions must be explained, and the final line must be exactly:
+1. Finish the candidate QA record. The checklist is human evidence; unchecked
+   boxes do not fail automation. Document exceptions, then add exactly one
+   signoff block using the tester's GitHub username and Pacific date:
 
    ```text
-   - [x] Final release-candidate disposition: PASS
+   ## QA signoff
+
+   - QA GitHub username: @YOUR-NAME
+   - QA date (Pacific): YYYY-MM-DD
+   - Result: PASS
    ```
 
-2. Commit and push only completed QA evidence. Open a pull request and
-   merge it into `main` after review and required checks pass.
+   `FAIL` is valid recorded evidence but stops release promotion.
+2. Commit and push exactly that completed QA record as the only file change.
+   Open a pull request and merge it into `main` after review and required checks
+   pass.
 3. Copy the full 40-character SHA of the resulting QA commit on `main`, then
-   manually dispatch the **Release** workflow from GitHub Actions. Supply the
-   version, commit SHA, and QA-record path. The equivalent authenticated GitHub
-   CLI command is:
+   manually dispatch the **Release** workflow from GitHub Actions. Supply only
+   that QA commit SHA. The workflow infers the record path and release version.
+   The equivalent authenticated GitHub CLI command is:
 
    ```text
    gh workflow run Release \
      --repo segfaultsoftware/retail-guild-management-system \
      --ref main \
-     -f version=0.1.0-rc.1 \
-     -f commit=FULL_40_CHARACTER_QA_COMMIT_SHA \
-     -f qa_record=docs/qa/0.1.0-rc.1-YOUR-NAME.md
+      -f qa_commit=FULL_40_CHARACTER_QA_COMMIT_SHA
    ```
 
-4. Wait for preflight. It validates that both commits are on `main`, only QA
-   records changed since the candidate, the recorded workflow run
-   succeeded for that candidate, the immutable artifact remains available,
-   every checklist item is complete, the disposition is `PASS`, and the
-   downloaded ZIP has the exact live-tested checksum.
+4. Wait for preflight. It validates that both commits are on `main`, the QA
+   commit and all post-candidate changes affect exactly the inferred record,
+   the recorded workflow run succeeded for that candidate, exactly one matching
+   immutable artifact remains available, the signoff is `PASS`, and the
+   downloaded ZIP has the exact live-tested checksum. It does not inspect
+   checkbox state.
 5. Approve the waiting `release` Environment deployment. The promotion job
    rechecks version availability, creates and pushes the annotated tag, creates
    a draft named `RGMS 0.1.0-rc.1`, attaches the original candidate ZIP,

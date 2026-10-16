@@ -87,10 +87,11 @@ bash ./scripts/prepare-release.sh --version 0.1.0-rc.1 --tester YOUR-NAME
 The command updates the manifest version and creates a tester-specific QA
 record for review and merge to `main`. After that merge, the **Build Release
 Candidate** workflow runs the complete Lua suite, validates the manifest and
-runtime files, and retains the canonical `RGMS-<version>.zip`. QA, the draft
-GitHub release, and the manual CurseForge upload all use that exact ZIP without
-rebuilding it. See [`docs/RELEASING.md`](docs/RELEASING.md) for the two-stage
-candidate and promotion procedure.
+runtime files, and retains the canonical `RGMS-<version>.zip` together with an
+automation-populated QA record. QA, the draft GitHub release, and the manual
+CurseForge upload all use that exact ZIP without rebuilding it. See
+[`docs/RELEASING.md`](docs/RELEASING.md) for the two-stage candidate and
+promotion procedure.
 
 ## Current exclusions
 
