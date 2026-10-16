@@ -82,6 +82,28 @@ jobs:
             exit 1
           fi
 
+      - name: Validate release changelog
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          $changelog = Get-Content -Raw CHANGELOG.md
+          $versionHeading = [regex]::Escape("## [$version]")
+          $match = [regex]::Match(
+            $changelog,
+            "(?ms)^$versionHeading[^\r\n]*\r?\n(.*?)(?=^## \[|\z)"
+          )
+          if (-not $match.Success -and $version.Contains("-")) {
+            $match = [regex]::Match(
+              $changelog,
+              '(?ms)^## \[Unreleased\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)'
+            )
+          }
+          if (-not $match.Success) {
+            throw "CHANGELOG.md has no section for $version."
+          }
+
       - name: Install Lua 5.1
         run: |
           sudo apt-get update

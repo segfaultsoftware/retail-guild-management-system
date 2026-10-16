@@ -37,6 +37,8 @@ release-critical checks in one command:
 
 - validate a strict semantic version and require the same `Version` in
   `RGMS.toc`;
+- require release-note content under the exact version heading, or under
+  `Unreleased` for a prerelease, before building the candidate;
 - validate required manifest fields and every manifest-listed Lua file;
 - run the complete dependency-free Lua test suite before writing an artifact;
 - package only the manifest, its runtime Lua files, `README.md`,
