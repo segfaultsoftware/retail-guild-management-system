@@ -3,7 +3,8 @@
 RGMS is a World of Warcraft Retail addon for guild officers who need a local,
 read-only view of guild-roster and guild-bank observations. The current MVP
 runs entirely inside the game client and stores its latest complete observations
-in per-character SavedVariables. It does not send data anywhere.
+in account-wide, per-guild SavedVariables. Window placement and deprecated
+migration sources remain per character. It does not send data anywhere.
 
 ## What the MVP does
 
@@ -17,10 +18,11 @@ in per-character SavedVariables. It does not send data anywhere.
   remained in the same slot.
 - Commits roster and bank scans transactionally. A partial, failed, timed-out,
   or canceled scan leaves the previous successful observation unchanged.
-- Detects a guild change independently for roster and bank data and replaces
-  only the affected dataset after a successful scan.
-- Validates and migrates versioned per-character saved data. Corrupt or newer,
-  incompatible data is preserved until the user accepts `/rgms reset`.
+- Shares each guild's roster and bank observations between characters on the
+  account while isolating identically named guilds on different realms.
+- Validates account-wide guild storage and versioned per-character migration
+  sources. Corrupt or newer, incompatible data is preserved until the user
+  accepts `/rgms reset`.
 - Saves the RGMS window position independently for each character.
 
 RGMS is **Retail only**. The manifest currently declares interface `120100` in
@@ -36,7 +38,7 @@ the addon has been tested on that client build.
 | `/rgms help` | Print the supported command list. |
 | `/rgms debug` | Toggle verbose session-only diagnostic logging. |
 | `/rgms scanroster` | Start the same roster transaction as Roster **Refresh**. |
-| `/rgms reset` | Open a confirmation before clearing roster and bank observations; preserve a valid window position. |
+| `/rgms reset` | Open a confirmation before clearing the current guild's roster, bank, groups, and notes; preserve the character's window position. |
 
 Bank scans are started from the default guild-bank window and the Bank
 **Refresh** button. There is no bank scan slash command.

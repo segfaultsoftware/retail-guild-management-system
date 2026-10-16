@@ -213,10 +213,15 @@ function Bank.RefreshStatus()
         return
     end
 
-    if type(RGMS.SavedDataState) == "table"
-        and RGMS.SavedDataState.enabled == false then
+    local disabledState = type(RGMS.SavedDataState) == "table"
+        and RGMS.SavedDataState.enabled == false
+        and RGMS.SavedDataState
+        or (type(RGMS.AccountDataState) == "table"
+            and RGMS.AccountDataState.enabled == false
+            and RGMS.AccountDataState)
+    if disabledState then
         if type(RGMS.UI.SetDataState) == "function" then
-            RGMS.UI.SetDataState(false, RGMS.SavedDataState.status)
+            RGMS.UI.SetDataState(false, disabledState.status)
         end
         return
     end

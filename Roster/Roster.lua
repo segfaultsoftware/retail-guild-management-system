@@ -232,10 +232,15 @@ function Roster.RefreshStatus()
         return
     end
 
-    if type(RGMS.SavedDataState) == "table"
-        and RGMS.SavedDataState.enabled == false then
+    local disabledState = type(RGMS.SavedDataState) == "table"
+        and RGMS.SavedDataState.enabled == false
+        and RGMS.SavedDataState
+        or (type(RGMS.AccountDataState) == "table"
+            and RGMS.AccountDataState.enabled == false
+            and RGMS.AccountDataState)
+    if disabledState then
         if type(RGMS.UI.SetDataState) == "function" then
-            RGMS.UI.SetDataState(false, RGMS.SavedDataState.status)
+            RGMS.UI.SetDataState(false, disabledState.status)
         end
         return
     end
@@ -363,6 +368,9 @@ if type(Roster.Scanner) ~= "table"
     eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
     eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "PLAYER_LOGIN" then
+            if type(RGMS.ActivateCurrentGuild) == "function" then
+                RGMS.ActivateCurrentGuild()
+            end
             Roster.RequestAutomaticScan()
         elseif event == "GUILD_ROSTER_UPDATE" then
             local canRequestRosterUpdate = ...
@@ -376,6 +384,9 @@ if type(Roster.Scanner) ~= "table"
         elseif event == "CLUB_MEMBERS_UPDATED" then
             Roster.Scanner:OnDataUpdated()
         elseif event == "PLAYER_GUILD_UPDATE" then
+            if type(RGMS.ActivateCurrentGuild) == "function" then
+                RGMS.ActivateCurrentGuild()
+            end
             Roster.RefreshStatus()
         end
     end)

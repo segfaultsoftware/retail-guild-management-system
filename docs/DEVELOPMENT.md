@@ -162,10 +162,21 @@ To turn the built-in error dialogs off again:
 /console scriptErrors 0
 ```
 
-## 5. Inspect per-character SavedVariables
+## 5. Inspect SavedVariables
 
-`RGMS.toc` declares `RGMSCharacterDB` with `SavedVariablesPerCharacter`. Retail
-writes one Lua data file for each character:
+`RGMS.toc` declares account-wide `RGMSAccountDB` with `SavedVariables` and
+per-character `RGMSCharacterDB` with `SavedVariablesPerCharacter`. Retail writes
+the account-wide file at:
+
+```text
+Windows
+C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\<ACCOUNT>\SavedVariables\RGMS.lua
+
+macOS
+/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/RGMS.lua
+```
+
+The per-character file remains at:
 
 ```text
 Windows
@@ -185,9 +196,9 @@ WoW keeps an in-memory copy and can overwrite manual changes on reload, logout,
 or exit. Treat real account and character names in the path or data as private
 when sharing diagnostics.
 
-The saved value is versioned and validated before RGMS exposes it to scans or
-reports. See [SAVED_DATA.md](SAVED_DATA.md) for its exact schema, supported
-migrations, disabled states, and recovery steps.
+Both saved values are versioned and validated before RGMS exposes them to scans
+or reports. See [SAVED_DATA.md](SAVED_DATA.md) for their exact schemas,
+supported migrations, disabled states, and recovery steps.
 
 ## Runtime and manifest assumptions
 
