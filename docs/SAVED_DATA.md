@@ -6,7 +6,8 @@ RGMS uses two World of Warcraft SavedVariables:
   guild encountered by the account.
 - `RGMSCharacterDB` remains per character. Its `ui.windowPosition` is the live
   source for that character's window placement. Its roster and bank fields are
-  deprecated snapshots retained for the migration work in issues #50 and #51.
+  deprecated snapshots; roster data is retained until a successful account-wide
+  roster scan, while bank data remains available for issue #51.
 
 The addon's active `RGMS.DB` is a view over the current guild's account
 partition plus the logged-in character's `ui` table. It never exposes another
@@ -62,9 +63,12 @@ the same guild partition but are not yet exposed by the UI.
 }
 ```
 
-The version 0 through 7 migrations remain supported so existing characters can
-retain their data until the roster and bank migration tickets consume it.
-Account-storage creation does not import, merge, or delete those observations.
+The version 0 through 7 migrations remain supported. When the current guild's
+account-wide roster is uninitialized, only the logged-in character's matching
+deprecated roster can seed it. A missing or foreign-guild snapshot initializes
+an empty current-guild roster instead. An already initialized roster, including
+an intentionally empty reset state, is authoritative and is never repopulated
+from another character. Deprecated bank observations are not changed here.
 
 `WindowPosition` contains `point`, `relativePoint`, `x`, and `y`. The active
 view references the current character's `ui` subtree, so dragging the window
@@ -92,18 +96,21 @@ but beginning a scan does not create the partition. Failure, timeout, partial
 data, or cancellation discards the detached work without changing saved data.
 
 Only a complete, validated success atomically replaces that one dataset in the
-matching guild partition and marks its initialization flag true. The other
-dataset, initialization flag, groups, notes, every other guild partition, and
-the per-character window position are copied or retained unchanged. This
-preserves existing transactional behavior without partial account-wide writes.
+matching guild partition and marks its initialization flag true. A successful
+roster commit also clears the logged-in character's deprecated roster while
+preserving its bank and window position. Failed, incomplete, timed-out, and
+canceled scans preserve both the last account-wide roster and the deprecated
+roster. The other account dataset, initialization flag, groups, notes, and every
+other guild partition remain unchanged.
 
 ## Reset and recovery
 
 Confirming `/rgms reset` while guilded clears the current guild's roster, bank,
 groups, and notes. It leaves both dataset initialization flags true, preserves
-all other guild partitions, preserves deprecated per-character observations for
-their dedicated migration tickets, and preserves the character's window
-position. A guildless manual reset is rejected without mutation.
+all other guild partitions and deprecated per-character observations, and
+preserves the character's window position. The initialized empty roster prevents
+legacy repopulation; its next successful scan removes the current character's
+deprecated roster. A guildless manual reset is rejected without mutation.
 
 Malformed or unsupported account data disables scans and reports without
 overwriting the original. Accepted account recovery creates a fresh account
@@ -113,9 +120,10 @@ Per-character recovery continues to retain only a valid window position.
 ## Guild activation
 
 RGMS resolves the logged-in character's guild at addon load, player login, and
-guild-membership changes. Resolution is read-only. It selects the matching
-account partition for display or an empty view when no partition exists. The
-first successful roster or bank transaction creates that guild's partition.
+guild-membership changes. Activation initializes the current guild's roster
+partition conservatively, selects it for display, and starts the normal roster
+scan. A guildless character still receives an empty transient view. Bank
+partitions remain initialized only by their own reset or successful transaction.
 
 Sharing is limited to the local account's SavedVariables. RGMS performs no
 player-to-player synchronization and provides no browser for inactive guilds.

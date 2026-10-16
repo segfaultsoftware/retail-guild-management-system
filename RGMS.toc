@@ -10,6 +10,7 @@ Core\Realm.lua
 Core\DateTime.lua
 Core\SavedData.lua
 Core\AccountData.lua
+Core\RosterMigration.lua
 UI\Layout.lua
 Core\Bootstrap.lua
 Core\Reset.lua

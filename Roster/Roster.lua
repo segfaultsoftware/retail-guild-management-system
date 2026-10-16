@@ -384,10 +384,15 @@ if type(Roster.Scanner) ~= "table"
         elseif event == "CLUB_MEMBERS_UPDATED" then
             Roster.Scanner:OnDataUpdated()
         elseif event == "PLAYER_GUILD_UPDATE" then
+            local identity
+            local rosterInitialized = false
             if type(RGMS.ActivateCurrentGuild) == "function" then
-                RGMS.ActivateCurrentGuild()
+                identity, rosterInitialized = RGMS.ActivateCurrentGuild()
             end
             Roster.RefreshStatus()
+            if identity ~= nil and rosterInitialized then
+                Roster.RequestAutomaticScan()
+            end
         end
     end)
     eventFrame:SetScript("OnUpdate", function(_, elapsed)

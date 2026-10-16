@@ -161,7 +161,21 @@ function DatasetOwnership.create(dependencies)
                 return nil, guildOrError
             end
 
-            dependencies.commit(committedModel, transaction.guild)
+            local characterModel
+            if transaction.datasetName == "roster"
+                and type(dependencies.prepareCharacterCommit) == "function" then
+                local prepareError
+                characterModel, prepareError = dependencies.prepareCharacterCommit()
+                if not characterModel then
+                    return nil, prepareError
+                end
+            end
+
+            dependencies.commit(
+                committedModel,
+                transaction.guild,
+                characterModel
+            )
             transaction.finished = true
             return true, committedModel
         end
@@ -198,7 +212,7 @@ if type(RGMS) == "table" then
         getSavedData = function()
             return RGMSAccountDB
         end,
-        commit = function(model, guildIdentity)
+        commit = function(model, guildIdentity, characterModel)
             RGMSAccountDB = model
             RGMS.AccountDataState = {
                 enabled = true,
@@ -206,9 +220,19 @@ if type(RGMS) == "table" then
                 model = model,
             }
             RGMS.ActiveGuildIdentity = guildIdentity
-            local characterModel = type(RGMS.SavedDataState) == "table"
-                and RGMS.SavedDataState.model
-                or nil
+            if characterModel ~= nil then
+                RGMSCharacterDB = characterModel
+                RGMS.SavedDataState = {
+                    enabled = true,
+                    status = "ready",
+                    scope = "character",
+                    model = characterModel,
+                }
+            else
+                characterModel = type(RGMS.SavedDataState) == "table"
+                    and RGMS.SavedDataState.model
+                    or nil
+            end
             RGMS.DB = RGMS.AccountData.view(
                 model,
                 guildIdentity,
@@ -222,6 +246,13 @@ if type(RGMS) == "table" then
                 and type(RGMS.Bank.RefreshStatus) == "function" then
                 RGMS.Bank.RefreshStatus()
             end
+        end,
+        prepareCharacterCommit = function()
+            local characterModel = type(RGMS.SavedDataState) == "table"
+                and RGMS.SavedDataState.enabled
+                and RGMS.SavedDataState.model
+                or RGMSCharacterDB
+            return RGMS.RosterMigration.cleanup(characterModel)
         end,
         print = RGMS.Print,
     })

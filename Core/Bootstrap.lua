@@ -71,13 +71,32 @@ function RGMS.ActivateCurrentGuild()
         return nil
     end
     local identity = RGMS.ResolveCurrentGuildIdentity()
+    local accountModel = RGMS.AccountDataState.model
+    local rosterInitialized = false
+    if identity ~= nil and type(RGMS.RosterMigration) == "table" then
+        local initializedModel, initializedOrError = RGMS.RosterMigration.initialize(
+            accountModel,
+            RGMS.SavedDataState.model,
+            identity
+        )
+        if not initializedModel then
+            RGMS.DB = nil
+            return nil, false, initializedOrError
+        end
+        rosterInitialized = initializedOrError
+        if initializedModel ~= accountModel then
+            accountModel = initializedModel
+            RGMSAccountDB = initializedModel
+            RGMS.AccountDataState.model = initializedModel
+        end
+    end
     RGMS.ActiveGuildIdentity = identity
     RGMS.DB = RGMS.AccountData.view(
-        RGMS.AccountDataState.model,
+        accountModel,
         identity,
         RGMS.SavedDataState.model.ui
     )
-    return identity
+    return identity, rosterInitialized
 end
 
 local eventFrame = CreateFrame("Frame")

@@ -1,5 +1,5 @@
--- Versioned account-wide storage partitioned by guild. Legacy per-character
--- observations remain in RGMSCharacterDB until the dedicated migration work.
+-- Versioned account-wide storage partitioned by guild. Deprecated roster data
+-- is migrated separately from bank data so each dataset remains independent.
 
 local _, RGMS = ...
 
