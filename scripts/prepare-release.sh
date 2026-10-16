@@ -221,7 +221,7 @@ printf '  QA record: %s\n' "$qa_record"
 printf '\nNext steps:\n'
 printf '  1. Commit and push this candidate branch, then merge its reviewed PR to main.\n'
 printf '  2. Dispatch Build Release Candidate for version %s and the merged main SHA.\n' "$version"
-printf '  3. Download and test that workflow artifact; copy its evidence values into %s.\n' "$qa_record"
-printf '  4. Commit only completed QA records and merge them to main.\n'
-printf '  5. Dispatch Release with version %s, the QA commit SHA, and %s.\n' \
-    "$version" "$qa_record"
+printf '  3. Download that workflow artifact and replace %s with its populated qa-record.md.\n' "$qa_record"
+printf '  4. Test the canonical ZIP, complete the record, and add the QA signoff.\n'
+printf '  5. Commit only that completed QA record and merge it to main.\n'
+printf '  6. Dispatch Release with the full QA commit SHA from main.\n'

@@ -111,6 +111,83 @@ jobs:
           echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
           echo "test_result=$test_result" >> "$GITHUB_OUTPUT"
 
+      - name: Populate automated QA evidence
+        id: qa_record
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          CANDIDATE_COMMIT: ${{ inputs.commit }}
+          PACKAGE_CHECKSUM: ${{ steps.package.outputs.checksum }}
+          TEST_RESULT: ${{ steps.package.outputs.test_result }}
+        run: |
+          set -euo pipefail
+
+          qa_records=()
+          while IFS= read -r -d '' path; do
+            if grep -Fqx -- "- Release candidate: $RELEASE_VERSION" "$path"; then
+              qa_records+=("$path")
+            fi
+          done < <(find docs/qa -maxdepth 1 -type f -name '*.md' -print0)
+
+          [[ "${#qa_records[@]}" -eq 1 ]] || {
+            echo "Expected exactly one QA record for $RELEASE_VERSION; found ${#qa_records[@]}." >&2
+            exit 1
+          }
+
+          qa_record="${qa_records[0]}"
+          awk \
+            -v candidate_commit="${CANDIDATE_COMMIT,,}" \
+            -v candidate_run="$GITHUB_RUN_ID" \
+            -v test_result="$TEST_RESULT" \
+            -v package_checksum="$PACKAGE_CHECKSUM" \
+            -v evidence_location="$qa_record" '
+              BEGIN {
+                candidate_commit_count = 0
+                candidate_run_count = 0
+                test_result_count = 0
+                package_checksum_count = 0
+                evidence_location_count = 0
+              }
+              /^- Candidate commit:/ {
+                print "- Candidate commit: " candidate_commit
+                candidate_commit_count += 1
+                next
+              }
+              /^- Candidate build run:/ {
+                print "- Candidate build run: " candidate_run
+                candidate_run_count += 1
+                next
+              }
+              /^- Automated result and test count:/ {
+                print "- Automated result and test count: PASS (" test_result ")"
+                test_result_count += 1
+                next
+              }
+              /^- Package SHA-256:/ {
+                print "- Package SHA-256: " package_checksum
+                package_checksum_count += 1
+                next
+              }
+              /^- Evidence location:/ {
+                print "- Evidence location: " evidence_location
+                evidence_location_count += 1
+                next
+              }
+              { print }
+              END {
+                if (candidate_commit_count != 1 || candidate_run_count != 1 ||
+                    test_result_count != 1 || package_checksum_count != 1 ||
+                    evidence_location_count != 1) {
+                  exit 42
+                }
+              }
+            ' "$qa_record" > .release/qa-record.md || {
+              echo "QA record must contain exactly one of each automated evidence field." >&2
+              exit 1
+            }
+
+          echo "path=$qa_record" >> "$GITHUB_OUTPUT"
+          echo "candidate_commit=${CANDIDATE_COMMIT,,}" >> "$GITHUB_OUTPUT"
+
       - name: Write candidate metadata
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -118,10 +195,11 @@ jobs:
           ARTIFACT_NAME: ${{ steps.package.outputs.artifact_name }}
           PACKAGE_CHECKSUM: ${{ steps.package.outputs.checksum }}
           TEST_RESULT: ${{ steps.package.outputs.test_result }}
+          QA_RECORD: ${{ steps.qa_record.outputs.path }}
         run: |
           set -euo pipefail
           jq -n \
-            --argjson schemaVersion 1 \
+            --argjson schemaVersion 2 \
             --arg repository "$GITHUB_REPOSITORY" \
             --arg version "$RELEASE_VERSION" \
             --arg commit "${CANDIDATE_COMMIT,,}" \
@@ -130,6 +208,7 @@ jobs:
             --arg artifactName "$ARTIFACT_NAME" \
             --arg packageSha256 "$PACKAGE_CHECKSUM" \
             --arg testResult "$TEST_RESULT" \
+            --arg qaRecordPath "$QA_RECORD" \
             '{
               schemaVersion: $schemaVersion,
               repository: $repository,
@@ -139,17 +218,19 @@ jobs:
               runAttempt: $runAttempt,
               artifactName: $artifactName,
               packageSha256: $packageSha256,
-              testResult: $testResult
+              testResult: $testResult,
+              qaRecordPath: $qaRecordPath
             }' > .release/candidate.json
 
       - name: Upload canonical candidate artifact
         id: candidate_artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-candidate-${{ inputs.version }}-${{ inputs.commit }}-${{ github.run_attempt }}
+          name: release-candidate-${{ inputs.version }}-${{ steps.qa_record.outputs.candidate_commit }}-${{ github.run_attempt }}
           path: |
             .release/${{ steps.package.outputs.artifact_name }}
             .release/candidate.json
+            .release/qa-record.md
           if-no-files-found: error
           compression-level: 0
           retention-days: 90
@@ -161,6 +242,7 @@ jobs:
           CANDIDATE_ARTIFACT_ID: ${{ steps.candidate_artifact.outputs.artifact-id }}
           CANDIDATE_ARTIFACT_URL: ${{ steps.candidate_artifact.outputs.artifact-url }}
           PACKAGE_CHECKSUM: ${{ steps.package.outputs.checksum }}
+          QA_RECORD: ${{ steps.qa_record.outputs.path }}
           TEST_RESULT: ${{ steps.package.outputs.test_result }}
         run: |
           {
@@ -174,6 +256,8 @@ jobs:
             echo "- Candidate artifact ID: \`$CANDIDATE_ARTIFACT_ID\`"
             echo "- Automated result and test count: \`PASS ($TEST_RESULT)\`"
             echo "- Package SHA-256: \`$PACKAGE_CHECKSUM\`"
+            echo "- QA record path: \`$QA_RECORD\`"
             echo
-            echo "Copy these exact values into the QA record. Do not rebuild or rename the inner ZIP."
+            echo "Use the populated \`qa-record.md\` included in this artifact for live QA."
+            echo "Commit it back to \`$QA_RECORD\` after signing off. Do not rebuild or rename the inner ZIP."
           } >> "$GITHUB_STEP_SUMMARY"

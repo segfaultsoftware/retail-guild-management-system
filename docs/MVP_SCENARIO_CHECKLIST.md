@@ -22,7 +22,6 @@ transition that failed.
 - Release candidate: ______________________________
 - Candidate commit: _______________________________
 - Candidate build run: ____________________________
-- Candidate artifact ID: __________________________
 - Retail version/build from `/dump GetBuildInfo()`: __________________________
 - Retail interface number from `/dump select(4, GetBuildInfo())`: ____________
 - Tester: _________________________________________
@@ -355,5 +354,10 @@ Observed result/evidence: _________________________________________________
   steps; otherwise record `No Lua errors observed`: __________________________
 - [ ] SavedVariables evidence contains no private account identifiers.
 - [ ] Character A and Character B data were verified in separate files.
-- [ ] Final release-candidate disposition: PASS / FAIL / BLOCKED
 - Blocker or failure notes and owner: ______________________________________
+
+## QA signoff
+
+- QA GitHub username: @____________________________
+- QA date (Pacific): YYYY-MM-DD
+- Result: PASS / FAIL
