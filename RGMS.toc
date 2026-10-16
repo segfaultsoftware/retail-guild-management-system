@@ -11,6 +11,7 @@ Core\DateTime.lua
 Core\SavedData.lua
 Core\AccountData.lua
 Core\RosterMigration.lua
+Core\BankMigration.lua
 UI\Layout.lua
 Core\Bootstrap.lua
 Core\Reset.lua

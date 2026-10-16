@@ -321,6 +321,36 @@ function Bank.CancelScan()
     return scanner:Cancel()
 end
 
+function Bank.PrepareScan(guildIdentity)
+    if type(RGMS.AccountDataState) ~= "table"
+        or not RGMS.AccountDataState.enabled
+        or type(RGMS.SavedDataState) ~= "table"
+        or not RGMS.SavedDataState.enabled then
+        return nil, "saved data is unavailable"
+    end
+
+    local accountModel = RGMS.AccountDataState.model
+    local initializedModel, initializedOrError = RGMS.BankMigration.initialize(
+        accountModel,
+        RGMS.SavedDataState.model,
+        guildIdentity
+    )
+    if not initializedModel then
+        return nil, initializedOrError
+    end
+    if initializedModel ~= accountModel then
+        RGMSAccountDB = initializedModel
+        RGMS.AccountDataState.model = initializedModel
+        RGMS.ActiveGuildIdentity = guildIdentity
+        RGMS.DB = RGMS.AccountData.view(
+            initializedModel,
+            guildIdentity,
+            RGMS.SavedDataState.model.ui
+        )
+    end
+    return true
+end
+
 local function setGuildBankOpen(isOpen)
     Bank.bankOpen = isOpen == true
     if type(RGMS.UI) == "table"
@@ -357,6 +387,7 @@ if type(Bank.Scanner) ~= "table"
             )
         end,
         canScan = Bank.CanScan,
+        prepareScan = Bank.PrepareScan,
         print = RGMS.Print,
         debug = RGMS.Debug,
         setInProgress = function(inProgress)

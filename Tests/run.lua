@@ -10,6 +10,7 @@ local defaultSuites = {
     "Tests.spec.saved_data_spec",
     "Tests.spec.account_data_spec",
     "Tests.spec.roster_migration_spec",
+    "Tests.spec.bank_migration_spec",
     "Tests.spec.bootstrap_spec",
     "Tests.spec.reset_spec",
     "Tests.spec.dataset_ownership_spec",

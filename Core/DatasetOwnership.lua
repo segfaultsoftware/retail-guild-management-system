@@ -162,10 +162,11 @@ function DatasetOwnership.create(dependencies)
             end
 
             local characterModel
-            if transaction.datasetName == "roster"
-                and type(dependencies.prepareCharacterCommit) == "function" then
+            if type(dependencies.prepareCharacterCommit) == "function" then
                 local prepareError
-                characterModel, prepareError = dependencies.prepareCharacterCommit()
+                characterModel, prepareError = dependencies.prepareCharacterCommit(
+                    transaction.datasetName
+                )
                 if not characterModel then
                     return nil, prepareError
                 end
@@ -247,12 +248,15 @@ if type(RGMS) == "table" then
                 RGMS.Bank.RefreshStatus()
             end
         end,
-        prepareCharacterCommit = function()
+        prepareCharacterCommit = function(datasetName)
             local characterModel = type(RGMS.SavedDataState) == "table"
                 and RGMS.SavedDataState.enabled
                 and RGMS.SavedDataState.model
                 or RGMSCharacterDB
-            return RGMS.RosterMigration.cleanup(characterModel)
+            if datasetName == "roster" then
+                return RGMS.RosterMigration.cleanup(characterModel)
+            end
+            return RGMS.BankMigration.cleanup(characterModel)
         end,
         print = RGMS.Print,
     })

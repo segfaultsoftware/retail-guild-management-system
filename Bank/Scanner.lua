@@ -257,6 +257,26 @@ function Scanner.create(dependencies)
             )
         end
 
+        if type(dependencies.prepareScan) == "function" then
+            local prepared, prepareResult, prepareError = pcall(function()
+                return dependencies.prepareScan(catalog.guild)
+            end)
+            if not prepared then
+                return self:FinishFailure(
+                    "bank data initialization failed ("
+                        .. tostring(prepareResult)
+                        .. ")",
+                    "migration-failure"
+                )
+            end
+            if not prepareResult then
+                return self:FinishFailure(
+                    prepareError or "bank data initialization failed",
+                    "migration-failure"
+                )
+            end
+        end
+
         local accessibleTabs = {}
         for _, tab in ipairs(catalog.tabs) do
             if tab.isViewable then
