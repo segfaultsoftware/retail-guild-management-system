@@ -536,6 +536,23 @@ end
 
 local function updateMainsAltsControlState(view)
     local enabled = mainsAltsControlsEnabled(view)
+    local selectionCount = 0
+    local selectedGroupCount = 0
+    for _, row in ipairs(
+        type(view.mainsAltsReport) == "table" and view.mainsAltsReport.rows or {}
+    ) do
+        if view.mainsAltsSelections[row.identity] == true then
+            selectionCount = selectionCount + 1
+            if row.altCount > 0 then
+                selectedGroupCount = selectedGroupCount + 1
+            end
+        end
+    end
+    if view.groupButton then
+        view.groupButton:SetEnabled(
+            enabled and selectionCount >= 2 and selectedGroupCount <= 1
+        )
+    end
     for _, line in ipairs(view.mainsAltsLines or {}) do
         if line.frame:IsShown() then
             line.checkbox:SetEnabled(enabled and not line.isAlt)
@@ -608,6 +625,7 @@ local function renderMainsAlts(view)
             line.checkbox:SetScript("OnClick", function(button)
                 view.mainsAltsSelections[character.identity] = button:GetChecked()
                     == true
+                updateMainsAltsControlState(view)
             end)
             line.checkbox:Show()
             if line.hasAlts then
@@ -831,7 +849,7 @@ local function createView(parent, tabId)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     view.status:SetPoint("TOPLEFT", 2, 0)
-    view.status:SetPoint("TOPRIGHT", tabId == "mainsalts" and -2 or -94, 0)
+    view.status:SetPoint("TOPRIGHT", tabId == "mainsalts" and -104 or -94, 0)
     view.status:SetJustifyH("LEFT")
     view.status:SetText(INITIAL_COPY[tabId])
 
@@ -881,6 +899,23 @@ local function createView(parent, tabId)
         view.mainsAltsLines = {}
         view.mainsAltsSelections = {}
         view.expandedMainsAlts = {}
+        view.groupButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
+        view.groupButton:SetSize(94, 22)
+        view.groupButton:SetPoint("TOPRIGHT", 0, 4)
+        view.groupButton:SetText("Group Toons")
+        view.groupButton:SetEnabled(false)
+        view.groupButton:SetScript("OnClick", function()
+            local selectedIdentities = {}
+            for _, row in ipairs(view.mainsAltsReport and view.mainsAltsReport.rows or {}) do
+                if view.mainsAltsSelections[row.identity] == true then
+                    selectedIdentities[#selectedIdentities + 1] = row.identity
+                end
+            end
+            local grouped, groupError = RGMS.MainsAlts.GroupSelected(selectedIdentities)
+            if not grouped and type(RGMS.Print) == "function" then
+                RGMS.Print("Could not group characters: " .. tostring(groupError) .. ".")
+            end
+        end)
     elseif tabId == "bank" then
         view.bankTabScrollFrame = CreateFrame(
             "ScrollFrame",
@@ -1322,7 +1357,31 @@ function UI.SetMainsAltsReport(report)
 
     local view = UI.frame.views.mainsalts
     view.mainsAltsReport = report
+    local availableSelections = {}
+    for _, row in ipairs(report.rows) do
+        if view.mainsAltsSelections[row.identity] == true then
+            availableSelections[row.identity] = true
+        end
+    end
+    view.mainsAltsSelections = availableSelections
     renderMainsAlts(view)
+    return true
+end
+
+function UI.CompleteMainsAltsGrouping(mainIdentity)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(mainIdentity) ~= "string" or mainIdentity == "" then
+        return nil, "the grouped main identity is required"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsSelections = {}
+    view.expandedMainsAlts = { [mainIdentity] = true }
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
     return true
 end
 

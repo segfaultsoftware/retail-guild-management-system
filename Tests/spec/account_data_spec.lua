@@ -149,6 +149,35 @@ return {
         test.assert_equal(partition.characterNotes, {})
     end),
 
+    test.case("replacing groups preserves roster bank and character notes", function()
+        local identity = guild("Night Shift", "area-52")
+        local model = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            completedRoster(identity, "Main")
+        ))
+        local partition = accountData.findGuild(model, identity)
+        partition.characterNotes["Main-area-52"] = "Keep this note"
+        local originalRoster = partition.roster
+
+        local replacement = assert(accountData.replaceMainAltGroups(
+            model,
+            identity,
+            { ["Main-area-52"] = { "Alt-area-52" } }
+        ))
+        local updated = accountData.findGuild(replacement, identity)
+
+        test.assert_equal(updated.mainAltGroups, {
+            ["Main-area-52"] = { "Alt-area-52" },
+        })
+        test.assert_equal(updated.characterNotes, {
+            ["Main-area-52"] = "Keep this note",
+        })
+        test.assert_equal(updated.roster, originalRoster)
+        test.assert_equal(partition.mainAltGroups, {})
+    end),
+
     test.case("account transactions publish complete datasets atomically", function()
         local current = accountData.newModel()
         local identity = guild("Night Shift", "area-52")

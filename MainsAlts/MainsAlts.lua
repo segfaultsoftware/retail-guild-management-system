@@ -2,6 +2,58 @@ local _, RGMS = ...
 
 local MainsAlts = RGMS.MainsAlts or {}
 
+function MainsAlts.GroupSelected(selectedIdentities)
+    local scanning = type(RGMS.Roster) == "table"
+        and type(RGMS.Roster.IsScanInProgress) == "function"
+        and RGMS.Roster.IsScanInProgress()
+    if scanning then
+        return nil, "grouping is disabled during a roster scan"
+    end
+    if type(RGMS.DB) ~= "table"
+        or type(RGMS.MainsAltsGroups) ~= "table"
+        or type(RGMS.MainsAltsGroups.apply) ~= "function" then
+        return nil, "Mains/Alts grouping is unavailable"
+    end
+
+    local groups, mainIdentity = RGMS.MainsAltsGroups.apply(
+        RGMS.DB.roster,
+        RGMS.DB.mainAltGroups,
+        selectedIdentities
+    )
+    if not groups then
+        return nil, mainIdentity
+    end
+    if type(RGMS.AccountData) ~= "table"
+        or type(RGMS.AccountData.replaceMainAltGroups) ~= "function"
+        or type(RGMS.AccountDataState) ~= "table"
+        or type(RGMS.ActiveGuildIdentity) ~= "table" then
+        return nil, "Mains/Alts account storage is unavailable"
+    end
+
+    local replacement, guildOrError = RGMS.AccountData.replaceMainAltGroups(
+        RGMS.AccountDataState.model,
+        RGMS.ActiveGuildIdentity,
+        groups
+    )
+    if not replacement then
+        return nil, guildOrError
+    end
+
+    RGMSAccountDB = replacement
+    RGMS.AccountDataState.model = replacement
+    if type(RGMS.ActivateCurrentGuild) == "function" then
+        RGMS.ActivateCurrentGuild()
+    else
+        RGMS.DB.mainAltGroups = guildOrError.mainAltGroups
+    end
+    if type(RGMS.UI) == "table"
+        and type(RGMS.UI.CompleteMainsAltsGrouping) == "function" then
+        RGMS.UI.CompleteMainsAltsGrouping(mainIdentity)
+    end
+    MainsAlts.RefreshStatus()
+    return true, mainIdentity
+end
+
 function MainsAlts.RefreshStatus()
     if type(RGMS.UI) ~= "table"
         or type(RGMS.UI.SetViewStatus) ~= "function" then

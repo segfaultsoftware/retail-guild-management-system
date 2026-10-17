@@ -20,6 +20,7 @@ Core\Commands.lua
 UI\UI.lua
 Roster\Names.lua
 Roster\Report.lua
+MainsAlts\Groups.lua
 MainsAlts\Report.lua
 Roster\Tenure.lua
 Roster\Scanner.lua

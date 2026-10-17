@@ -369,6 +369,41 @@ function AccountData.replaceDataset(model, identity, datasetName, dataset)
     return replacement, guild, key
 end
 
+function AccountData.replaceMainAltGroups(model, identity, groups)
+    local valid, validationError = AccountData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateGroups(groups, "mainAltGroups")
+    if not valid then
+        return nil, validationError
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+    local guild, key = AccountData.findGuild(replacement, identity)
+    if not guild then
+        local guildError
+        guild, guildError = AccountData.newGuild(identity)
+        if not guild then
+            return nil, guildError
+        end
+        replacement.guilds[key] = guild
+    end
+    guild.mainAltGroups, copyError = deepCopy(groups)
+    if not guild.mainAltGroups then
+        return nil, copyError
+    end
+
+    valid, validationError = AccountData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+    return replacement, guild, key
+end
+
 function AccountData.resetGuild(model, identity)
     local valid, validationError = AccountData.validate(model)
     if not valid then

@@ -233,6 +233,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local refreshRequests = 0
     local bankRefreshRequests = 0
     local bankCancellations = 0
+    local groupingRequests = {}
     local tooltip = {
         lines = {},
         shown = false,
@@ -310,6 +311,12 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 bankCancellations = bankCancellations + 1
             end,
         },
+        MainsAlts = {
+            GroupSelected = function(selectedIdentities)
+                groupingRequests[#groupingRequests + 1] = selectedIdentities
+                return true
+            end,
+        },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
     local ui = chunk("RGMS", rgms)
@@ -328,6 +335,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         bankCancellations = function()
             return bankCancellations
         end,
+        groupingRequests = groupingRequests,
         tooltip = tooltip,
         modifiedItemClicks = modifiedItemClicks,
         ui = ui,
@@ -400,6 +408,14 @@ return {
                     altCount = 0,
                     alts = {},
                 },
+                {
+                    identity = "other-area52",
+                    displayName = "Other-Area52",
+                    altCount = 1,
+                    alts = {
+                        { identity = "otheralt-area52", displayName = "OtherAlt-Area52" },
+                    },
+                },
             },
         }
 
@@ -407,9 +423,29 @@ return {
         test.assert_true(harness.ui.Show("mainsalts"))
         local view = harness.frame().views.mainsalts
         test.assert_nil(view.refreshButton)
+        test.assert_equal(view.groupButton.text, "Group Toons")
+        test.assert_false(view.groupButton:IsEnabled())
         test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
         test.assert_true(view.mainsAltsLines[1].checkbox:IsShown())
         test.assert_true(view.mainsAltsLines[2].checkbox:IsShown())
+
+        view.mainsAltsLines[1].checkbox:SetChecked(true)
+        view.mainsAltsLines[1].checkbox.scripts.OnClick(view.mainsAltsLines[1].checkbox)
+        test.assert_false(view.groupButton:IsEnabled())
+        view.mainsAltsLines[2].checkbox:SetChecked(true)
+        view.mainsAltsLines[2].checkbox.scripts.OnClick(view.mainsAltsLines[2].checkbox)
+        test.assert_true(view.groupButton:IsEnabled())
+        view.groupButton.scripts.OnClick()
+        test.assert_equal(harness.groupingRequests[1], {
+            "main-area52",
+            "solo-area52",
+        })
+        view.mainsAltsLines[3].checkbox:SetChecked(true)
+        view.mainsAltsLines[3].checkbox.scripts.OnClick(view.mainsAltsLines[3].checkbox)
+        test.assert_false(view.groupButton:IsEnabled())
+        view.mainsAltsLines[3].checkbox:SetChecked(false)
+        view.mainsAltsLines[3].checkbox.scripts.OnClick(view.mainsAltsLines[3].checkbox)
+        test.assert_true(view.groupButton:IsEnabled())
 
         view.mainsAltsLines[1].expandButton.scripts.OnClick()
         test.assert_equal(view.mainsAltsLines[2].name.text, "AltA-Area52")
@@ -418,6 +454,7 @@ return {
         test.assert_equal(view.mainsAltsLines[4].name.text, "Solo-Area52")
 
         harness.ui.SetRosterScanInProgress(true)
+        test.assert_false(view.groupButton:IsEnabled())
         test.assert_false(view.mainsAltsLines[1].checkbox:IsEnabled())
         test.assert_false(view.mainsAltsLines[1].expandButton:IsEnabled())
         local toggled, message = harness.ui.ToggleMainsAltsGroup("main-area52")
@@ -426,9 +463,15 @@ return {
 
         harness.ui.SetRosterScanInProgress(false)
         test.assert_true(view.mainsAltsLines[1].checkbox:IsEnabled())
+        test.assert_true(view.groupButton:IsEnabled())
+        harness.ui.CompleteMainsAltsGrouping("main-area52")
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+        test.assert_false(view.mainsAltsLines[1].checkbox:GetChecked())
         harness.ui.Hide()
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
-        test.assert_false(view.mainsAltsLines[3].frame:IsShown())
+        test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
+        test.assert_false(view.mainsAltsLines[4].frame:IsShown())
     end),
 
     test.case("roster refresh button starts manual scans and disables while scanning", function()
