@@ -171,5 +171,13 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
         end
     end
 
+    if type(RGMS.MinimapButton) == "table"
+        and type(RGMS.MinimapButton.Initialize) == "function" then
+        local minimapInitialized, minimapError = RGMS.MinimapButton.Initialize()
+        if not minimapInitialized then
+            RGMS.Print("Could not initialize the minimap button: " .. tostring(minimapError) .. ".")
+        end
+    end
+
     self:UnregisterEvent("ADDON_LOADED")
 end)

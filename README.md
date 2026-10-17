@@ -27,6 +27,8 @@ migration sources remain per character. It does not send data anywhere.
   sources. Corrupt or newer, incompatible data is preserved until the user
   accepts `/rgms reset`.
 - Saves the RGMS window position independently for each character.
+- Adds a draggable minimap button using the RGMS logo. Left-clicking it toggles
+  the Roster window, and its position is shared account-wide.
 
 RGMS is **Retail only**. The manifest currently declares interface `120100` in
 [`RGMS.toc`](RGMS.toc). A release supports only the live Retail build recorded
@@ -101,7 +103,7 @@ promotion procedure.
 
 ## Current exclusions
 
-The MVP has no Classic support, localization, minimap icon, settings panel,
+The MVP has no Classic support, localization, settings panel,
 cross-character data sharing, multi-client synchronization, hosted service,
 website integration, or data export. The addon does not upload observations or
 integrate with an external RGMS application. These are exclusions, not hidden

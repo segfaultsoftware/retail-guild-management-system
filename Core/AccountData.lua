@@ -9,8 +9,9 @@ local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
-AccountData.CURRENT_SCHEMA_VERSION = 1
+AccountData.CURRENT_SCHEMA_VERSION = 2
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
+AccountData.DEFAULT_MINIMAP_ANGLE = 225
 
 local function characterCount(value)
     local withoutContinuationBytes = string.gsub(value, "[\128-\191]", "")
@@ -170,6 +171,9 @@ end
 function AccountData.newModel()
     return {
         schemaVersion = AccountData.CURRENT_SCHEMA_VERSION,
+        settings = {
+            minimapAngle = AccountData.DEFAULT_MINIMAP_ANGLE,
+        },
         guilds = {},
     }
 end
@@ -195,7 +199,7 @@ function AccountData.validate(model)
         return nil, "account data must be a table"
     end
     for key in pairs(model) do
-        if key ~= "schemaVersion" and key ~= "guilds" then
+        if key ~= "schemaVersion" and key ~= "settings" and key ~= "guilds" then
             return nil, "account data contains unexpected field " .. tostring(key)
         end
     end
@@ -205,6 +209,23 @@ function AccountData.validate(model)
     end
     if type(model.guilds) ~= "table" then
         return nil, "account data.guilds must be a table"
+    end
+    if type(model.settings) ~= "table" then
+        return nil, "account data.settings must be a table"
+    end
+    for key in pairs(model.settings) do
+        if key ~= "minimapAngle" then
+            return nil, "account data.settings contains unexpected field " .. tostring(key)
+        end
+    end
+    local minimapAngle = model.settings.minimapAngle
+    if type(minimapAngle) ~= "number"
+        or minimapAngle ~= minimapAngle
+        or minimapAngle == math.huge
+        or minimapAngle == -math.huge
+        or minimapAngle < 0
+        or minimapAngle >= 360 then
+        return nil, "account data.settings.minimapAngle must be at least 0 and less than 360"
     end
 
     for key, guild in pairs(model.guilds) do
@@ -319,11 +340,33 @@ function AccountData.load(saved)
     if not working then
         return disabledState("corrupt", copyError, saved)
     end
+    local migratedFrom
+    if working.schemaVersion == 1 then
+        for key in pairs(working) do
+            if key ~= "schemaVersion" and key ~= "guilds" then
+                return disabledState(
+                    "corrupt",
+                    "account data contains unexpected field " .. tostring(key),
+                    saved
+                )
+            end
+        end
+        migratedFrom = 1
+        working.schemaVersion = 2
+        working.settings = {
+            minimapAngle = AccountData.DEFAULT_MINIMAP_ANGLE,
+        }
+    end
     local valid, validationError = AccountData.validate(working)
     if not valid then
         return disabledState("corrupt", validationError, saved)
     end
-    return { enabled = true, status = "ready", model = working }
+    return {
+        enabled = true,
+        status = "ready",
+        model = working,
+        migratedFrom = migratedFrom,
+    }
 end
 
 function AccountData.findGuild(model, identity)

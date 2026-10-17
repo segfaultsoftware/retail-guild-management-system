@@ -13,6 +13,7 @@ Core\AccountData.lua
 Core\RosterMigration.lua
 Core\BankMigration.lua
 UI\Layout.lua
+Core\Minimap.lua
 Core\Bootstrap.lua
 Core\Reset.lua
 Core\DatasetOwnership.lua

@@ -36,9 +36,64 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
+            schemaVersion = 2,
+            settings = {
+                minimapAngle = 225,
+            },
+            guilds = {},
+        })
+    end),
+
+    test.case("version 1 account data gains default minimap settings copy-on-write", function()
+        local original = {
+            schemaVersion = 1,
+            guilds = {},
+        }
+
+        local state = accountData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 1)
+        test.assert_equal(state.model, {
+            schemaVersion = 2,
+            settings = {
+                minimapAngle = 225,
+            },
+            guilds = {},
+        })
+        test.assert_equal(original, {
             schemaVersion = 1,
             guilds = {},
         })
+    end),
+
+    test.case("account data validates the saved minimap angle", function()
+        local model = accountData.newModel()
+        model.settings.minimapAngle = 359.5
+        test.assert_true(accountData.validate(model))
+
+        for _, angle in ipairs({ -1, 360, math.huge }) do
+            model.settings.minimapAngle = angle
+            local valid, message = accountData.validate(model)
+            test.assert_nil(valid)
+            test.assert_matches(message, "minimapAngle")
+        end
+    end),
+
+    test.case("version 1 migration rejects unknown settings without changing input", function()
+        local original = {
+            schemaVersion = 1,
+            settings = { minimapAngle = 42 },
+            guilds = {},
+        }
+
+        local state = accountData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "unexpected field settings")
+        test.assert_true(state.original == original)
+        test.assert_equal(original.settings.minimapAngle, 42)
     end),
 
     test.case("same account guild identity resolves one shared partition", function()

@@ -14,11 +14,14 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 1
+## Account-wide schema: version 2
 
 ```text
 {
-  schemaVersion = 1,
+  schemaVersion = 2,
+  settings = {
+    minimapAngle = number,
+  },
   guilds = {
     [GuildKey] = {
       identity = GuildIdentity,
@@ -36,6 +39,12 @@ view and does not create, bind, replace, or erase an account guild partition.
   },
 }
 ```
+
+`settings.minimapAngle` is a finite angle from 0 (inclusive) to 360
+(exclusive). It places the draggable RGMS button around the minimap and is
+shared by every character on the account. Version 1 account data migrates
+copy-on-write by adding the default angle of 225 degrees; the original table is
+left untouched if validation fails.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
