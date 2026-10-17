@@ -158,7 +158,7 @@ local function changeAltGroup(methodName, altIdentity)
         return nil, "Mains/Alts group changes are unavailable"
     end
 
-    local groups, mainIdentityOrError = RGMS.MainsAltsGroups[methodName](
+    local groups, mainIdentityOrError, groupRemains = RGMS.MainsAltsGroups[methodName](
         RGMS.DB.mainAltGroups,
         altIdentity
     )
@@ -172,7 +172,10 @@ local function changeAltGroup(methodName, altIdentity)
     end
     if type(RGMS.UI) == "table"
         and type(RGMS.UI.CompleteMainsAltsChange) == "function" then
-        RGMS.UI.CompleteMainsAltsChange(mainIdentityOrError)
+        RGMS.UI.CompleteMainsAltsChange(
+            mainIdentityOrError,
+            methodName ~= "remove" or groupRemains ~= false
+        )
     end
     MainsAlts.RefreshStatus()
     return true, mainIdentityOrError

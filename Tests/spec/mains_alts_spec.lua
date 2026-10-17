@@ -30,19 +30,35 @@ local function newHarness(options)
                     groups = groups,
                     selected = selected,
                 }
+                if options.groupError then
+                    return nil, options.groupError
+                end
                 return options.groupResult or {
                     ["Main-Area52"] = { "Alt-Area52" },
                 }, options.mainIdentity or "main-area52"
             end,
             promote = function(groups, altIdentity)
                 calls.promote = { groups = groups, altIdentity = altIdentity }
+                if options.promoteError then
+                    return nil, options.promoteError
+                end
                 return options.promoteResult or {
                     ["Alt-Area52"] = { "Main-Area52" },
                 }, options.promoteMainIdentity or "alt-area52"
             end,
             remove = function(groups, altIdentity)
                 calls.remove = { groups = groups, altIdentity = altIdentity }
-                return options.removeResult or {}, options.removeMainIdentity
+                if options.removeError then
+                    return nil, options.removeError
+                end
+                local result = options.removeResult or {}
+                local groupRemains = options.removeGroupRemains
+                if groupRemains == nil then
+                    groupRemains = next(result) ~= nil
+                end
+                return result,
+                    options.removeMainIdentity or "main-area52",
+                    groupRemains
             end,
         },
         AccountDataState = { model = { original = true } },
@@ -79,8 +95,9 @@ local function newHarness(options)
             CompleteMainsAltsGrouping = function(value)
                 calls.completedMain = value
             end,
-            CompleteMainsAltsChange = function(value)
+            CompleteMainsAltsChange = function(value, expandGroup)
                 calls.completedChange = value or false
+                calls.completedChangeExpands = expandGroup
             end,
             SetViewContent = function(tabId, value)
                 calls.content = { tabId = tabId, value = value }
@@ -158,6 +175,26 @@ return {
         test.assert_equal(rgms.AccountDataState.model, { published = true })
     end),
 
+    test.case("extending a group targets its existing main after publication", function()
+        local controller, calls = newHarness({
+            groups = { ["Existing-Area52"] = { "OldAlt-Area52" } },
+            groupResult = {
+                ["Existing-Area52"] = { "NewAlt-Area52", "OldAlt-Area52" },
+            },
+            mainIdentity = "existing-area52",
+        })
+
+        local grouped, mainIdentity = controller.GroupSelected({
+            "existing-area52",
+            "newalt-area52",
+        })
+
+        test.assert_true(grouped)
+        test.assert_equal(mainIdentity, "existing-area52")
+        test.assert_equal(calls.completedMain, "existing-area52")
+        test.assert_not_nil(calls.report)
+    end),
+
     test.case("grouping is rejected while a roster scan is active", function()
         local controller, calls = newHarness({ scanning = true })
 
@@ -195,11 +232,53 @@ return {
         local removed, mainIdentity = controller.RemoveAlt("alt-area52")
 
         test.assert_true(removed)
-        test.assert_nil(mainIdentity)
+        test.assert_equal(mainIdentity, "main-area52")
         test.assert_equal(calls.remove.altIdentity, "alt-area52")
         test.assert_equal(calls.replace.groups, {})
-        test.assert_false(calls.completedChange)
+        test.assert_equal(calls.completedChange, "main-area52")
+        test.assert_false(calls.completedChangeExpands)
         test.assert_not_nil(calls.report)
+    end),
+
+    test.case("removal from a surviving group targets and expands its existing main", function()
+        local controller, calls = newHarness({
+            groups = {
+                ["Main-Area52"] = { "Removed-Area52", "Stayed-Area52" },
+            },
+            removeResult = {
+                ["Main-Area52"] = { "Stayed-Area52" },
+            },
+            removeMainIdentity = "main-area52",
+            removeGroupRemains = true,
+        })
+
+        local removed, mainIdentity = controller.RemoveAlt("removed-area52")
+
+        test.assert_true(removed)
+        test.assert_equal(mainIdentity, "main-area52")
+        test.assert_equal(calls.completedChange, "main-area52")
+        test.assert_true(calls.completedChangeExpands)
+        test.assert_not_nil(calls.report)
+    end),
+
+    test.case("failed group mutations do not complete UI state or refresh the report", function()
+        local grouping, groupingCalls = newHarness({ groupError = "rejected" })
+        local promotion, promotionCalls = newHarness({ promoteError = "rejected" })
+        local removal, removalCalls = newHarness({ removeError = "rejected" })
+
+        local grouped = grouping.GroupSelected({ "one", "two" })
+        local promoted = promotion.PromoteAlt("alt-area52")
+        local removed = removal.RemoveAlt("alt-area52")
+
+        test.assert_nil(grouped)
+        test.assert_nil(promoted)
+        test.assert_nil(removed)
+        test.assert_nil(groupingCalls.completedMain)
+        test.assert_nil(promotionCalls.completedChange)
+        test.assert_nil(removalCalls.completedChange)
+        test.assert_nil(groupingCalls.report)
+        test.assert_nil(promotionCalls.report)
+        test.assert_nil(removalCalls.report)
     end),
 
     test.case("promotion and removal are rejected during a roster scan", function()

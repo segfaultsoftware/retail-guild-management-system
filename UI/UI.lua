@@ -39,6 +39,8 @@ local MAINS_ALTS_PROMOTE_WIDTH = 48
 local MAINS_ALTS_REMOVE_WIDTH = 64
 local MAINS_ALTS_NOTE_SIZE = 20
 local MAINS_ALTS_NOTE_GAP = 4
+local MAINS_ALTS_SCROLL_DURATION = 0.25
+local MAINS_ALTS_WHEEL_ROWS = 3
 local CHARACTER_NOTE_LIMIT = 5500
 local CHARACTER_NOTE_TEXTURE = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up"
 local MISSING_WARNING_SIZE = 16
@@ -699,7 +701,116 @@ local function acquireMainsAltsLine(view, index)
     return line
 end
 
-local function renderMainsAlts(view)
+local function mainsAltsMaximumScroll(view)
+    local contentHeight = type(view.mainsAltsTableHeight) == "number"
+        and view.mainsAltsTableHeight
+        or view.scrollChild:GetHeight()
+    return math.max(0, contentHeight - view.scrollFrame:GetHeight())
+end
+
+local function clampMainsAltsScroll(view, offset)
+    return math.max(0, math.min(offset or 0, mainsAltsMaximumScroll(view)))
+end
+
+local function setMainsAltsScroll(view, offset)
+    view.settingMainsAltsScroll = true
+    view.scrollFrame:SetVerticalScroll(clampMainsAltsScroll(view, offset))
+    view.settingMainsAltsScroll = false
+end
+
+local function cancelMainsAltsScrollAnimation(view)
+    view.mainsAltsScrollAnimation = nil
+end
+
+local function cancelMainsAltsScrollWork(view)
+    cancelMainsAltsScrollAnimation(view)
+    view.pendingMainsAltsScrollTarget = nil
+end
+
+local function captureMainsAltsScrollAnchor(view)
+    local offset = view.scrollFrame:GetVerticalScroll()
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        if line.frame:IsShown()
+            and type(line.offset) == "number"
+            and line.offset + MAINS_ALTS_ROW_HEIGHT > offset then
+            return {
+                identity = line.identity,
+                relativeOffset = line.offset - offset,
+                numericOffset = offset,
+            }
+        end
+    end
+    return { numericOffset = offset }
+end
+
+local function findVisibleMainsAltsLine(view, identity, topLevelOnly)
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        if line.frame:IsShown()
+            and line.identity == identity
+            and (not topLevelOnly or not line.isAlt) then
+            return line
+        end
+    end
+    return nil
+end
+
+local function restoreMainsAltsScrollAnchor(view, anchor)
+    if not anchor then
+        return
+    end
+    local line = anchor.identity
+        and findVisibleMainsAltsLine(view, anchor.identity, false)
+        or nil
+    if line then
+        setMainsAltsScroll(view, line.offset - anchor.relativeOffset)
+    else
+        setMainsAltsScroll(view, anchor.numericOffset)
+    end
+end
+
+local function startMainsAltsScrollAnimation(view, line)
+    cancelMainsAltsScrollAnimation(view)
+    view.mainsAltsScrollAnimation = {
+        startOffset = view.scrollFrame:GetVerticalScroll(),
+        destination = clampMainsAltsScroll(view, line.offset),
+        elapsed = 0,
+    }
+end
+
+local function updateMainsAltsScrollAnimation(view, elapsed)
+    local animation = view.mainsAltsScrollAnimation
+    if not animation then
+        return
+    end
+    if not UI.frame:IsShown()
+        or UI.selectedTab ~= "mainsalts"
+        or not view:IsShown()
+        or view.mainsAltsAvailable == false
+        or view.mainsAltsScanInProgress == true then
+        cancelMainsAltsScrollAnimation(view)
+        return
+    end
+    animation.elapsed = math.min(
+        MAINS_ALTS_SCROLL_DURATION,
+        animation.elapsed + math.max(0, elapsed or 0)
+    )
+    local progress = animation.elapsed / MAINS_ALTS_SCROLL_DURATION
+    local remaining = 1 - progress
+    local easedProgress = 1 - remaining * remaining * remaining
+    setMainsAltsScroll(
+        view,
+        animation.startOffset
+            + (animation.destination - animation.startOffset) * easedProgress
+    )
+    if animation.elapsed >= MAINS_ALTS_SCROLL_DURATION then
+        setMainsAltsScroll(view, animation.destination)
+        view.mainsAltsScrollAnimation = nil
+    end
+end
+
+local function renderMainsAlts(view, resolvePendingTarget)
+    cancelMainsAltsScrollAnimation(view)
+    local anchor = captureMainsAltsScrollAnchor(view)
     hideMainsAltsLines(view)
     view.text:Hide()
     local lineIndex = 0
@@ -711,6 +822,7 @@ local function renderMainsAlts(view)
         line.isAlt = isAlt == true
         line.hasAlts = not line.isAlt and character.altCount > 0
         line.identity = character.identity
+        line.offset = offset
         line.hasNote = character.hasNote == true
         line.frame:ClearAllPoints()
         line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
@@ -824,9 +936,29 @@ local function renderMainsAlts(view)
         view.mainsAltsLines[index].frame:Hide()
     end
     view.mainsAltsTableHeight = offset + 4
-    view.scrollFrame:SetVerticalScroll(0)
     updateMainsAltsControlState(view)
     refreshScrollChild(view)
+
+    if lineIndex == 0 then
+        cancelMainsAltsScrollWork(view)
+        setMainsAltsScroll(view, 0)
+        return
+    end
+
+    if resolvePendingTarget and view.pendingMainsAltsScrollTarget then
+        local targetIdentity = view.pendingMainsAltsScrollTarget
+        view.pendingMainsAltsScrollTarget = nil
+        local targetLine = findVisibleMainsAltsLine(view, targetIdentity, true)
+        if targetLine
+            and UI.selectedTab == "mainsalts"
+            and UI.frame:IsShown()
+            and view:IsShown()
+            and view.mainsAltsAvailable ~= false then
+            startMainsAltsScrollAnimation(view, targetLine)
+            return
+        end
+    end
+    restoreMainsAltsScrollAnchor(view, anchor)
 end
 
 local function hideBankLines(view)
@@ -1154,6 +1286,30 @@ local function createView(parent, tabId)
     view.scrollFrame:SetScript("OnSizeChanged", function()
         refreshScrollChild(view)
     end)
+    if tabId == "mainsalts" then
+        view:SetScript("OnHide", function()
+            cancelMainsAltsScrollWork(view)
+        end)
+        view.scrollFrame:EnableMouseWheel(true)
+        view.scrollFrame:SetScript("OnMouseWheel", function(_, delta)
+            cancelMainsAltsScrollAnimation(view)
+            setMainsAltsScroll(
+                view,
+                view.scrollFrame:GetVerticalScroll()
+                    - delta * MAINS_ALTS_ROW_HEIGHT * MAINS_ALTS_WHEEL_ROWS
+            )
+        end)
+        view.scrollFrame:SetScript("OnVerticalScroll", function(_, offset)
+            if view.settingMainsAltsScroll then
+                return
+            end
+            cancelMainsAltsScrollAnimation(view)
+            setMainsAltsScroll(view, offset)
+        end)
+        view.scrollFrame:SetScript("OnUpdate", function(_, elapsed)
+            updateMainsAltsScrollAnimation(view, elapsed)
+        end)
+    end
 
     return view
 end
@@ -1409,9 +1565,12 @@ local function createWindow()
             and type(RGMS.Bank.CancelScan) == "function" then
             RGMS.Bank.CancelScan()
         end
+        local mainsAltsView = frame.views.mainsalts
+        cancelMainsAltsScrollWork(mainsAltsView)
         if type(UI.CollapseMainsAltsGroups) == "function" then
             UI.CollapseMainsAltsGroups()
         end
+        setMainsAltsScroll(mainsAltsView, 0)
         if frame.notesEditor:IsShown() then
             UI.CloseCharacterNoteEditor()
         end
@@ -1527,6 +1686,9 @@ function UI.SelectPrimaryTab(tabId)
         return nil, "the RGMS window has not been initialized"
     end
 
+    if UI.selectedTab == "mainsalts" and tabId ~= "mainsalts" then
+        cancelMainsAltsScrollWork(UI.frame.views.mainsalts)
+    end
     for _, currentTabId in ipairs(TAB_ORDER) do
         local selected = currentTabId == tabId
         UI.frame.views[currentTabId]:SetShown(selected)
@@ -1561,6 +1723,7 @@ function UI.SetViewContent(tabId, content)
         refreshRankScrollChild(view)
         view.text:Show()
     elseif tabId == "mainsalts" then
+        cancelMainsAltsScrollWork(view)
         hideMainsAltsLines(view)
         view.text:Show()
     elseif tabId == "bank" then
@@ -1753,7 +1916,7 @@ function UI.SetMainsAltsReport(report)
         and not availableCharacters[editor.characterIdentity] then
         editor:Hide()
     end
-    renderMainsAlts(view)
+    renderMainsAlts(view, true)
     return true
 end
 
@@ -1778,6 +1941,8 @@ function UI.CompleteMainsAltsGrouping(mainIdentity)
     end
 
     local view = UI.frame.views.mainsalts
+    cancelMainsAltsScrollAnimation(view)
+    view.pendingMainsAltsScrollTarget = mainIdentity
     view.mainsAltsSelections = {}
     view.expandedMainsAlts = { [mainIdentity] = true }
     if type(view.mainsAltsReport) == "table" then
@@ -1786,7 +1951,7 @@ function UI.CompleteMainsAltsGrouping(mainIdentity)
     return true
 end
 
-function UI.CompleteMainsAltsChange(mainIdentity)
+function UI.CompleteMainsAltsChange(mainIdentity, expandGroup)
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
     end
@@ -1796,8 +1961,12 @@ function UI.CompleteMainsAltsChange(mainIdentity)
     end
 
     local view = UI.frame.views.mainsalts
+    cancelMainsAltsScrollAnimation(view)
+    view.pendingMainsAltsScrollTarget = mainIdentity
     view.mainsAltsSelections = {}
-    view.expandedMainsAlts = mainIdentity and { [mainIdentity] = true } or {}
+    view.expandedMainsAlts = mainIdentity and expandGroup ~= false
+        and { [mainIdentity] = true }
+        or {}
     if type(view.mainsAltsReport) == "table" then
         renderMainsAlts(view)
     end
@@ -1948,6 +2117,9 @@ function UI.SetRosterScanInProgress(inProgress)
     )
     local mainsAltsView = UI.frame.views.mainsalts
     mainsAltsView.mainsAltsScanInProgress = inProgress == true
+    if inProgress == true then
+        cancelMainsAltsScrollWork(mainsAltsView)
+    end
     updateMainsAltsControlState(mainsAltsView)
     return true
 end
@@ -1986,6 +2158,9 @@ function UI.SetMainsAltsAvailable(isAvailable)
 
     local view = UI.frame.views.mainsalts
     view.mainsAltsAvailable = isAvailable == true
+    if not view.mainsAltsAvailable then
+        cancelMainsAltsScrollWork(view)
+    end
     updateMainsAltsControlState(view)
     return true
 end

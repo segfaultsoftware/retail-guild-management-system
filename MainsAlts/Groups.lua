@@ -218,14 +218,15 @@ function Groups.remove(savedGroups, altIdentity)
     end
 
     table.remove(alts, altIndex)
+    local mainName, mainRealm = Names.splitDisplayName(mainDisplayName)
+    local mainIdentity = Names.identity(mainName, mainRealm)
     if #alts == 0 then
         replacement[mainDisplayName] = nil
-        return replacement
+        return replacement, mainIdentity, false
     end
 
-    local mainName, mainRealm = Names.splitDisplayName(mainDisplayName)
     sortDisplayNames(alts)
-    return replacement, Names.identity(mainName, mainRealm)
+    return replacement, mainIdentity, true
 end
 
 function Groups.reconcile(dataset, savedGroups, savedNotes)

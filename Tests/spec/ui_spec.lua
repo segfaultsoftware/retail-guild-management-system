@@ -33,6 +33,21 @@ local function rosterTableText(view)
     return table.concat(parts, "\n")
 end
 
+local function mainsAltsReport(count, prefix)
+    local rows = {}
+    prefix = prefix or "char"
+    for index = 1, count do
+        local identity = string.format("%s%02d-area52", prefix, index)
+        rows[index] = {
+            identity = identity,
+            displayName = string.format("%s%02d-Area52", prefix, index),
+            altCount = 0,
+            alts = {},
+        }
+    end
+    return { rows = rows }
+end
+
 local function countLines(value)
     local count = 1
     for _ in string.gmatch(value or "", "\n") do
@@ -218,6 +233,10 @@ local function newRegion(parent)
         self.verticalScroll = offset
     end
 
+    function region:GetVerticalScroll()
+        return self.verticalScroll or 0
+    end
+
     function region:SetID(id)
         self.id = id
     end
@@ -244,6 +263,7 @@ local function newRegion(parent)
         "SetToplevel",
         "SetMovable",
         "EnableMouse",
+        "EnableMouseWheel",
         "SetClampedToScreen",
         "SetClampRectInsets",
         "SetBackdrop",
@@ -585,6 +605,187 @@ return {
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
         test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
         test.assert_false(view.mainsAltsLines[4].frame:IsShown())
+    end),
+
+    test.case("Mains/Alts mutation scrolling waits for the final report and eases to a clamped row", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show("mainsalts")
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(10)
+        harness.ui.SetMainsAltsReport(report)
+
+        harness.ui.CompleteMainsAltsChange("char08-area52")
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 0)
+        test.assert_equal(view.pendingMainsAltsScrollTarget, "char08-area52")
+        test.assert_nil(view.mainsAltsScrollAnimation)
+
+        local reordered = mainsAltsReport(10)
+        reordered.rows[5], reordered.rows[8] = reordered.rows[8], reordered.rows[5]
+        harness.ui.SetMainsAltsReport(reordered)
+        test.assert_nil(view.pendingMainsAltsScrollTarget)
+        test.assert_equal(view.mainsAltsScrollAnimation.destination, 100)
+        test.assert_equal(view.scrollChild:GetHeight(), 248)
+
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.0625)
+        local firstOffset = view.scrollFrame:GetVerticalScroll()
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.0625)
+        local secondOffset = view.scrollFrame:GetVerticalScroll()
+        test.assert_true(firstOffset > 0)
+        test.assert_true(firstOffset > secondOffset - firstOffset)
+        test.assert_true(secondOffset < 100)
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.125)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 100)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+
+        harness.ui.CompleteMainsAltsChange("char10-area52")
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_equal(view.mainsAltsScrollAnimation.destination, 176)
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.25)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 176)
+        test.assert_equal(view.scrollChild:GetHeight(), 248)
+    end),
+
+    test.case("Mains/Alts ordinary renders preserve main ungrouped and expanded-alt anchors", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(8)
+        harness.ui.SetMainsAltsReport(report)
+
+        view.scrollFrame:SetVerticalScroll(30)
+        local moved = mainsAltsReport(8)
+        table.insert(moved.rows, 1, {
+            identity = "added-area52",
+            displayName = "Added-Area52",
+            altCount = 0,
+            alts = {},
+        })
+        harness.ui.SetMainsAltsReport(moved)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 54)
+
+        view.scrollFrame:SetVerticalScroll(54)
+        local removedAnchor = mainsAltsReport(8)
+        table.remove(removedAnchor.rows, 2)
+        harness.ui.SetMainsAltsReport(removedAnchor)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 54)
+
+        local grouped = {
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    altCount = 2,
+                    alts = {
+                        { identity = "alta-area52", displayName = "AltA-Area52" },
+                        { identity = "altb-area52", displayName = "AltB-Area52" },
+                    },
+                },
+                {
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        }
+        harness.ui.SetMainsAltsReport(grouped)
+        harness.ui.ToggleMainsAltsGroup("main-area52")
+        view.scrollFrame:SetVerticalScroll(30)
+        local withLeadingRow = {
+            rows = {
+                {
+                    identity = "leading-area52",
+                    displayName = "Leading-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+                grouped.rows[1],
+                grouped.rows[2],
+            },
+        }
+        harness.ui.SetMainsAltsReport(withLeadingRow)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 54)
+        test.assert_equal(view.mainsAltsLines[3].identity, "alta-area52")
+    end),
+
+    test.case("Mains/Alts animation retargets and user or lifecycle input cancels it", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show("mainsalts")
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(10)
+        harness.ui.SetMainsAltsReport(report)
+
+        local function start(identity)
+            harness.ui.CompleteMainsAltsChange(identity)
+            harness.ui.SetMainsAltsReport(report)
+            test.assert_not_nil(view.mainsAltsScrollAnimation)
+        end
+
+        start("char08-area52")
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.1)
+        local retargetOffset = view.scrollFrame:GetVerticalScroll()
+        harness.ui.CompleteMainsAltsChange("char04-area52")
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_equal(view.mainsAltsScrollAnimation.startOffset, retargetOffset)
+        test.assert_equal(view.mainsAltsScrollAnimation.destination, 76)
+
+        view.scrollFrame.scripts.OnMouseWheel(view.scrollFrame, -1)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        local wheelOffset = view.scrollFrame:GetVerticalScroll()
+        test.assert_true(wheelOffset > retargetOffset)
+
+        start("char08-area52")
+        view.scrollFrame.scripts.OnVerticalScroll(view.scrollFrame, 25)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 25)
+
+        start("char08-area52")
+        harness.ui.SelectPrimaryTab("roster")
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_nil(view.pendingMainsAltsScrollTarget)
+        harness.ui.SelectPrimaryTab("mainsalts")
+
+        start("char08-area52")
+        harness.ui.SetRosterScanInProgress(true)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        harness.ui.SetRosterScanInProgress(false)
+
+        start("char08-area52")
+        harness.ui.SetMainsAltsAvailable(false)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        harness.ui.SetMainsAltsAvailable(true)
+
+        start("char08-area52")
+        harness.ui.Hide()
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 0)
+    end),
+
+    test.case("Mains/Alts missing mutation targets are cleared silently", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show("mainsalts")
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(8)
+        harness.ui.SetMainsAltsReport(report)
+        view.scrollFrame:SetVerticalScroll(30)
+
+        harness.ui.CompleteMainsAltsChange("missing-area52")
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_nil(view.pendingMainsAltsScrollTarget)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 30)
+
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 30)
     end),
 
     test.case("one character-note editor switches discards limits saves and deletes", function()

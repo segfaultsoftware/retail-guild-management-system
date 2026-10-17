@@ -139,12 +139,13 @@ return {
     end),
 
     test.case("removing from a two-character group dissolves the group", function()
-        local result, mainIdentity = groups.remove({
+        local result, mainIdentity, groupRemains = groups.remove({
             ["Main-Area52"] = { "Alt-Area52" },
         }, "alt-area52")
 
         test.assert_equal(result, {})
-        test.assert_nil(mainIdentity)
+        test.assert_equal(mainIdentity, "main-area52")
+        test.assert_false(groupRemains)
     end),
 
     test.case("group changes reject characters that are not existing alts", function()
