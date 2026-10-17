@@ -160,4 +160,62 @@ return {
         test.assert_nil(removed)
         test.assert_matches(removeError, "not an alt")
     end),
+
+    test.case("roster reconciliation preserves retained members and removes orphans", function()
+        local savedGroups = {
+            ["Main-Area52"] = {
+                "Gone-Area52",
+                "Missing-Area52",
+                "Stayed-Area52",
+            },
+            ["SoloMain-Area52"] = { "GoneAlt-Area52" },
+            ["EmptyMain-Area52"] = { "EmptyAlt-Area52" },
+        }
+        local savedNotes = {
+            ["main-area52"] = "Main note",
+            ["gone-area52"] = "Delete me",
+            ["missing-area52"] = "Missing note",
+        }
+        local roster = dataset(
+            { "Main", "Area52" },
+            { "Missing", "Area52" },
+            { "Stayed", "Area52" },
+            { "SoloMain", "Area52" }
+        )
+        roster.members[2].isMissing = true
+
+        local result, notes = groups.reconcile(roster, savedGroups, savedNotes)
+
+        test.assert_equal(result, {
+            ["Main-Area52"] = { "Missing-Area52", "Stayed-Area52" },
+        })
+        test.assert_equal(notes, {
+            ["main-area52"] = "Main note",
+            ["missing-area52"] = "Missing note",
+        })
+        test.assert_equal(savedGroups["Main-Area52"][1], "Gone-Area52")
+        test.assert_equal(savedNotes["gone-area52"], "Delete me")
+    end),
+
+    test.case("roster reconciliation promotes the first remaining name and realm", function()
+        local result = assert(groups.reconcile(
+            dataset(
+                { "Zulu", "Area52" },
+                { "Alpha", "Zulu" },
+                { "Alpha", "Area52" }
+            ),
+            {
+                ["Removed-Area52"] = {
+                    "Zulu-Area52",
+                    "Alpha-Zulu",
+                    "Alpha-Area52",
+                },
+            },
+            {}
+        ))
+
+        test.assert_equal(result, {
+            ["Alpha-Area52"] = { "Alpha-Zulu", "Zulu-Area52" },
+        })
+    end),
 }

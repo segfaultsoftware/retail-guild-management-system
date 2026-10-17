@@ -361,6 +361,12 @@ if type(Roster.Scanner) ~= "table"
             end
             Roster.RefreshStatus()
         end,
+        completeSuccess = function()
+            if type(RGMS.UI) == "table"
+                and type(RGMS.UI.CompleteRosterScan) == "function" then
+                RGMS.UI.CompleteRosterScan()
+            end
+        end,
         refreshStatus = Roster.RefreshStatus,
     })
 

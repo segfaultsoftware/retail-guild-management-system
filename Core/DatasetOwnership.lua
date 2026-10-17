@@ -151,12 +151,38 @@ function DatasetOwnership.create(dependencies)
 
         if dependencies.accountData then
             local currentModel = dependencies.getSavedData()
-            local committedModel, guildOrError = dependencies.accountData.replaceDataset(
-                currentModel,
-                transaction.guild,
-                transaction.datasetName,
-                transaction.dataset
-            )
+            local committedModel
+            local guildOrError
+            if transaction.datasetName == "roster"
+                and type(dependencies.reconcileRosterFeatures) == "function" then
+                local currentGuild = dependencies.accountData.findGuild(
+                    currentModel,
+                    transaction.guild
+                )
+                local groups, notesOrError = dependencies.reconcileRosterFeatures(
+                    transaction.dataset,
+                    currentGuild and currentGuild.mainAltGroups or {},
+                    currentGuild and currentGuild.characterNotes or {}
+                )
+                if not groups then
+                    return nil, notesOrError
+                end
+                committedModel, guildOrError =
+                    dependencies.accountData.replaceRosterAndFeatures(
+                        currentModel,
+                        transaction.guild,
+                        transaction.dataset,
+                        groups,
+                        notesOrError
+                    )
+            else
+                committedModel, guildOrError = dependencies.accountData.replaceDataset(
+                    currentModel,
+                    transaction.guild,
+                    transaction.datasetName,
+                    transaction.dataset
+                )
+            end
             if not committedModel then
                 return nil, guildOrError
             end
@@ -257,6 +283,13 @@ if type(RGMS) == "table" then
                 return RGMS.RosterMigration.cleanup(characterModel)
             end
             return RGMS.BankMigration.cleanup(characterModel)
+        end,
+        reconcileRosterFeatures = function(dataset, groups, notes)
+            if type(RGMS.MainsAltsGroups) ~= "table"
+                or type(RGMS.MainsAltsGroups.reconcile) ~= "function" then
+                return nil, "Mains/Alts roster reconciliation is unavailable"
+            end
+            return RGMS.MainsAltsGroups.reconcile(dataset, groups, notes)
         end,
         print = RGMS.Print,
     })

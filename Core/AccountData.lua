@@ -375,6 +375,65 @@ function AccountData.replaceDataset(model, identity, datasetName, dataset)
     return replacement, guild, key
 end
 
+function AccountData.replaceRosterAndFeatures(
+    model,
+    identity,
+    roster,
+    groups,
+    notes
+)
+    local valid, validationError = AccountData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateDataset("roster", roster)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateGroups(groups, "mainAltGroups")
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateNotes(notes, "characterNotes")
+    if not valid then
+        return nil, validationError
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+    local guild, key = AccountData.findGuild(replacement, identity)
+    if not guild then
+        local guildError
+        guild, guildError = AccountData.newGuild(identity)
+        if not guild then
+            return nil, guildError
+        end
+        replacement.guilds[key] = guild
+    end
+
+    guild.roster, copyError = deepCopy(roster)
+    if not guild.roster then
+        return nil, copyError
+    end
+    guild.mainAltGroups, copyError = deepCopy(groups)
+    if not guild.mainAltGroups then
+        return nil, copyError
+    end
+    guild.characterNotes, copyError = deepCopy(notes)
+    if not guild.characterNotes then
+        return nil, copyError
+    end
+    guild.rosterInitialized = true
+
+    valid, validationError = AccountData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+    return replacement, guild, key
+end
+
 function AccountData.replaceMainAltGroups(model, identity, groups)
     local valid, validationError = AccountData.validate(model)
     if not valid then

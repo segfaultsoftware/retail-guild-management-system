@@ -1,6 +1,7 @@
 local accountData = require("Core.AccountData")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
+local groups = require("MainsAlts.Groups")
 local reset = require("Core.Reset")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
@@ -269,6 +270,67 @@ return {
         test.assert_true(controller:finish(successful, "success"))
         test.assert_equal(commits, 1)
         test.assert_true(accountData.findGuild(current, identity).rosterInitialized)
+    end),
+
+    test.case("successful account roster commits reconcile groups and notes atomically", function()
+        local identity = guild("Night Shift", "Area-52")
+        local current = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            {
+                guild = identity,
+                scannedAt = fixtures.timestamp(),
+                ranks = { fixtures.roster_rank() },
+                members = {
+                    fixtures.roster_member({
+                        name = "Main",
+                        realm = "Area-52",
+                        displayName = "Main-Area-52",
+                    }),
+                    fixtures.roster_member({
+                        name = "Alt",
+                        realm = "Area-52",
+                        displayName = "Alt-Area-52",
+                    }),
+                },
+            }
+        ))
+        local partition = accountData.findGuild(current, identity)
+        partition.mainAltGroups = {
+            ["Main-Area-52"] = { "Alt-Area-52" },
+        }
+        partition.characterNotes = {
+            ["main-area-52"] = "Delete this note",
+            ["alt-area-52"] = "Keep this note",
+        }
+        local commits = 0
+        local controller = datasetOwnership.create({
+            savedData = savedData,
+            accountData = accountData,
+            getSavedData = function() return current end,
+            commit = function(model) current = model; commits = commits + 1 end,
+            reconcileRosterFeatures = groups.reconcile,
+            print = function() end,
+        })
+        local transaction = assert(controller:begin("roster", identity))
+        transaction.dataset.members = {
+            fixtures.roster_member({
+                name = "Alt",
+                realm = "Area-52",
+                displayName = "Alt-Area-52",
+            }),
+        }
+
+        test.assert_true(controller:finish(transaction, "success"))
+
+        partition = accountData.findGuild(current, identity)
+        test.assert_equal(commits, 1)
+        test.assert_equal(partition.mainAltGroups, {})
+        test.assert_equal(partition.characterNotes, {
+            ["alt-area-52"] = "Keep this note",
+        })
+        test.assert_equal(partition.roster.members[1].name, "Alt")
     end),
 
     test.case("reset controller clears only the active account guild", function()

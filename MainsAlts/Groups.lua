@@ -228,6 +228,57 @@ function Groups.remove(savedGroups, altIdentity)
     return replacement, Names.identity(mainName, mainRealm)
 end
 
+function Groups.reconcile(dataset, savedGroups, savedNotes)
+    local charactersByIdentity, rosterError = buildRosterCharacters(dataset)
+    if not charactersByIdentity then
+        return nil, rosterError
+    end
+    local copiedGroups, copyError = copyGroups(savedGroups)
+    if not copiedGroups then
+        return nil, copyError
+    end
+    if type(savedNotes) ~= "table" then
+        return nil, "character notes must be a table"
+    end
+
+    local groups = {}
+    for mainDisplayName, altDisplayNames in pairs(copiedGroups) do
+        local mainName, mainRealm = Names.splitDisplayName(mainDisplayName)
+        local mainIdentity = Names.identity(mainName, mainRealm)
+        local mainRemains = charactersByIdentity[mainIdentity] ~= nil
+        local remaining = {}
+
+        if mainRemains then
+            remaining[#remaining + 1] = mainDisplayName
+        end
+        for _, altDisplayName in ipairs(altDisplayNames) do
+            local altName, altRealm = Names.splitDisplayName(altDisplayName)
+            if charactersByIdentity[Names.identity(altName, altRealm)] then
+                remaining[#remaining + 1] = altDisplayName
+            end
+        end
+
+        if #remaining >= 2 then
+            if not mainRemains then
+                sortDisplayNames(remaining)
+                mainDisplayName = table.remove(remaining, 1)
+            else
+                table.remove(remaining, 1)
+                sortDisplayNames(remaining)
+            end
+            groups[mainDisplayName] = remaining
+        end
+    end
+
+    local notes = {}
+    for identity, note in pairs(savedNotes) do
+        if charactersByIdentity[identity] then
+            notes[identity] = note
+        end
+    end
+    return groups, notes
+end
+
 if type(RGMS) == "table" then
     RGMS.MainsAltsGroups = Groups
 end

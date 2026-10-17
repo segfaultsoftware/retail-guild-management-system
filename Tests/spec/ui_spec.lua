@@ -511,6 +511,13 @@ return {
         view.mainsAltsLines[2].checkbox:SetChecked(true)
         view.mainsAltsLines[2].checkbox.scripts.OnClick(view.mainsAltsLines[2].checkbox)
         test.assert_true(view.groupButton:IsEnabled())
+        harness.ui.SetRosterScanInProgress(true)
+        view.mainsAltsLines[2].checkbox:SetChecked(false)
+        view.mainsAltsLines[2].checkbox.scripts.OnClick(view.mainsAltsLines[2].checkbox)
+        test.assert_true(view.mainsAltsLines[2].checkbox:GetChecked())
+        view.groupButton.scripts.OnClick()
+        test.assert_equal(harness.groupingRequests, {})
+        harness.ui.SetRosterScanInProgress(false)
         view.groupButton.scripts.OnClick()
         test.assert_equal(harness.groupingRequests[1], {
             "main-area52",
@@ -545,6 +552,10 @@ return {
         test.assert_false(view.mainsAltsLines[2].removeButton:IsEnabled())
         test.assert_false(view.mainsAltsLines[1].noteButton:IsEnabled())
         test.assert_false(view.mainsAltsLines[2].noteButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.saveButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.deleteButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.cancelButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.closeButton:IsEnabled())
         local toggled, message = harness.ui.ToggleMainsAltsGroup("main-area52")
         test.assert_nil(toggled)
         test.assert_matches(message, "disabled")
@@ -555,6 +566,10 @@ return {
         test.assert_true(view.mainsAltsLines[2].removeButton:IsEnabled())
         test.assert_true(view.mainsAltsLines[1].noteButton:IsEnabled())
         test.assert_true(view.groupButton:IsEnabled())
+        harness.ui.CompleteRosterScan()
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[1].checkbox:GetChecked())
+        test.assert_false(view.mainsAltsLines[4].checkbox:GetChecked())
         harness.ui.CompleteMainsAltsChange("main-area52")
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_true(view.expandedMainsAlts["main-area52"])
@@ -651,6 +666,12 @@ return {
             view.mainsAltsLines[1].noteButton.icon.vertexColor,
             { 0.55, 0.55, 0.55, 0.65 }
         )
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.editBox:SetText("discard this removed character edit")
+        harness.ui.SetMainsAltsReport({ rows = {} })
+        test.assert_false(editor:IsShown())
+        test.assert_equal(#harness.noteSaves, 1)
     end),
 
     test.case("roster refresh button starts manual scans and disables while scanning", function()

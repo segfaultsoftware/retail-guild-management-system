@@ -625,6 +625,8 @@ local function updateMainsAltsControlState(view)
         local editor = UI.frame.notesEditor
         editor.saveButton:SetEnabled(enabled)
         editor.deleteButton:SetEnabled(enabled and editor.noteExists == true)
+        editor.cancelButton:SetEnabled(enabled)
+        editor.closeButton:SetEnabled(enabled)
         if type(editor.editBox.SetEnabled) == "function" then
             editor.editBox:SetEnabled(enabled)
         elseif enabled and type(editor.editBox.Enable) == "function" then
@@ -777,6 +779,12 @@ local function renderMainsAlts(view)
                 view.mainsAltsSelections[character.identity] == true
             )
             line.checkbox:SetScript("OnClick", function(button)
+                if not mainsAltsControlsEnabled(view) then
+                    button:SetChecked(
+                        view.mainsAltsSelections[character.identity] == true
+                    )
+                    return
+                end
                 view.mainsAltsSelections[character.identity] = button:GetChecked()
                     == true
                 updateMainsAltsControlState(view)
@@ -1059,6 +1067,9 @@ local function createView(parent, tabId)
         view.groupButton:SetText("Group Toons")
         view.groupButton:SetEnabled(false)
         view.groupButton:SetScript("OnClick", function()
+            if not mainsAltsControlsEnabled(view) then
+                return
+            end
             local selectedIdentities = {}
             for _, row in ipairs(view.mainsAltsReport and view.mainsAltsReport.rows or {}) do
                 if view.mainsAltsSelections[row.identity] == true then
@@ -1717,13 +1728,44 @@ function UI.SetMainsAltsReport(report)
     local view = UI.frame.views.mainsalts
     view.mainsAltsReport = report
     local availableSelections = {}
+    local availableMains = {}
+    local availableCharacters = {}
     for _, row in ipairs(report.rows) do
+        availableMains[row.identity] = true
+        availableCharacters[row.identity] = true
         if view.mainsAltsSelections[row.identity] == true then
             availableSelections[row.identity] = true
         end
+        for _, alt in ipairs(row.alts or {}) do
+            availableCharacters[alt.identity] = true
+        end
     end
     view.mainsAltsSelections = availableSelections
+    local availableExpanded = {}
+    for identity in pairs(view.expandedMainsAlts) do
+        if availableMains[identity] then
+            availableExpanded[identity] = true
+        end
+    end
+    view.expandedMainsAlts = availableExpanded
+    local editor = UI.frame.notesEditor
+    if editor:IsShown()
+        and not availableCharacters[editor.characterIdentity] then
+        editor:Hide()
+    end
     renderMainsAlts(view)
+    return true
+end
+
+function UI.CompleteRosterScan()
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsSelections = {}
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
     return true
 end
 
