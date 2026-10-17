@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Added a draggable RGMS minimap button that toggles the Roster window and
+  remembers its position account-wide.
 - Added session-only `/rgms debug` logging for guild-bank tab requests, slot-change
   events, empty-tab retries, occupied-slot counts, and final per-tab totals.
 

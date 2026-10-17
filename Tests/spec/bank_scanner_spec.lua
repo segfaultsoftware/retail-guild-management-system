@@ -35,6 +35,7 @@ local function newHarness(options)
     local refreshes = 0
     local commits = 0
     local captures = {}
+    local lifecycle = {}
 
     local ownership = datasetOwnership.create({
         savedData = savedData,
@@ -59,12 +60,14 @@ local function newHarness(options)
             return options.bankOpen ~= false
         end,
         captureCatalog = function()
+            lifecycle[#lifecycle + 1] = "catalog"
             if options.catalogError then
                 error(options.catalogError)
             end
             return catalog
         end,
         requestTab = function(_, tabIndex)
+            lifecycle[#lifecycle + 1] = "request"
             requests[#requests + 1] = tabIndex
             if options.requestErrorTab == tabIndex then
                 error("simulated request failure")
@@ -101,6 +104,14 @@ local function newHarness(options)
         canScan = function()
             return options.canScan ~= false
         end,
+        prepareScan = function(guildIdentity)
+            lifecycle[#lifecycle + 1] = "prepare"
+            test.assert_equal(guildIdentity, catalog.guild)
+            if options.prepareError then
+                return nil, options.prepareError
+            end
+            return true
+        end,
         print = function(message)
             messages[#messages + 1] = message
         end,
@@ -132,6 +143,7 @@ local function newHarness(options)
             return refreshes
         end,
         captures = captures,
+        lifecycle = lifecycle,
     }
 end
 
@@ -146,6 +158,29 @@ local function completeEmptyTab(harness)
 end
 
 return {
+    test.case("bank preparation runs only after the open bank identifies its guild", function()
+        local closed = newHarness({ bankOpen = false })
+        local started, reason = closed.scanner:Request("manual")
+        test.assert_nil(started)
+        test.assert_equal(reason, "bank-closed")
+        test.assert_equal(closed.lifecycle, {})
+
+        local open = newHarness()
+        test.assert_true(open.scanner:Request("manual"))
+        test.assert_equal(open.lifecycle, { "catalog", "prepare", "request" })
+    end),
+
+    test.case("bank preparation failures stop before slot collection", function()
+        local harness = newHarness({ prepareError = "cannot migrate bank" })
+        local started, reason = harness.scanner:Request("automatic")
+
+        test.assert_nil(started)
+        test.assert_equal(reason, "migration-failure")
+        test.assert_equal(harness.lifecycle, { "catalog", "prepare" })
+        test.assert_equal(harness.requests, {})
+        test.assert_equal(harness.commits(), 0)
+    end),
+
     test.case("full success commits only after every accessible tab is complete", function()
         local harness = newHarness({
             catalog = {

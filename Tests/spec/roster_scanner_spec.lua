@@ -52,6 +52,7 @@ local function newHarness(options)
     local requests = 0
     local reductions = 0
     local refreshes = 0
+    local successfulCompletions = 0
     local windowOpen = true
 
     local ownership = datasetOwnership.create({
@@ -108,6 +109,9 @@ local function newHarness(options)
         refreshStatus = function()
             refreshes = refreshes + 1
         end,
+        completeSuccess = function()
+            successfulCompletions = successfulCompletions + 1
+        end,
     })
 
     return {
@@ -126,6 +130,9 @@ local function newHarness(options)
         end,
         refreshes = function()
             return refreshes
+        end,
+        successfulCompletions = function()
+            return successfulCompletions
         end,
         closeWindow = function()
             windowOpen = false
@@ -159,6 +166,7 @@ return {
         test.assert_false(harness.current().roster.members[1].isMissing)
         test.assert_equal(harness.reductions(), 1)
         test.assert_equal(harness.progress, { true, false })
+        test.assert_equal(harness.successfulCompletions(), 1)
         test.assert_matches(harness.messages[1], "scan complete")
     end),
 
@@ -198,6 +206,7 @@ return {
         test.assert_equal(state, "incomplete")
         failedDay22.scanner:Update(1)
         test.assert_equal(failedDay22.current(), retained)
+        test.assert_equal(failedDay22.successfulCompletions(), 0)
 
         local day22 = newHarness({
             model = retained,

@@ -36,6 +36,7 @@ Lua load order.
 | Bank slot stability and report model | `Bank/State.lua`, `Bank/Report.lua` | `Tests/spec/bank_state_spec.lua`, `Tests/spec/bank_report_spec.lua` |
 | Window rendering and interaction | `UI/UI.lua` | `Tests/spec/ui_spec.lua` |
 | Pure window geometry | `UI/Layout.lua` | `Tests/spec/ui_layout_spec.lua` |
+| Minimap button and placement | `Core/Minimap.lua` | `Tests/spec/minimap_spec.lua` |
 | Cross-subsystem MVP scenarios | all layers | `Tests/spec/mvp_integration_spec.lua`, `Tests/mvp_fixtures.lua`, `docs/MVP_SCENARIO_CHECKLIST.md` |
 | Test runner and reusable fixtures | `Tests/lib/runner.lua`, `Tests/fixtures.lua`, `Tests/run.lua` | `Tests/spec/runner_spec.lua`, `Tests/README.md` |
 

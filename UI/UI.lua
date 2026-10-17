@@ -2,14 +2,16 @@ local _, RGMS = ...
 
 local UI = RGMS.UI or {}
 
-local TAB_ORDER = { "roster", "bank" }
+local TAB_ORDER = { "roster", "mainsalts", "bank" }
 local TAB_TITLES = {
     roster = "Roster",
+    mainsalts = "Mains/Alts",
     bank = "Bank",
 }
 
 local INITIAL_COPY = {
     roster = "No roster data yet",
+    mainsalts = "No roster data yet",
     bank = "No bank scan yet",
 }
 
@@ -29,9 +31,32 @@ local ROSTER_TITLE_HEIGHT = 26
 local ROSTER_GROUP_HEIGHT = 22
 local ROSTER_ROW_HEIGHT = 20
 local ROSTER_GROUP_GAP = 8
+local MAINS_ALTS_ROW_HEIGHT = 24
+local MAINS_ALTS_CHECKBOX_SIZE = 22
+local MAINS_ALTS_ALT_INDENT = 48
+local MAINS_ALTS_EXPAND_WIDTH = 28
+local MAINS_ALTS_PROMOTE_WIDTH = 48
+local MAINS_ALTS_REMOVE_WIDTH = 64
+local MAINS_ALTS_NOTE_SIZE = 20
+local MAINS_ALTS_NOTE_GAP = 4
+local MAINS_ALTS_SCROLL_DURATION = 0.25
+local MAINS_ALTS_WHEEL_ROWS = 3
+local CHARACTER_NOTE_LIMIT = 5500
+local CHARACTER_NOTE_TEXTURE = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up"
 local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
+
+local function characterCount(value)
+    if type(strlenutf8) == "function" then
+        local counted, length = pcall(strlenutf8, value)
+        if counted and type(length) == "number" then
+            return length
+        end
+    end
+    local withoutContinuationBytes = string.gsub(value, "[\128-\191]", "")
+    return #withoutContinuationBytes
+end
 
 local function normalizeTabId(tabId)
     if type(tabId) ~= "string" then
@@ -265,16 +290,100 @@ local function layoutBankLines(view, availableWidth)
     end
 end
 
+local function layoutMainsAltsLines(view, availableWidth)
+    if type(view.mainsAltsLines) ~= "table" then
+        return
+    end
+
+    for _, line in ipairs(view.mainsAltsLines) do
+        line.frame:SetWidth(availableWidth)
+        line.checkbox:ClearAllPoints()
+        line.name:ClearAllPoints()
+        line.expandButton:ClearAllPoints()
+        line.promoteButton:ClearAllPoints()
+        line.removeButton:ClearAllPoints()
+        line.noteButton:ClearAllPoints()
+        if line.isAlt then
+            line.name:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                MAINS_ALTS_ALT_INDENT,
+                0
+            )
+            local maximumNameWidth = math.max(
+                1,
+                availableWidth
+                    - MAINS_ALTS_ALT_INDENT
+                    - MAINS_ALTS_PROMOTE_WIDTH
+                    - MAINS_ALTS_REMOVE_WIDTH
+                    - MAINS_ALTS_NOTE_SIZE
+                    - 16
+            )
+            local nameWidth = type(line.name.GetStringWidth) == "function"
+                and line.name:GetStringWidth() + 2
+                or maximumNameWidth
+            line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.noteButton:SetPoint(
+                "LEFT",
+                line.name,
+                "RIGHT",
+                MAINS_ALTS_NOTE_GAP,
+                0
+            )
+            line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
+            line.promoteButton:SetPoint(
+                "RIGHT",
+                line.removeButton,
+                "LEFT",
+                -4,
+                0
+            )
+        else
+            line.checkbox:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+            line.name:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                MAINS_ALTS_CHECKBOX_SIZE + 4,
+                0
+            )
+            local maximumNameWidth = math.max(
+                1,
+                availableWidth
+                    - MAINS_ALTS_CHECKBOX_SIZE
+                    - MAINS_ALTS_EXPAND_WIDTH
+                    - MAINS_ALTS_NOTE_SIZE
+                    - 16
+            )
+            local nameWidth = type(line.name.GetStringWidth) == "function"
+                and line.name:GetStringWidth() + 2
+                or maximumNameWidth
+            line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.noteButton:SetPoint(
+                "LEFT",
+                line.name,
+                "RIGHT",
+                MAINS_ALTS_NOTE_GAP,
+                0
+            )
+            line.expandButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
+        end
+    end
+end
+
 local function refreshScrollChild(view)
     local availableWidth = math.max(1, view.scrollFrame:GetWidth() - 8)
     view.scrollChild:SetWidth(availableWidth)
     view.text:SetWidth(availableWidth)
     layoutRosterLines(view, availableWidth)
     layoutBankLines(view, availableWidth)
+    layoutMainsAltsLines(view, availableWidth)
 
     local viewportHeight = math.max(1, view.scrollFrame:GetHeight())
     local contentHeight = view.rosterTableHeight
         or view.bankTableHeight
+        or view.mainsAltsTableHeight
         or (view.text:GetStringHeight() + 16)
     view.scrollChild:SetHeight(math.max(viewportHeight, contentHeight))
 end
@@ -473,6 +582,385 @@ local function findRosterRank(view, rankIndex)
     return nil
 end
 
+local function mainsAltsControlsEnabled(view)
+    return UI.dataEnabled ~= false
+        and view.mainsAltsAvailable ~= false
+        and view.mainsAltsScanInProgress ~= true
+end
+
+local function hideMainsAltsLines(view)
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        line.frame:Hide()
+    end
+    view.mainsAltsTableHeight = nil
+end
+
+local function updateMainsAltsControlState(view)
+    local enabled = mainsAltsControlsEnabled(view)
+    local selectionCount = 0
+    local selectedGroupCount = 0
+    for _, row in ipairs(
+        type(view.mainsAltsReport) == "table" and view.mainsAltsReport.rows or {}
+    ) do
+        if view.mainsAltsSelections[row.identity] == true then
+            selectionCount = selectionCount + 1
+            if row.altCount > 0 then
+                selectedGroupCount = selectedGroupCount + 1
+            end
+        end
+    end
+    if view.groupButton then
+        view.groupButton:SetEnabled(
+            enabled and selectionCount >= 2 and selectedGroupCount <= 1
+        )
+    end
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        if line.frame:IsShown() then
+            line.checkbox:SetEnabled(enabled and not line.isAlt)
+            line.expandButton:SetEnabled(enabled and line.hasAlts)
+            line.promoteButton:SetEnabled(enabled and line.isAlt)
+            line.removeButton:SetEnabled(enabled and line.isAlt)
+            line.noteButton:SetEnabled(enabled)
+        end
+    end
+    if UI.frame and UI.frame.notesEditor then
+        local editor = UI.frame.notesEditor
+        editor.saveButton:SetEnabled(enabled)
+        editor.deleteButton:SetEnabled(enabled and editor.noteExists == true)
+        editor.cancelButton:SetEnabled(enabled)
+        editor.closeButton:SetEnabled(enabled)
+        if type(editor.editBox.SetEnabled) == "function" then
+            editor.editBox:SetEnabled(enabled)
+        elseif enabled and type(editor.editBox.Enable) == "function" then
+            editor.editBox:Enable()
+        elseif not enabled and type(editor.editBox.Disable) == "function" then
+            editor.editBox:Disable()
+        end
+    end
+end
+
+local function acquireMainsAltsLine(view, index)
+    local line = view.mainsAltsLines[index]
+    if line then
+        return line
+    end
+
+    local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local checkbox = CreateFrame(
+        "CheckButton",
+        nil,
+        frame,
+        "UICheckButtonTemplate"
+    )
+    checkbox:SetSize(MAINS_ALTS_CHECKBOX_SIZE, MAINS_ALTS_CHECKBOX_SIZE)
+    local name = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    name:SetJustifyH("LEFT")
+    name:SetJustifyV("MIDDLE")
+    if type(name.SetWordWrap) == "function" then
+        name:SetWordWrap(false)
+    end
+    local expandButton = CreateFrame(
+        "Button",
+        nil,
+        frame,
+        "UIPanelButtonTemplate"
+    )
+    expandButton:SetSize(MAINS_ALTS_EXPAND_WIDTH, 20)
+    local promoteButton = CreateFrame(
+        "Button",
+        nil,
+        frame,
+        "UIPanelButtonTemplate"
+    )
+    promoteButton:SetSize(MAINS_ALTS_PROMOTE_WIDTH, 20)
+    promoteButton:SetText("Main")
+    local removeButton = CreateFrame(
+        "Button",
+        nil,
+        frame,
+        "UIPanelButtonTemplate"
+    )
+    removeButton:SetSize(MAINS_ALTS_REMOVE_WIDTH, 20)
+    removeButton:SetText("Remove")
+    local noteButton = CreateFrame("Button", nil, frame)
+    noteButton:SetSize(MAINS_ALTS_NOTE_SIZE, MAINS_ALTS_NOTE_SIZE)
+    local noteIcon = noteButton:CreateTexture(nil, "ARTWORK")
+    noteIcon:SetAllPoints(noteButton)
+    noteIcon:SetTexture(CHARACTER_NOTE_TEXTURE)
+    noteButton.icon = noteIcon
+    line = {
+        frame = frame,
+        checkbox = checkbox,
+        name = name,
+        expandButton = expandButton,
+        promoteButton = promoteButton,
+        removeButton = removeButton,
+        noteButton = noteButton,
+    }
+    view.mainsAltsLines[index] = line
+    return line
+end
+
+local function mainsAltsMaximumScroll(view)
+    local contentHeight = type(view.mainsAltsTableHeight) == "number"
+        and view.mainsAltsTableHeight
+        or view.scrollChild:GetHeight()
+    return math.max(0, contentHeight - view.scrollFrame:GetHeight())
+end
+
+local function clampMainsAltsScroll(view, offset)
+    return math.max(0, math.min(offset or 0, mainsAltsMaximumScroll(view)))
+end
+
+local function setMainsAltsScroll(view, offset)
+    view.settingMainsAltsScroll = true
+    view.scrollFrame:SetVerticalScroll(clampMainsAltsScroll(view, offset))
+    view.settingMainsAltsScroll = false
+end
+
+local function cancelMainsAltsScrollAnimation(view)
+    view.mainsAltsScrollAnimation = nil
+end
+
+local function cancelMainsAltsScrollWork(view)
+    cancelMainsAltsScrollAnimation(view)
+    view.pendingMainsAltsScrollTarget = nil
+end
+
+local function captureMainsAltsScrollAnchor(view)
+    local offset = view.scrollFrame:GetVerticalScroll()
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        if line.frame:IsShown()
+            and type(line.offset) == "number"
+            and line.offset + MAINS_ALTS_ROW_HEIGHT > offset then
+            return {
+                identity = line.identity,
+                relativeOffset = line.offset - offset,
+                numericOffset = offset,
+            }
+        end
+    end
+    return { numericOffset = offset }
+end
+
+local function findVisibleMainsAltsLine(view, identity, topLevelOnly)
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        if line.frame:IsShown()
+            and line.identity == identity
+            and (not topLevelOnly or not line.isAlt) then
+            return line
+        end
+    end
+    return nil
+end
+
+local function restoreMainsAltsScrollAnchor(view, anchor)
+    if not anchor then
+        return
+    end
+    local line = anchor.identity
+        and findVisibleMainsAltsLine(view, anchor.identity, false)
+        or nil
+    if line then
+        setMainsAltsScroll(view, line.offset - anchor.relativeOffset)
+    else
+        setMainsAltsScroll(view, anchor.numericOffset)
+    end
+end
+
+local function startMainsAltsScrollAnimation(view, line)
+    cancelMainsAltsScrollAnimation(view)
+    view.mainsAltsScrollAnimation = {
+        startOffset = view.scrollFrame:GetVerticalScroll(),
+        destination = clampMainsAltsScroll(view, line.offset),
+        elapsed = 0,
+    }
+end
+
+local function updateMainsAltsScrollAnimation(view, elapsed)
+    local animation = view.mainsAltsScrollAnimation
+    if not animation then
+        return
+    end
+    if not UI.frame:IsShown()
+        or UI.selectedTab ~= "mainsalts"
+        or not view:IsShown()
+        or view.mainsAltsAvailable == false
+        or view.mainsAltsScanInProgress == true then
+        cancelMainsAltsScrollAnimation(view)
+        return
+    end
+    animation.elapsed = math.min(
+        MAINS_ALTS_SCROLL_DURATION,
+        animation.elapsed + math.max(0, elapsed or 0)
+    )
+    local progress = animation.elapsed / MAINS_ALTS_SCROLL_DURATION
+    local remaining = 1 - progress
+    local easedProgress = 1 - remaining * remaining * remaining
+    setMainsAltsScroll(
+        view,
+        animation.startOffset
+            + (animation.destination - animation.startOffset) * easedProgress
+    )
+    if animation.elapsed >= MAINS_ALTS_SCROLL_DURATION then
+        setMainsAltsScroll(view, animation.destination)
+        view.mainsAltsScrollAnimation = nil
+    end
+end
+
+local function renderMainsAlts(view, resolvePendingTarget)
+    cancelMainsAltsScrollAnimation(view)
+    local anchor = captureMainsAltsScrollAnchor(view)
+    hideMainsAltsLines(view)
+    view.text:Hide()
+    local lineIndex = 0
+    local offset = 4
+
+    local function addLine(character, isAlt)
+        lineIndex = lineIndex + 1
+        local line = acquireMainsAltsLine(view, lineIndex)
+        line.isAlt = isAlt == true
+        line.hasAlts = not line.isAlt and character.altCount > 0
+        line.identity = character.identity
+        line.offset = offset
+        line.hasNote = character.hasNote == true
+        line.frame:ClearAllPoints()
+        line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)
+        line.noteButton.icon:SetVertexColor(
+            line.hasNote and 1 or 0.55,
+            line.hasNote and 0.82 or 0.55,
+            line.hasNote and 0.2 or 0.55,
+            line.hasNote and 1 or 0.65
+        )
+        line.noteButton:SetScript("OnClick", function()
+            local opened, openError = UI.OpenCharacterNote(
+                character.identity,
+                character.displayName,
+                character.note,
+                character.hasNote
+            )
+            if not opened and type(RGMS.Print) == "function" then
+                RGMS.Print("Could not open character note: "
+                    .. tostring(openError) .. ".")
+            end
+        end)
+        line.noteButton:SetScript("OnEnter", function(button)
+            GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+            GameTooltip:SetText(
+                (line.hasNote and "Edit saved note for " or "Add note for ")
+                    .. character.displayName
+            )
+            GameTooltip:Show()
+        end)
+        line.noteButton:SetScript("OnLeave", function(button)
+            hideTooltipIfOwned(button)
+        end)
+        line.noteButton:Show()
+
+        if line.isAlt then
+            line.checkbox:Hide()
+            line.expandButton:Hide()
+            line.name:SetText(character.displayName)
+            line.promoteButton:SetScript("OnClick", function()
+                local promoted, promoteError = RGMS.MainsAlts.PromoteAlt(
+                    character.identity
+                )
+                if not promoted and type(RGMS.Print) == "function" then
+                    RGMS.Print(
+                        "Could not promote alt: " .. tostring(promoteError) .. "."
+                    )
+                end
+            end)
+            line.removeButton:SetScript("OnClick", function()
+                local removed, removeError = RGMS.MainsAlts.RemoveAlt(
+                    character.identity
+                )
+                if not removed and type(RGMS.Print) == "function" then
+                    RGMS.Print(
+                        "Could not remove alt: " .. tostring(removeError) .. "."
+                    )
+                end
+            end)
+            line.promoteButton:Show()
+            line.removeButton:Show()
+        else
+            line.promoteButton:Hide()
+            line.removeButton:Hide()
+            line.checkbox:SetChecked(
+                view.mainsAltsSelections[character.identity] == true
+            )
+            line.checkbox:SetScript("OnClick", function(button)
+                if not mainsAltsControlsEnabled(view) then
+                    button:SetChecked(
+                        view.mainsAltsSelections[character.identity] == true
+                    )
+                    return
+                end
+                view.mainsAltsSelections[character.identity] = button:GetChecked()
+                    == true
+                updateMainsAltsControlState(view)
+            end)
+            line.checkbox:Show()
+            if line.hasAlts then
+                line.name:SetText(string.format(
+                    "%s (+%d)",
+                    character.displayName,
+                    character.altCount
+                ))
+                local expanded = view.expandedMainsAlts[character.identity] == true
+                line.expandButton:SetText(expanded and "-" or "+")
+                line.expandButton:SetScript("OnClick", function()
+                    UI.ToggleMainsAltsGroup(character.identity)
+                end)
+                line.expandButton:Show()
+            else
+                line.name:SetText(character.displayName)
+                line.expandButton:Hide()
+            end
+        end
+        line.frame:Show()
+        offset = offset + MAINS_ALTS_ROW_HEIGHT
+    end
+
+    for _, row in ipairs(view.mainsAltsReport.rows) do
+        addLine(row, false)
+        if view.expandedMainsAlts[row.identity] then
+            for _, alt in ipairs(row.alts) do
+                addLine(alt, true)
+            end
+        end
+    end
+
+    for index = lineIndex + 1, #view.mainsAltsLines do
+        view.mainsAltsLines[index].frame:Hide()
+    end
+    view.mainsAltsTableHeight = offset + 4
+    updateMainsAltsControlState(view)
+    refreshScrollChild(view)
+
+    if lineIndex == 0 then
+        cancelMainsAltsScrollWork(view)
+        setMainsAltsScroll(view, 0)
+        return
+    end
+
+    if resolvePendingTarget and view.pendingMainsAltsScrollTarget then
+        local targetIdentity = view.pendingMainsAltsScrollTarget
+        view.pendingMainsAltsScrollTarget = nil
+        local targetLine = findVisibleMainsAltsLine(view, targetIdentity, true)
+        if targetLine
+            and UI.selectedTab == "mainsalts"
+            and UI.frame:IsShown()
+            and view:IsShown()
+            and view.mainsAltsAvailable ~= false then
+            startMainsAltsScrollAnimation(view, targetLine)
+            return
+        end
+    end
+    restoreMainsAltsScrollAnchor(view, anchor)
+end
+
 local function hideBankLines(view)
     if view.bankHeader then
         view.bankHeader.frame:Hide()
@@ -655,7 +1143,7 @@ local function createView(parent, tabId)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     view.status:SetPoint("TOPLEFT", 2, 0)
-    view.status:SetPoint("TOPRIGHT", -94, 0)
+    view.status:SetPoint("TOPRIGHT", tabId == "mainsalts" and -104 or -94, 0)
     view.status:SetJustifyH("LEFT")
     view.status:SetText(INITIAL_COPY[tabId])
 
@@ -698,6 +1186,32 @@ local function createView(parent, tabId)
         view.rosterLines = {}
         view.rankScrollFrame:SetScript("OnSizeChanged", function()
             refreshRankScrollChild(view)
+        end)
+    elseif tabId == "mainsalts" then
+        view.mainsAltsAvailable = true
+        view.mainsAltsScanInProgress = false
+        view.mainsAltsLines = {}
+        view.mainsAltsSelections = {}
+        view.expandedMainsAlts = {}
+        view.groupButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
+        view.groupButton:SetSize(94, 22)
+        view.groupButton:SetPoint("TOPRIGHT", 0, 4)
+        view.groupButton:SetText("Group Toons")
+        view.groupButton:SetEnabled(false)
+        view.groupButton:SetScript("OnClick", function()
+            if not mainsAltsControlsEnabled(view) then
+                return
+            end
+            local selectedIdentities = {}
+            for _, row in ipairs(view.mainsAltsReport and view.mainsAltsReport.rows or {}) do
+                if view.mainsAltsSelections[row.identity] == true then
+                    selectedIdentities[#selectedIdentities + 1] = row.identity
+                end
+            end
+            local grouped, groupError = RGMS.MainsAlts.GroupSelected(selectedIdentities)
+            if not grouped and type(RGMS.Print) == "function" then
+                RGMS.Print("Could not group characters: " .. tostring(groupError) .. ".")
+            end
         end)
     elseif tabId == "bank" then
         view.bankTabScrollFrame = CreateFrame(
@@ -772,8 +1286,192 @@ local function createView(parent, tabId)
     view.scrollFrame:SetScript("OnSizeChanged", function()
         refreshScrollChild(view)
     end)
+    if tabId == "mainsalts" then
+        view:SetScript("OnHide", function()
+            cancelMainsAltsScrollWork(view)
+        end)
+        view.scrollFrame:EnableMouseWheel(true)
+        view.scrollFrame:SetScript("OnMouseWheel", function(_, delta)
+            cancelMainsAltsScrollAnimation(view)
+            setMainsAltsScroll(
+                view,
+                view.scrollFrame:GetVerticalScroll()
+                    - delta * MAINS_ALTS_ROW_HEIGHT * MAINS_ALTS_WHEEL_ROWS
+            )
+        end)
+        view.scrollFrame:SetScript("OnVerticalScroll", function(_, offset)
+            if view.settingMainsAltsScroll then
+                return
+            end
+            cancelMainsAltsScrollAnimation(view)
+            setMainsAltsScroll(view, offset)
+        end)
+        view.scrollFrame:SetScript("OnUpdate", function(_, elapsed)
+            updateMainsAltsScrollAnimation(view, elapsed)
+        end)
+    end
 
     return view
+end
+
+local function createNotesEditor()
+    local editor = CreateFrame(
+        "Frame",
+        "RGMSNotesEditor",
+        UIParent,
+        "BackdropTemplate"
+    )
+    editor:SetSize(440, 330)
+    editor:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    editor:SetFrameStrata("DIALOG")
+    editor:SetToplevel(true)
+    editor:EnableMouse(true)
+    editor:SetClampedToScreen(true)
+    editor:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true,
+        tileSize = 32,
+        edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    editor:SetBackdropColor(0.05, 0.05, 0.08, 0.98)
+
+    editor.title = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    editor.title:SetPoint("TOPLEFT", editor, "TOPLEFT", 18, -17)
+    editor.title:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -46, -17)
+    editor.title:SetJustifyH("LEFT")
+    editor.title:SetText("Character Note")
+
+    editor.character = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    editor.character:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -50)
+    editor.character:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -20, -50)
+    editor.character:SetJustifyH("LEFT")
+
+    editor.closeButton = CreateFrame("Button", nil, editor, "UIPanelCloseButton")
+    editor.closeButton:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -5, -5)
+    editor.closeButton:SetScript("OnClick", function()
+        UI.CloseCharacterNoteEditor()
+    end)
+
+    editor.scrollFrame = CreateFrame(
+        "ScrollFrame",
+        nil,
+        editor,
+        "UIPanelScrollFrameTemplate"
+    )
+    editor.scrollFrame:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -78)
+    editor.scrollFrame:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -38, 58)
+
+    editor.editBox = CreateFrame(
+        "EditBox",
+        nil,
+        editor.scrollFrame,
+        "InputBoxTemplate"
+    )
+    editor.editBox:SetMultiLine(true)
+    editor.editBox:SetAutoFocus(false)
+    editor.editBox:SetFontObject("ChatFontNormal")
+    editor.editBox:SetWidth(370)
+    editor.editBox:SetHeight(185)
+    editor.editBox:SetMaxLetters(CHARACTER_NOTE_LIMIT)
+    editor.scrollFrame:SetScrollChild(editor.editBox)
+
+    editor.characterCount = editor:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontHighlightSmall"
+    )
+    editor.characterCount:SetPoint(
+        "BOTTOMRIGHT",
+        editor,
+        "BOTTOMRIGHT",
+        -20,
+        39
+    )
+    editor.characterCount:SetText("0 / " .. CHARACTER_NOTE_LIMIT)
+    editor.editBox:SetScript("OnTextChanged", function(editBox)
+        editor.characterCount:SetText(
+            characterCount(editBox:GetText()) .. " / " .. CHARACTER_NOTE_LIMIT
+        )
+        if type(editBox.GetStringHeight) == "function" then
+            editBox:SetHeight(math.max(185, editBox:GetStringHeight() + 20))
+        end
+        if type(editor.scrollFrame.UpdateScrollChildRect) == "function" then
+            editor.scrollFrame:UpdateScrollChildRect()
+        end
+    end)
+    editor.editBox:SetScript("OnEscapePressed", function()
+        UI.CloseCharacterNoteEditor()
+    end)
+
+    editor.deleteButton = CreateFrame(
+        "Button",
+        nil,
+        editor,
+        "UIPanelButtonTemplate"
+    )
+    editor.deleteButton:SetSize(76, 22)
+    editor.deleteButton:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 20, 18)
+    editor.deleteButton:SetText("Delete")
+    editor.deleteButton:SetScript("OnClick", function()
+        local deleted, deleteError = RGMS.MainsAlts.DeleteCharacterNote(
+            editor.characterIdentity
+        )
+        if deleted then
+            UI.CloseCharacterNoteEditor()
+        elseif type(RGMS.Print) == "function" then
+            RGMS.Print("Could not delete character note: "
+                .. tostring(deleteError) .. ".")
+        end
+    end)
+
+    editor.cancelButton = CreateFrame(
+        "Button",
+        nil,
+        editor,
+        "UIPanelButtonTemplate"
+    )
+    editor.cancelButton:SetSize(76, 22)
+    editor.cancelButton:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -104, 18)
+    editor.cancelButton:SetText("Cancel")
+    editor.cancelButton:SetScript("OnClick", function()
+        UI.CloseCharacterNoteEditor()
+    end)
+
+    editor.saveButton = CreateFrame(
+        "Button",
+        nil,
+        editor,
+        "UIPanelButtonTemplate"
+    )
+    editor.saveButton:SetSize(76, 22)
+    editor.saveButton:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -20, 18)
+    editor.saveButton:SetText("Save")
+    editor.saveButton:SetScript("OnClick", function()
+        local saved, saveError = RGMS.MainsAlts.SaveCharacterNote(
+            editor.characterIdentity,
+            editor.editBox:GetText()
+        )
+        if saved then
+            UI.CloseCharacterNoteEditor()
+        elseif type(RGMS.Print) == "function" then
+            RGMS.Print("Could not save character note: "
+                .. tostring(saveError) .. ".")
+        end
+    end)
+
+    editor:SetScript("OnShow", function()
+        editor.editBox:SetFocus()
+    end)
+    editor:SetScript("OnHide", function()
+        editor.editBox:ClearFocus()
+        editor.characterIdentity = nil
+        editor.displayName = nil
+        editor.noteExists = false
+    end)
+    editor:Hide()
+    return editor
 end
 
 local function createWindow()
@@ -857,6 +1555,7 @@ local function createWindow()
     end
 
     PanelTemplates_SetNumTabs(frame, #TAB_ORDER)
+    frame.notesEditor = createNotesEditor()
 
     frame:SetScript("OnShow", function()
         UI.ClampToScreen()
@@ -865,6 +1564,15 @@ local function createWindow()
         if type(RGMS.Bank) == "table"
             and type(RGMS.Bank.CancelScan) == "function" then
             RGMS.Bank.CancelScan()
+        end
+        local mainsAltsView = frame.views.mainsalts
+        cancelMainsAltsScrollWork(mainsAltsView)
+        if type(UI.CollapseMainsAltsGroups) == "function" then
+            UI.CollapseMainsAltsGroups()
+        end
+        setMainsAltsScroll(mainsAltsView, 0)
+        if frame.notesEditor:IsShown() then
+            UI.CloseCharacterNoteEditor()
         end
     end)
 
@@ -905,6 +1613,7 @@ function UI.Initialize()
 
     if type(UISpecialFrames) == "table" then
         table.insert(UISpecialFrames, "RGMSMainFrame")
+        table.insert(UISpecialFrames, "RGMSNotesEditor")
     end
 
     UI.eventFrame = CreateFrame("Frame")
@@ -971,17 +1680,27 @@ end
 function UI.SelectPrimaryTab(tabId)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster or bank"
+        return nil, "primary tab must be roster, mainsalts, or bank"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
     end
 
+    if UI.selectedTab == "mainsalts" and tabId ~= "mainsalts" then
+        cancelMainsAltsScrollWork(UI.frame.views.mainsalts)
+    end
     for _, currentTabId in ipairs(TAB_ORDER) do
         local selected = currentTabId == tabId
         UI.frame.views[currentTabId]:SetShown(selected)
     end
-    PanelTemplates_SetTab(UI.frame, tabId == "roster" and 1 or 2)
+    local selectedIndex
+    for index, currentTabId in ipairs(TAB_ORDER) do
+        if currentTabId == tabId then
+            selectedIndex = index
+            break
+        end
+    end
+    PanelTemplates_SetTab(UI.frame, selectedIndex)
     UI.selectedTab = tabId
     return true
 end
@@ -989,7 +1708,7 @@ end
 function UI.SetViewContent(tabId, content)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster or bank"
+        return nil, "primary tab must be roster, mainsalts, or bank"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -1002,6 +1721,10 @@ function UI.SetViewContent(tabId, content)
             button:Hide()
         end
         refreshRankScrollChild(view)
+        view.text:Show()
+    elseif tabId == "mainsalts" then
+        cancelMainsAltsScrollWork(view)
+        hideMainsAltsLines(view)
         view.text:Show()
     elseif tabId == "bank" then
         hideBankLines(view)
@@ -1020,7 +1743,7 @@ end
 function UI.SetViewStatus(tabId, status)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster or bank"
+        return nil, "primary tab must be roster, mainsalts, or bank"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -1114,6 +1837,179 @@ function UI.SetRosterReport(report)
     view.text:SetText("No roster data yet")
     view.scrollFrame:SetVerticalScroll(0)
     refreshScrollChild(view)
+    return true
+end
+
+function UI.OpenCharacterNote(identity, displayName, note, hasNote)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(identity) ~= "string" or identity == ""
+        or type(displayName) ~= "string" or displayName == "" then
+        return nil, "character note requires an identity and display name"
+    end
+    local view = UI.frame.views.mainsalts
+    if not mainsAltsControlsEnabled(view) then
+        return nil, "character note controls are disabled"
+    end
+
+    local editor = UI.frame.notesEditor
+    editor.characterIdentity = identity
+    editor.displayName = displayName
+    editor.noteExists = hasNote == true
+    editor.character:SetText("Editing note for " .. displayName)
+    editor.editBox:SetText(type(note) == "string" and note or "")
+    editor.editBox:SetCursorPosition(0)
+    editor.saveButton:SetEnabled(true)
+    editor.deleteButton:SetEnabled(editor.noteExists)
+    if type(editor.editBox.SetEnabled) == "function" then
+        editor.editBox:SetEnabled(true)
+    elseif type(editor.editBox.Enable) == "function" then
+        editor.editBox:Enable()
+    end
+    editor:Show()
+    editor.editBox:SetFocus()
+    return true
+end
+
+function UI.CloseCharacterNoteEditor()
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    UI.frame.notesEditor:Hide()
+    return true
+end
+
+function UI.SetMainsAltsReport(report)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(report) ~= "table" or type(report.rows) ~= "table" then
+        return nil, "Mains/Alts report must contain rows"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsReport = report
+    local availableSelections = {}
+    local availableMains = {}
+    local availableCharacters = {}
+    for _, row in ipairs(report.rows) do
+        availableMains[row.identity] = true
+        availableCharacters[row.identity] = true
+        if view.mainsAltsSelections[row.identity] == true then
+            availableSelections[row.identity] = true
+        end
+        for _, alt in ipairs(row.alts or {}) do
+            availableCharacters[alt.identity] = true
+        end
+    end
+    view.mainsAltsSelections = availableSelections
+    local availableExpanded = {}
+    for identity in pairs(view.expandedMainsAlts) do
+        if availableMains[identity] then
+            availableExpanded[identity] = true
+        end
+    end
+    view.expandedMainsAlts = availableExpanded
+    local editor = UI.frame.notesEditor
+    if editor:IsShown()
+        and not availableCharacters[editor.characterIdentity] then
+        editor:Hide()
+    end
+    renderMainsAlts(view, true)
+    return true
+end
+
+function UI.CompleteRosterScan()
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsSelections = {}
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
+    return true
+end
+
+function UI.CompleteMainsAltsGrouping(mainIdentity)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(mainIdentity) ~= "string" or mainIdentity == "" then
+        return nil, "the grouped main identity is required"
+    end
+
+    local view = UI.frame.views.mainsalts
+    cancelMainsAltsScrollAnimation(view)
+    view.pendingMainsAltsScrollTarget = mainIdentity
+    view.mainsAltsSelections = {}
+    view.expandedMainsAlts = { [mainIdentity] = true }
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
+    return true
+end
+
+function UI.CompleteMainsAltsChange(mainIdentity, expandGroup)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if mainIdentity ~= nil
+        and (type(mainIdentity) ~= "string" or mainIdentity == "") then
+        return nil, "the affected main identity must be a string"
+    end
+
+    local view = UI.frame.views.mainsalts
+    cancelMainsAltsScrollAnimation(view)
+    view.pendingMainsAltsScrollTarget = mainIdentity
+    view.mainsAltsSelections = {}
+    view.expandedMainsAlts = mainIdentity and expandGroup ~= false
+        and { [mainIdentity] = true }
+        or {}
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
+    return true
+end
+
+function UI.ToggleMainsAltsGroup(identity)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.mainsalts
+    if not mainsAltsControlsEnabled(view) then
+        return nil, "Mains/Alts controls are disabled"
+    end
+    local row
+    for _, candidate in ipairs(
+        type(view.mainsAltsReport) == "table" and view.mainsAltsReport.rows or {}
+    ) do
+        if candidate.identity == identity and candidate.altCount > 0 then
+            row = candidate
+            break
+        end
+    end
+    if not row then
+        return nil, "Mains/Alts group is unavailable"
+    end
+
+    view.expandedMainsAlts[identity] = not view.expandedMainsAlts[identity]
+    renderMainsAlts(view)
+    return true
+end
+
+function UI.CollapseMainsAltsGroups()
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.expandedMainsAlts = {}
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
     return true
 end
 
@@ -1219,6 +2115,12 @@ function UI.SetRosterScanInProgress(inProgress)
             and view.rosterAvailable ~= false
             and not view.rosterScanInProgress
     )
+    local mainsAltsView = UI.frame.views.mainsalts
+    mainsAltsView.mainsAltsScanInProgress = inProgress == true
+    if inProgress == true then
+        cancelMainsAltsScrollWork(mainsAltsView)
+    end
+    updateMainsAltsControlState(mainsAltsView)
     return true
 end
 
@@ -1246,6 +2148,20 @@ function UI.SetRosterAvailable(isAvailable)
     local view = UI.frame.views.roster
     view.rosterAvailable = isAvailable == true
     updateRosterRefreshButton(view)
+    return true
+end
+
+function UI.SetMainsAltsAvailable(isAvailable)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsAvailable = isAvailable == true
+    if not view.mainsAltsAvailable then
+        cancelMainsAltsScrollWork(view)
+    end
+    updateMainsAltsControlState(view)
     return true
 end
 
@@ -1279,6 +2195,7 @@ function UI.SetDataState(enabled, state)
     UI.dataEnabled = enabled == true
     updateRosterRefreshButton(UI.frame.views.roster)
     updateBankRefreshButton(UI.frame.views.bank)
+    updateMainsAltsControlState(UI.frame.views.mainsalts)
 
     if UI.dataEnabled then
         return true

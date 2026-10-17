@@ -23,7 +23,8 @@ $requiredManifestFields = @(
 $distributionFiles = @(
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "assets/rgms-minimap-icon.png"
 )
 
 function Assert-ReleaseVersion {

@@ -3,12 +3,17 @@
 ## Notes: Guild roster and bank data for the RGMS application.
 ## Author: RGMS contributors
 ## Version: 0.1.0-rc.8
+## SavedVariables: RGMSAccountDB
 ## SavedVariablesPerCharacter: RGMSCharacterDB
 
 Core\Realm.lua
 Core\DateTime.lua
 Core\SavedData.lua
+Core\AccountData.lua
+Core\RosterMigration.lua
+Core\BankMigration.lua
 UI\Layout.lua
+Core\Minimap.lua
 Core\Bootstrap.lua
 Core\Reset.lua
 Core\DatasetOwnership.lua
@@ -16,8 +21,11 @@ Core\Commands.lua
 UI\UI.lua
 Roster\Names.lua
 Roster\Report.lua
+MainsAlts\Groups.lua
+MainsAlts\Report.lua
 Roster\Tenure.lua
 Roster\Scanner.lua
+MainsAlts\MainsAlts.lua
 Roster\Roster.lua
 Bank\State.lua
 Bank\Report.lua

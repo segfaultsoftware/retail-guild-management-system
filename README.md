@@ -3,12 +3,16 @@
 RGMS is a World of Warcraft Retail addon for guild officers who need a local,
 read-only view of guild-roster and guild-bank observations. The current MVP
 runs entirely inside the game client and stores its latest complete observations
-in per-character SavedVariables. It does not send data anywhere.
+in account-wide, per-guild SavedVariables. Window placement and deprecated
+migration sources remain per character. It does not send data anywhere.
 
 ## What the MVP does
 
 - Scans the guild roster once after login and on demand, then groups members by
   configured guild rank.
+- Shows and manages roster-backed main/alt groups in a dedicated tab, including
+  retained missing members, with expandable groups and no separate scan. Every
+  roster character can also keep an account-wide, per-guild note.
 - Tracks how long a member has remained at the same numeric rank and retains a
   recently missing member with a warning for up to 21 Pacific calendar days.
 - Scans every purchased guild-bank tab that the character can access when the
@@ -17,11 +21,14 @@ in per-character SavedVariables. It does not send data anywhere.
   remained in the same slot.
 - Commits roster and bank scans transactionally. A partial, failed, timed-out,
   or canceled scan leaves the previous successful observation unchanged.
-- Detects a guild change independently for roster and bank data and replaces
-  only the affected dataset after a successful scan.
-- Validates and migrates versioned per-character saved data. Corrupt or newer,
-  incompatible data is preserved until the user accepts `/rgms reset`.
+- Shares each guild's roster and bank observations between characters on the
+  account while isolating identically named guilds on different realms.
+- Validates account-wide guild storage and versioned per-character migration
+  sources. Corrupt or newer, incompatible data is preserved until the user
+  accepts `/rgms reset`.
 - Saves the RGMS window position independently for each character.
+- Adds a draggable minimap button using the RGMS logo. Left-clicking it toggles
+  the Roster window, and its position is shared account-wide.
 
 RGMS is **Retail only**. The manifest currently declares interface `120100` in
 [`RGMS.toc`](RGMS.toc). A release supports only the live Retail build recorded
@@ -36,7 +43,7 @@ the addon has been tested on that client build.
 | `/rgms help` | Print the supported command list. |
 | `/rgms debug` | Toggle verbose session-only diagnostic logging. |
 | `/rgms scanroster` | Start the same roster transaction as Roster **Refresh**. |
-| `/rgms reset` | Open a confirmation before clearing roster and bank observations; preserve a valid window position. |
+| `/rgms reset` | Open a confirmation before clearing the current guild's roster, bank, groups, and notes; preserve the character's window position. |
 
 Bank scans are started from the default guild-bank window and the Bank
 **Refresh** button. There is no bank scan slash command.
@@ -96,7 +103,7 @@ promotion procedure.
 
 ## Current exclusions
 
-The MVP has no Classic support, localization, minimap icon, settings panel,
+The MVP has no Classic support, localization, settings panel,
 cross-character data sharing, multi-client synchronization, hosted service,
 website integration, or data export. The addon does not upload observations or
 integrate with an external RGMS application. These are exclusions, not hidden

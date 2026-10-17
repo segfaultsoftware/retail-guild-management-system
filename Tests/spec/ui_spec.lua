@@ -33,6 +33,21 @@ local function rosterTableText(view)
     return table.concat(parts, "\n")
 end
 
+local function mainsAltsReport(count, prefix)
+    local rows = {}
+    prefix = prefix or "char"
+    for index = 1, count do
+        local identity = string.format("%s%02d-area52", prefix, index)
+        rows[index] = {
+            identity = identity,
+            displayName = string.format("%s%02d-Area52", prefix, index),
+            altCount = 0,
+            alts = {},
+        }
+    end
+    return { rows = rows }
+end
+
 local function countLines(value)
     local count = 1
     for _ in string.gmatch(value or "", "\n") do
@@ -140,19 +155,62 @@ local function newRegion(parent)
     end
 
     function region:SetText(value)
+        value = tostring(value or "")
+        if self.maxLetters and #value > self.maxLetters then
+            value = string.sub(value, 1, self.maxLetters)
+        end
         self.text = value
+        if self.scripts.OnTextChanged then
+            self.scripts.OnTextChanged(self)
+        end
+    end
+
+    function region:GetText()
+        return self.text or ""
+    end
+
+    function region:GetStringWidth()
+        return #(self.text or "") * 7
     end
 
     function region:SetTexture(value)
         self.texture = value
     end
 
+    function region:SetVertexColor(red, green, blue, alpha)
+        self.vertexColor = { red, green, blue, alpha }
+    end
+
     function region:SetEnabled(enabled)
         self.enabled = enabled
     end
 
+    function region:SetChecked(checked)
+        self.checked = checked == true
+    end
+
+    function region:GetChecked()
+        return self.checked == true
+    end
+
     function region:IsEnabled()
         return self.enabled ~= false
+    end
+
+    function region:SetMaxLetters(maximum)
+        self.maxLetters = maximum
+    end
+
+    function region:SetFocus()
+        self.focused = true
+    end
+
+    function region:ClearFocus()
+        self.focused = false
+    end
+
+    function region:SetCursorPosition(position)
+        self.cursorPosition = position
     end
 
     function region:GetStringHeight()
@@ -173,6 +231,10 @@ local function newRegion(parent)
 
     function region:SetVerticalScroll(offset)
         self.verticalScroll = offset
+    end
+
+    function region:GetVerticalScroll()
+        return self.verticalScroll or 0
     end
 
     function region:SetID(id)
@@ -201,6 +263,7 @@ local function newRegion(parent)
         "SetToplevel",
         "SetMovable",
         "EnableMouse",
+        "EnableMouseWheel",
         "SetClampedToScreen",
         "SetClampRectInsets",
         "SetBackdrop",
@@ -208,6 +271,9 @@ local function newRegion(parent)
         "SetJustifyH",
         "SetJustifyV",
         "SetAllPoints",
+        "SetMultiLine",
+        "SetAutoFocus",
+        "SetFontObject",
     }
     for _, methodName in ipairs(noOpMethods) do
         region[methodName] = function() end
@@ -225,6 +291,11 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local refreshRequests = 0
     local bankRefreshRequests = 0
     local bankCancellations = 0
+    local groupingRequests = {}
+    local promotionRequests = {}
+    local removalRequests = {}
+    local noteSaves = {}
+    local noteDeletes = {}
     local tooltip = {
         lines = {},
         shown = false,
@@ -302,6 +373,28 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 bankCancellations = bankCancellations + 1
             end,
         },
+        MainsAlts = {
+            GroupSelected = function(selectedIdentities)
+                groupingRequests[#groupingRequests + 1] = selectedIdentities
+                return true
+            end,
+            PromoteAlt = function(altIdentity)
+                promotionRequests[#promotionRequests + 1] = altIdentity
+                return true
+            end,
+            RemoveAlt = function(altIdentity)
+                removalRequests[#removalRequests + 1] = altIdentity
+                return true
+            end,
+            SaveCharacterNote = function(identity, value)
+                noteSaves[#noteSaves + 1] = { identity = identity, value = value }
+                return true
+            end,
+            DeleteCharacterNote = function(identity)
+                noteDeletes[#noteDeletes + 1] = identity
+                return true
+            end,
+        },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
     local ui = chunk("RGMS", rgms)
@@ -320,6 +413,11 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         bankCancellations = function()
             return bankCancellations
         end,
+        groupingRequests = groupingRequests,
+        promotionRequests = promotionRequests,
+        removalRequests = removalRequests,
+        noteSaves = noteSaves,
+        noteDeletes = noteDeletes,
         tooltip = tooltip,
         modifiedItemClicks = modifiedItemClicks,
         ui = ui,
@@ -339,10 +437,14 @@ return {
         test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 266)
         test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 200)
         test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 218)
+        test.assert_equal(frame.numTabs, 3)
+        test.assert_equal(frame.tabs[2].text, "Mains/Alts")
         test.assert_false(frame.resizable)
         test.assert_nil(harness.database.ui.windowPosition)
         test.assert_equal(frame.views.roster.text.text, "No roster data yet")
         test.assert_equal(frame.views.roster.status.text, "No roster data yet")
+        test.assert_equal(frame.views.mainsalts.text.text, "No roster data yet")
+        test.assert_equal(frame.views.mainsalts.status.text, "No roster data yet")
         test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
         test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
     end),
@@ -366,6 +468,411 @@ return {
 
         harness.frame().closeButton.scripts.OnClick()
         test.assert_false(harness.ui.IsShown())
+    end),
+
+    test.case("Mains/Alts rows expand transiently and disable during roster scans", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local report = {
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    note = "Main note",
+                    hasNote = true,
+                    altCount = 2,
+                    alts = {
+                        {
+                            identity = "alta-area52",
+                            displayName = "AltA-Area52",
+                            note = "",
+                            hasNote = false,
+                        },
+                        {
+                            identity = "altb-area52",
+                            displayName = "AltB-Area52",
+                            note = "Alt note",
+                            hasNote = true,
+                        },
+                    },
+                },
+                {
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+                {
+                    identity = "other-area52",
+                    displayName = "Other-Area52",
+                    altCount = 1,
+                    alts = {
+                        { identity = "otheralt-area52", displayName = "OtherAlt-Area52" },
+                    },
+                },
+            },
+        }
+
+        test.assert_true(harness.ui.SetMainsAltsReport(report))
+        test.assert_true(harness.ui.Show("mainsalts"))
+        local view = harness.frame().views.mainsalts
+        test.assert_nil(view.refreshButton)
+        test.assert_equal(view.groupButton.text, "Group Toons")
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
+        test.assert_true(view.mainsAltsLines[1].noteButton:IsShown())
+        test.assert_true(view.mainsAltsLines[1].hasNote)
+        test.assert_true(view.mainsAltsLines[1].checkbox:IsShown())
+        test.assert_true(view.mainsAltsLines[2].checkbox:IsShown())
+
+        view.mainsAltsLines[1].checkbox:SetChecked(true)
+        view.mainsAltsLines[1].checkbox.scripts.OnClick(view.mainsAltsLines[1].checkbox)
+        test.assert_false(view.groupButton:IsEnabled())
+        view.mainsAltsLines[2].checkbox:SetChecked(true)
+        view.mainsAltsLines[2].checkbox.scripts.OnClick(view.mainsAltsLines[2].checkbox)
+        test.assert_true(view.groupButton:IsEnabled())
+        harness.ui.SetRosterScanInProgress(true)
+        view.mainsAltsLines[2].checkbox:SetChecked(false)
+        view.mainsAltsLines[2].checkbox.scripts.OnClick(view.mainsAltsLines[2].checkbox)
+        test.assert_true(view.mainsAltsLines[2].checkbox:GetChecked())
+        view.groupButton.scripts.OnClick()
+        test.assert_equal(harness.groupingRequests, {})
+        harness.ui.SetRosterScanInProgress(false)
+        view.groupButton.scripts.OnClick()
+        test.assert_equal(harness.groupingRequests[1], {
+            "main-area52",
+            "solo-area52",
+        })
+        view.mainsAltsLines[3].checkbox:SetChecked(true)
+        view.mainsAltsLines[3].checkbox.scripts.OnClick(view.mainsAltsLines[3].checkbox)
+        test.assert_false(view.groupButton:IsEnabled())
+        view.mainsAltsLines[3].checkbox:SetChecked(false)
+        view.mainsAltsLines[3].checkbox.scripts.OnClick(view.mainsAltsLines[3].checkbox)
+        test.assert_true(view.groupButton:IsEnabled())
+
+        view.mainsAltsLines[1].expandButton.scripts.OnClick()
+        test.assert_equal(view.mainsAltsLines[2].name.text, "AltA-Area52")
+        test.assert_false(view.mainsAltsLines[2].checkbox:IsShown())
+        test.assert_true(view.mainsAltsLines[2].promoteButton:IsShown())
+        test.assert_true(view.mainsAltsLines[2].removeButton:IsShown())
+        test.assert_true(view.mainsAltsLines[2].noteButton:IsShown())
+        test.assert_false(view.mainsAltsLines[2].hasNote)
+        test.assert_equal(view.mainsAltsLines[3].name.text, "AltB-Area52")
+        test.assert_equal(view.mainsAltsLines[4].name.text, "Solo-Area52")
+        view.mainsAltsLines[2].promoteButton.scripts.OnClick()
+        view.mainsAltsLines[3].removeButton.scripts.OnClick()
+        test.assert_equal(harness.promotionRequests, { "alta-area52" })
+        test.assert_equal(harness.removalRequests, { "altb-area52" })
+
+        harness.ui.SetRosterScanInProgress(true)
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[1].checkbox:IsEnabled())
+        test.assert_false(view.mainsAltsLines[1].expandButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[2].promoteButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[2].removeButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[1].noteButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[2].noteButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.saveButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.deleteButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.cancelButton:IsEnabled())
+        test.assert_false(harness.frame().notesEditor.closeButton:IsEnabled())
+        local toggled, message = harness.ui.ToggleMainsAltsGroup("main-area52")
+        test.assert_nil(toggled)
+        test.assert_matches(message, "disabled")
+
+        harness.ui.SetRosterScanInProgress(false)
+        test.assert_true(view.mainsAltsLines[1].checkbox:IsEnabled())
+        test.assert_true(view.mainsAltsLines[2].promoteButton:IsEnabled())
+        test.assert_true(view.mainsAltsLines[2].removeButton:IsEnabled())
+        test.assert_true(view.mainsAltsLines[1].noteButton:IsEnabled())
+        test.assert_true(view.groupButton:IsEnabled())
+        harness.ui.CompleteRosterScan()
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[1].checkbox:GetChecked())
+        test.assert_false(view.mainsAltsLines[4].checkbox:GetChecked())
+        harness.ui.CompleteMainsAltsChange("main-area52")
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+        test.assert_false(view.mainsAltsLines[1].checkbox:GetChecked())
+        test.assert_false(view.mainsAltsLines[4].checkbox:GetChecked())
+        harness.ui.CompleteMainsAltsChange(nil)
+        test.assert_nil(next(view.expandedMainsAlts))
+        harness.ui.CompleteMainsAltsGrouping("main-area52")
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+        test.assert_false(view.mainsAltsLines[1].checkbox:GetChecked())
+        harness.ui.Hide()
+        test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
+        test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
+        test.assert_false(view.mainsAltsLines[4].frame:IsShown())
+    end),
+
+    test.case("Mains/Alts mutation scrolling waits for the final report and eases to a clamped row", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show("mainsalts")
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(10)
+        harness.ui.SetMainsAltsReport(report)
+
+        harness.ui.CompleteMainsAltsChange("char08-area52")
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 0)
+        test.assert_equal(view.pendingMainsAltsScrollTarget, "char08-area52")
+        test.assert_nil(view.mainsAltsScrollAnimation)
+
+        local reordered = mainsAltsReport(10)
+        reordered.rows[5], reordered.rows[8] = reordered.rows[8], reordered.rows[5]
+        harness.ui.SetMainsAltsReport(reordered)
+        test.assert_nil(view.pendingMainsAltsScrollTarget)
+        test.assert_equal(view.mainsAltsScrollAnimation.destination, 100)
+        test.assert_equal(view.scrollChild:GetHeight(), 248)
+
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.0625)
+        local firstOffset = view.scrollFrame:GetVerticalScroll()
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.0625)
+        local secondOffset = view.scrollFrame:GetVerticalScroll()
+        test.assert_true(firstOffset > 0)
+        test.assert_true(firstOffset > secondOffset - firstOffset)
+        test.assert_true(secondOffset < 100)
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.125)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 100)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+
+        harness.ui.CompleteMainsAltsChange("char10-area52")
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_equal(view.mainsAltsScrollAnimation.destination, 176)
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.25)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 176)
+        test.assert_equal(view.scrollChild:GetHeight(), 248)
+    end),
+
+    test.case("Mains/Alts ordinary renders preserve main ungrouped and expanded-alt anchors", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(8)
+        harness.ui.SetMainsAltsReport(report)
+
+        view.scrollFrame:SetVerticalScroll(30)
+        local moved = mainsAltsReport(8)
+        table.insert(moved.rows, 1, {
+            identity = "added-area52",
+            displayName = "Added-Area52",
+            altCount = 0,
+            alts = {},
+        })
+        harness.ui.SetMainsAltsReport(moved)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 54)
+
+        view.scrollFrame:SetVerticalScroll(54)
+        local removedAnchor = mainsAltsReport(8)
+        table.remove(removedAnchor.rows, 2)
+        harness.ui.SetMainsAltsReport(removedAnchor)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 54)
+
+        local grouped = {
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    altCount = 2,
+                    alts = {
+                        { identity = "alta-area52", displayName = "AltA-Area52" },
+                        { identity = "altb-area52", displayName = "AltB-Area52" },
+                    },
+                },
+                {
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        }
+        harness.ui.SetMainsAltsReport(grouped)
+        harness.ui.ToggleMainsAltsGroup("main-area52")
+        view.scrollFrame:SetVerticalScroll(30)
+        local withLeadingRow = {
+            rows = {
+                {
+                    identity = "leading-area52",
+                    displayName = "Leading-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+                grouped.rows[1],
+                grouped.rows[2],
+            },
+        }
+        harness.ui.SetMainsAltsReport(withLeadingRow)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 54)
+        test.assert_equal(view.mainsAltsLines[3].identity, "alta-area52")
+    end),
+
+    test.case("Mains/Alts animation retargets and user or lifecycle input cancels it", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show("mainsalts")
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(10)
+        harness.ui.SetMainsAltsReport(report)
+
+        local function start(identity)
+            harness.ui.CompleteMainsAltsChange(identity)
+            harness.ui.SetMainsAltsReport(report)
+            test.assert_not_nil(view.mainsAltsScrollAnimation)
+        end
+
+        start("char08-area52")
+        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.1)
+        local retargetOffset = view.scrollFrame:GetVerticalScroll()
+        harness.ui.CompleteMainsAltsChange("char04-area52")
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_equal(view.mainsAltsScrollAnimation.startOffset, retargetOffset)
+        test.assert_equal(view.mainsAltsScrollAnimation.destination, 76)
+
+        view.scrollFrame.scripts.OnMouseWheel(view.scrollFrame, -1)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        local wheelOffset = view.scrollFrame:GetVerticalScroll()
+        test.assert_true(wheelOffset > retargetOffset)
+
+        start("char08-area52")
+        view.scrollFrame.scripts.OnVerticalScroll(view.scrollFrame, 25)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 25)
+
+        start("char08-area52")
+        harness.ui.SelectPrimaryTab("roster")
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_nil(view.pendingMainsAltsScrollTarget)
+        harness.ui.SelectPrimaryTab("mainsalts")
+
+        start("char08-area52")
+        harness.ui.SetRosterScanInProgress(true)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        harness.ui.SetRosterScanInProgress(false)
+
+        start("char08-area52")
+        harness.ui.SetMainsAltsAvailable(false)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        harness.ui.SetMainsAltsAvailable(true)
+
+        start("char08-area52")
+        harness.ui.Hide()
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 0)
+    end),
+
+    test.case("Mains/Alts missing mutation targets are cleared silently", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show("mainsalts")
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        local report = mainsAltsReport(8)
+        harness.ui.SetMainsAltsReport(report)
+        view.scrollFrame:SetVerticalScroll(30)
+
+        harness.ui.CompleteMainsAltsChange("missing-area52")
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_nil(view.pendingMainsAltsScrollTarget)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 30)
+
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 30)
+    end),
+
+    test.case("one character-note editor switches discards limits saves and deletes", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.SetMainsAltsReport({
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    note = "Saved main note",
+                    hasNote = true,
+                    altCount = 0,
+                    alts = {},
+                },
+                {
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    note = "",
+                    hasNote = false,
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        })
+        local view = harness.frame().views.mainsalts
+        local editor = harness.frame().notesEditor
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        test.assert_true(editor:IsShown())
+        test.assert_equal(editor.character.text, "Editing note for Main-Area52")
+        test.assert_equal(editor.editBox:GetText(), "Saved main note")
+        test.assert_true(editor.deleteButton:IsEnabled())
+
+        editor.editBox:SetText("unsaved change")
+        view.mainsAltsLines[2].noteButton.scripts.OnClick()
+        test.assert_true(editor:IsShown())
+        test.assert_equal(editor.characterIdentity, "solo-area52")
+        test.assert_equal(editor.editBox:GetText(), "")
+        test.assert_false(editor.deleteButton:IsEnabled())
+        editor.cancelButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(harness.noteSaves, {})
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.editBox:SetText(string.rep("x", 5501))
+        test.assert_equal(#editor.editBox:GetText(), 5500)
+        test.assert_true(editor.saveButton:IsEnabled())
+        editor.saveButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(harness.noteSaves[1].identity, "main-area52")
+        test.assert_equal(#harness.noteSaves[1].value, 5500)
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.deleteButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(harness.noteDeletes, { "main-area52" })
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.editBox:SetText("discard me")
+        editor.closeButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(#harness.noteSaves, 1)
+
+        harness.ui.SetMainsAltsReport({
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    note = "",
+                    hasNote = false,
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        })
+        test.assert_false(view.mainsAltsLines[1].hasNote)
+        test.assert_equal(
+            view.mainsAltsLines[1].noteButton.icon.vertexColor,
+            { 0.55, 0.55, 0.55, 0.65 }
+        )
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.editBox:SetText("discard this removed character edit")
+        harness.ui.SetMainsAltsReport({ rows = {} })
+        test.assert_false(editor:IsShown())
+        test.assert_equal(#harness.noteSaves, 1)
     end),
 
     test.case("roster refresh button starts manual scans and disables while scanning", function()
@@ -837,7 +1344,7 @@ return {
 
         local selected, message = harness.ui.SelectPrimaryTab("settings")
         test.assert_nil(selected)
-        test.assert_matches(message, "roster or bank")
+        test.assert_matches(message, "mainsalts")
         test.assert_equal(harness.ui.selectedTab, "roster")
     end),
 }

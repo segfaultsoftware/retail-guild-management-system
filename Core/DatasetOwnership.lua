@@ -37,6 +37,44 @@ end
 function DatasetOwnership.create(dependencies)
     local controller = {}
 
+    local function beginAccountDataset(datasetName, capturedGuild)
+        local currentModel = dependencies.getSavedData()
+        local currentState = dependencies.accountData.load(currentModel)
+        if not currentState.enabled then
+            return nil, currentState.error
+        end
+
+        local guild = dependencies.accountData.findGuild(
+            currentState.model,
+            capturedGuild
+        )
+        local sourceDataset
+        if guild then
+            sourceDataset = guild[datasetName]
+        else
+            sourceDataset = dependencies.savedData.newModel()[datasetName]
+        end
+
+        -- Reusing SavedData's replacement path gives the transaction a
+        -- detached, fully validated dataset without exposing account state.
+        local detached, detachError = dependencies.savedData.replaceDataset(
+            dependencies.savedData.newModel(),
+            datasetName,
+            sourceDataset
+        )
+        if not detached then
+            return nil, detachError
+        end
+        detached[datasetName].guild = capturedGuild
+
+        return {
+            datasetName = datasetName,
+            guild = capturedGuild,
+            dataset = detached[datasetName],
+            finished = false,
+        }
+    end
+
     function controller:begin(datasetName, guildIdentity)
         if not validDatasetName(datasetName) then
             return nil, "dataset name must be roster or bank"
@@ -50,6 +88,10 @@ function DatasetOwnership.create(dependencies)
         )
         if not capturedGuild then
             return nil, identityError
+        end
+
+        if dependencies.accountData then
+            return beginAccountDataset(datasetName, capturedGuild)
         end
 
         local currentModel = dependencies.getSavedData()
@@ -107,6 +149,64 @@ function DatasetOwnership.create(dependencies)
             return nil, "transaction dataset guild does not match its captured guild"
         end
 
+        if dependencies.accountData then
+            local currentModel = dependencies.getSavedData()
+            local committedModel
+            local guildOrError
+            if transaction.datasetName == "roster"
+                and type(dependencies.reconcileRosterFeatures) == "function" then
+                local currentGuild = dependencies.accountData.findGuild(
+                    currentModel,
+                    transaction.guild
+                )
+                local groups, notesOrError = dependencies.reconcileRosterFeatures(
+                    transaction.dataset,
+                    currentGuild and currentGuild.mainAltGroups or {},
+                    currentGuild and currentGuild.characterNotes or {}
+                )
+                if not groups then
+                    return nil, notesOrError
+                end
+                committedModel, guildOrError =
+                    dependencies.accountData.replaceRosterAndFeatures(
+                        currentModel,
+                        transaction.guild,
+                        transaction.dataset,
+                        groups,
+                        notesOrError
+                    )
+            else
+                committedModel, guildOrError = dependencies.accountData.replaceDataset(
+                    currentModel,
+                    transaction.guild,
+                    transaction.datasetName,
+                    transaction.dataset
+                )
+            end
+            if not committedModel then
+                return nil, guildOrError
+            end
+
+            local characterModel
+            if type(dependencies.prepareCharacterCommit) == "function" then
+                local prepareError
+                characterModel, prepareError = dependencies.prepareCharacterCommit(
+                    transaction.datasetName
+                )
+                if not characterModel then
+                    return nil, prepareError
+                end
+            end
+
+            dependencies.commit(
+                committedModel,
+                transaction.guild,
+                characterModel
+            )
+            transaction.finished = true
+            return true, committedModel
+        end
+
         local currentModel = dependencies.getSavedData()
         local currentGuild = currentModel[transaction.datasetName].guild
         local guildChanged = currentGuild ~= nil
@@ -135,15 +235,61 @@ end
 if type(RGMS) == "table" then
     RGMS.DatasetOwnership = DatasetOwnership.create({
         savedData = RGMS.SavedData,
+        accountData = RGMS.AccountData,
         getSavedData = function()
-            return RGMSCharacterDB
+            return RGMSAccountDB
         end,
-        commit = function(model)
-            RGMSCharacterDB = model
-            RGMS.DB = model
-            if type(RGMS.SavedDataState) == "table" then
-                RGMS.SavedDataState.model = model
+        commit = function(model, guildIdentity, characterModel)
+            RGMSAccountDB = model
+            RGMS.AccountDataState = {
+                enabled = true,
+                status = "ready",
+                model = model,
+            }
+            RGMS.ActiveGuildIdentity = guildIdentity
+            if characterModel ~= nil then
+                RGMSCharacterDB = characterModel
+                RGMS.SavedDataState = {
+                    enabled = true,
+                    status = "ready",
+                    scope = "character",
+                    model = characterModel,
+                }
+            else
+                characterModel = type(RGMS.SavedDataState) == "table"
+                    and RGMS.SavedDataState.model
+                    or nil
             end
+            RGMS.DB = RGMS.AccountData.view(
+                model,
+                guildIdentity,
+                characterModel and characterModel.ui or {}
+            )
+            if type(RGMS.Roster) == "table"
+                and type(RGMS.Roster.RefreshStatus) == "function" then
+                RGMS.Roster.RefreshStatus()
+            end
+            if type(RGMS.Bank) == "table"
+                and type(RGMS.Bank.RefreshStatus) == "function" then
+                RGMS.Bank.RefreshStatus()
+            end
+        end,
+        prepareCharacterCommit = function(datasetName)
+            local characterModel = type(RGMS.SavedDataState) == "table"
+                and RGMS.SavedDataState.enabled
+                and RGMS.SavedDataState.model
+                or RGMSCharacterDB
+            if datasetName == "roster" then
+                return RGMS.RosterMigration.cleanup(characterModel)
+            end
+            return RGMS.BankMigration.cleanup(characterModel)
+        end,
+        reconcileRosterFeatures = function(dataset, groups, notes)
+            if type(RGMS.MainsAltsGroups) ~= "table"
+                or type(RGMS.MainsAltsGroups.reconcile) ~= "function" then
+                return nil, "Mains/Alts roster reconciliation is unavailable"
+            end
+            return RGMS.MainsAltsGroups.reconcile(dataset, groups, notes)
         end,
         print = RGMS.Print,
     })

@@ -154,6 +154,9 @@ function Scanner.create(dependencies)
         self:SetProgress(false)
         self.elapsed = 0
         self.source = nil
+        if type(dependencies.completeSuccess) == "function" then
+            dependencies.completeSuccess()
+        end
         dependencies.refreshStatus()
         printMessage(string.format(
             "Guild roster scan complete: %d members across %d ranks.",

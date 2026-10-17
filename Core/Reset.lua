@@ -41,6 +41,68 @@ function Reset.create(dependencies)
     function controller:confirm(request)
         request = request or { recovery = false }
 
+        if dependencies.accountData then
+            local guildIdentity = dependencies.getGuildIdentity()
+            if guildIdentity == nil and not request.recovery then
+                local resetError = "the current guild is unavailable"
+                dependencies.print("Reset failed: " .. resetError .. ".")
+                return nil, resetError
+            end
+
+            local accountModel
+            if request.recovery
+                and type(request.state) == "table"
+                and request.state.scope == "account" then
+                accountModel = dependencies.accountData.newModel()
+            else
+                accountModel = dependencies.getAccountData()
+            end
+            local guild
+            if guildIdentity ~= nil then
+                local resetError
+                accountModel, guild, resetError = dependencies.accountData.resetGuild(
+                    accountModel,
+                    guildIdentity
+                )
+                if not accountModel then
+                    dependencies.print("Reset failed: " .. tostring(guild) .. ".")
+                    return nil, guild
+                end
+            end
+
+            local characterModel = dependencies.getSavedData()
+            if request.recovery
+                and type(request.state) == "table"
+                and request.state.scope == "character" then
+                local resetError
+                characterModel, resetError = dependencies.savedData.resetObservations(
+                    characterModel
+                )
+                if not characterModel then
+                    dependencies.print("Reset failed: " .. tostring(resetError) .. ".")
+                    return nil, resetError
+                end
+            end
+
+            dependencies.commitAccount(accountModel, characterModel, guildIdentity)
+            if type(dependencies.setDataState) == "function" then
+                dependencies.setDataState(true)
+            end
+            if type(dependencies.refreshViews) == "function" then
+                dependencies.refreshViews()
+            end
+            if request.recovery then
+                dependencies.print(
+                    "Saved data reset completed; scans and reports are enabled."
+                )
+            else
+                dependencies.print(
+                    "Current guild roster, bank, groups, and notes reset; window position preserved."
+                )
+            end
+            return true
+        end
+
         local model, resetError = dependencies.savedData.resetObservations(
             dependencies.getSavedData()
         )
@@ -141,13 +203,21 @@ if type(RGMS) == "table" then
     local function showConfirmation(request)
         local message
         if request.recovery then
-            message = "RGMS cannot use this character's saved data because it is "
+            local scope = request.state and request.state.scope == "account"
+                and "account-wide"
+                or "per-character"
+            message = "RGMS cannot use its " .. scope .. " saved data because it is "
                 .. tostring(request.state and request.state.status or "unavailable")
-                .. ". Reset all roster and bank observations for this character? "
+                .. ". Reset the unusable storage and the current guild's data? "
                 .. "The original data will be replaced." 
         else
-            message = "Reset all RGMS roster and bank observations for this character? "
-                .. "This cannot be undone."
+            if type(RGMS.AccountData) == "table" then
+                message = "Reset the current guild's RGMS roster, bank, groups, and notes for this account? "
+                    .. "This cannot be undone."
+            else
+                message = "Reset all RGMS roster and bank observations for this character? "
+                    .. "This cannot be undone."
+            end
         end
 
         local popup = StaticPopup_Show(DIALOG_KEY, message, nil, request)
@@ -160,16 +230,57 @@ if type(RGMS) == "table" then
 
     controller = Reset.create({
         savedData = RGMS.SavedData,
+        accountData = RGMS.AccountData,
         getSavedData = function()
-            return RGMSCharacterDB
+            return type(RGMS.SavedDataState) == "table"
+                and RGMS.SavedDataState.enabled
+                and RGMS.SavedDataState.model
+                or RGMSCharacterDB
+        end,
+        getAccountData = function()
+            return type(RGMS.AccountDataState) == "table"
+                and RGMS.AccountDataState.enabled
+                and RGMS.AccountDataState.model
+                or RGMSAccountDB
+        end,
+        getGuildIdentity = function()
+            return RGMS.ActiveGuildIdentity
+                or (type(RGMS.ResolveCurrentGuildIdentity) == "function"
+                    and RGMS.ResolveCurrentGuildIdentity())
         end,
         getState = function()
-            return RGMS.SavedDataState
+            if type(RGMS.SavedDataState) == "table"
+                and not RGMS.SavedDataState.enabled then
+                return RGMS.SavedDataState
+            end
+            return RGMS.AccountDataState
         end,
         commit = function(model, state)
             RGMSCharacterDB = model
             RGMS.DB = model
             RGMS.SavedDataState = state
+        end,
+        commitAccount = function(accountModel, characterModel, guildIdentity)
+            RGMSAccountDB = accountModel
+            RGMSCharacterDB = characterModel
+            RGMS.AccountDataState = {
+                enabled = true,
+                status = "ready",
+                scope = "account",
+                model = accountModel,
+            }
+            RGMS.SavedDataState = {
+                enabled = true,
+                status = "ready",
+                scope = "character",
+                model = characterModel,
+            }
+            RGMS.ActiveGuildIdentity = guildIdentity
+            RGMS.DB = RGMS.AccountData.view(
+                accountModel,
+                guildIdentity,
+                characterModel.ui
+            )
         end,
         showConfirmation = showConfirmation,
         print = RGMS.Print,
