@@ -52,6 +52,12 @@ the same guild partition. The Mains/Alts tab projects group membership from
 this partition but limits its character population to the active guild's saved
 roster.
 
+Character-note keys use the same case-insensitive canonical character identity
+as the roster projection. Saved note text is trimmed, whitespace-only text is
+removed, and editor-created notes are limited to 5,500 characters. Grouping,
+promotion, and removal update only `mainAltGroups`, so notes remain attached to
+their character identities.
+
 ## Per-character schema: version 7
 
 ```text

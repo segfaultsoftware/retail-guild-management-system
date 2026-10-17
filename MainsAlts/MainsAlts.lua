@@ -8,6 +8,11 @@ local function scanInProgress()
         and RGMS.Roster.IsScanInProgress()
 end
 
+local function characterCount(value)
+    local withoutContinuationBytes = string.gsub(value, "[\128-\191]", "")
+    return #withoutContinuationBytes
+end
+
 local function publishGroups(groups)
     if type(RGMS.AccountData) ~= "table"
         or type(RGMS.AccountData.replaceMainAltGroups) ~= "function"
@@ -33,6 +38,84 @@ local function publishGroups(groups)
         RGMS.DB.mainAltGroups = guildOrError.mainAltGroups
     end
     return true
+end
+
+local function characterExists(identity)
+    if type(identity) ~= "string" or identity == ""
+        or type(RGMS.DB) ~= "table"
+        or type(RGMS.DB.roster) ~= "table"
+        or type(RGMS.DB.roster.members) ~= "table"
+        or type(RGMS.RosterNames) ~= "table"
+        or type(RGMS.RosterNames.identity) ~= "function" then
+        return false
+    end
+
+    for _, member in ipairs(RGMS.DB.roster.members) do
+        if RGMS.RosterNames.identity(member.name, member.realm) == identity then
+            return true
+        end
+    end
+    return false
+end
+
+local function publishNote(identity, note)
+    if type(RGMS.AccountData) ~= "table"
+        or type(RGMS.AccountData.replaceCharacterNote) ~= "function"
+        or type(RGMS.AccountDataState) ~= "table"
+        or type(RGMS.ActiveGuildIdentity) ~= "table" then
+        return nil, "character note account storage is unavailable"
+    end
+
+    local replacement, guildOrError = RGMS.AccountData.replaceCharacterNote(
+        RGMS.AccountDataState.model,
+        RGMS.ActiveGuildIdentity,
+        identity,
+        note
+    )
+    if not replacement then
+        return nil, guildOrError
+    end
+
+    RGMSAccountDB = replacement
+    RGMS.AccountDataState.model = replacement
+    if type(RGMS.ActivateCurrentGuild) == "function" then
+        RGMS.ActivateCurrentGuild()
+    else
+        RGMS.DB.characterNotes = guildOrError.characterNotes
+    end
+    MainsAlts.RefreshStatus()
+    return true
+end
+
+function MainsAlts.SaveCharacterNote(identity, value)
+    if scanInProgress() then
+        return nil, "character notes are disabled during a roster scan"
+    end
+    if not characterExists(identity) then
+        return nil, "roster character is unavailable"
+    end
+    if type(value) ~= "string" then
+        return nil, "character note must be text"
+    end
+
+    local maximum = type(RGMS.AccountData) == "table"
+        and RGMS.AccountData.MAX_CHARACTER_NOTE_LENGTH
+        or 5500
+    if characterCount(value) > maximum then
+        return nil, "character note must not exceed " .. maximum .. " characters"
+    end
+    local trimmed = string.match(value, "^%s*(.-)%s*$") or ""
+    return publishNote(identity, trimmed ~= "" and trimmed or nil)
+end
+
+function MainsAlts.DeleteCharacterNote(identity)
+    if scanInProgress() then
+        return nil, "character notes are disabled during a roster scan"
+    end
+    if not characterExists(identity) then
+        return nil, "roster character is unavailable"
+    end
+    return publishNote(identity, nil)
 end
 
 function MainsAlts.GroupSelected(selectedIdentities)
@@ -131,7 +214,8 @@ function MainsAlts.RefreshStatus()
 
     local report, reportError = RGMS.MainsAltsReport.build(
         RGMS.DB.roster,
-        RGMS.DB.mainAltGroups
+        RGMS.DB.mainAltGroups,
+        RGMS.DB.characterNotes
     )
     if not report then
         RGMS.UI.SetViewStatus(

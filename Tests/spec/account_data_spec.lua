@@ -178,6 +178,70 @@ return {
         test.assert_equal(partition.mainAltGroups, {})
     end),
 
+    test.case("replacing one character note is atomic and preserves guild data", function()
+        local identity = guild("Night Shift", "area-52")
+        local model = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            completedRoster(identity, "Main")
+        ))
+        local partition = accountData.findGuild(model, identity)
+        partition.mainAltGroups = { ["Main-area-52"] = { "Alt-area-52" } }
+        partition.characterNotes = {
+            ["other-area-52"] = "Keep this note",
+        }
+
+        local replacement = assert(accountData.replaceCharacterNote(
+            model,
+            identity,
+            "main-area-52",
+            "New note"
+        ))
+        local updated = accountData.findGuild(replacement, identity)
+
+        test.assert_equal(updated.characterNotes, {
+            ["main-area-52"] = "New note",
+            ["other-area-52"] = "Keep this note",
+        })
+        test.assert_equal(updated.mainAltGroups, partition.mainAltGroups)
+        test.assert_equal(updated.roster, partition.roster)
+        test.assert_nil(partition.characterNotes["main-area-52"])
+
+        replacement = assert(accountData.replaceCharacterNote(
+            replacement,
+            identity,
+            "main-area-52",
+            nil
+        ))
+        updated = accountData.findGuild(replacement, identity)
+        test.assert_nil(updated.characterNotes["main-area-52"])
+        test.assert_equal(updated.characterNotes["other-area-52"], "Keep this note")
+    end),
+
+    test.case("character note replacement validates identity value and length", function()
+        local identity = guild("Night Shift", "area-52")
+        local model = accountData.newModel()
+
+        local replacement, message = accountData.replaceCharacterNote(
+            model,
+            identity,
+            "",
+            "Note"
+        )
+        test.assert_nil(replacement)
+        test.assert_matches(message, "identity")
+
+        replacement, message = accountData.replaceCharacterNote(
+            model,
+            identity,
+            "main-area-52",
+            string.rep("x", 5501)
+        )
+        test.assert_nil(replacement)
+        test.assert_matches(message, "5500")
+    end),
+
     test.case("account transactions publish complete datasets atomically", function()
         local current = accountData.newModel()
         local identity = guild("Night Shift", "area-52")

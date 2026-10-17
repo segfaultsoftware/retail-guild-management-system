@@ -37,9 +37,24 @@ local MAINS_ALTS_ALT_INDENT = 48
 local MAINS_ALTS_EXPAND_WIDTH = 28
 local MAINS_ALTS_PROMOTE_WIDTH = 48
 local MAINS_ALTS_REMOVE_WIDTH = 64
+local MAINS_ALTS_NOTE_SIZE = 20
+local MAINS_ALTS_NOTE_GAP = 4
+local CHARACTER_NOTE_LIMIT = 5500
+local CHARACTER_NOTE_TEXTURE = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up"
 local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
+
+local function characterCount(value)
+    if type(strlenutf8) == "function" then
+        local counted, length = pcall(strlenutf8, value)
+        if counted and type(length) == "number" then
+            return length
+        end
+    end
+    local withoutContinuationBytes = string.gsub(value, "[\128-\191]", "")
+    return #withoutContinuationBytes
+end
 
 local function normalizeTabId(tabId)
     if type(tabId) ~= "string" then
@@ -285,6 +300,7 @@ local function layoutMainsAltsLines(view, availableWidth)
         line.expandButton:ClearAllPoints()
         line.promoteButton:ClearAllPoints()
         line.removeButton:ClearAllPoints()
+        line.noteButton:ClearAllPoints()
         if line.isAlt then
             line.name:SetPoint(
                 "LEFT",
@@ -293,14 +309,26 @@ local function layoutMainsAltsLines(view, availableWidth)
                 MAINS_ALTS_ALT_INDENT,
                 0
             )
-            line.name:SetWidth(math.max(
+            local maximumNameWidth = math.max(
                 1,
                 availableWidth
                     - MAINS_ALTS_ALT_INDENT
                     - MAINS_ALTS_PROMOTE_WIDTH
                     - MAINS_ALTS_REMOVE_WIDTH
-                    - 12
-            ))
+                    - MAINS_ALTS_NOTE_SIZE
+                    - 16
+            )
+            local nameWidth = type(line.name.GetStringWidth) == "function"
+                and line.name:GetStringWidth() + 2
+                or maximumNameWidth
+            line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.noteButton:SetPoint(
+                "LEFT",
+                line.name,
+                "RIGHT",
+                MAINS_ALTS_NOTE_GAP,
+                0
+            )
             line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
             line.promoteButton:SetPoint(
                 "RIGHT",
@@ -318,13 +346,25 @@ local function layoutMainsAltsLines(view, availableWidth)
                 MAINS_ALTS_CHECKBOX_SIZE + 4,
                 0
             )
-            line.name:SetWidth(math.max(
+            local maximumNameWidth = math.max(
                 1,
                 availableWidth
                     - MAINS_ALTS_CHECKBOX_SIZE
                     - MAINS_ALTS_EXPAND_WIDTH
-                    - 12
-            ))
+                    - MAINS_ALTS_NOTE_SIZE
+                    - 16
+            )
+            local nameWidth = type(line.name.GetStringWidth) == "function"
+                and line.name:GetStringWidth() + 2
+                or maximumNameWidth
+            line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.noteButton:SetPoint(
+                "LEFT",
+                line.name,
+                "RIGHT",
+                MAINS_ALTS_NOTE_GAP,
+                0
+            )
             line.expandButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
         end
     end
@@ -578,6 +618,19 @@ local function updateMainsAltsControlState(view)
             line.expandButton:SetEnabled(enabled and line.hasAlts)
             line.promoteButton:SetEnabled(enabled and line.isAlt)
             line.removeButton:SetEnabled(enabled and line.isAlt)
+            line.noteButton:SetEnabled(enabled)
+        end
+    end
+    if UI.frame and UI.frame.notesEditor then
+        local editor = UI.frame.notesEditor
+        editor.saveButton:SetEnabled(enabled)
+        editor.deleteButton:SetEnabled(enabled and editor.noteExists == true)
+        if type(editor.editBox.SetEnabled) == "function" then
+            editor.editBox:SetEnabled(enabled)
+        elseif enabled and type(editor.editBox.Enable) == "function" then
+            editor.editBox:Enable()
+        elseif not enabled and type(editor.editBox.Disable) == "function" then
+            editor.editBox:Disable()
         end
     end
 end
@@ -625,6 +678,12 @@ local function acquireMainsAltsLine(view, index)
     )
     removeButton:SetSize(MAINS_ALTS_REMOVE_WIDTH, 20)
     removeButton:SetText("Remove")
+    local noteButton = CreateFrame("Button", nil, frame)
+    noteButton:SetSize(MAINS_ALTS_NOTE_SIZE, MAINS_ALTS_NOTE_SIZE)
+    local noteIcon = noteButton:CreateTexture(nil, "ARTWORK")
+    noteIcon:SetAllPoints(noteButton)
+    noteIcon:SetTexture(CHARACTER_NOTE_TEXTURE)
+    noteButton.icon = noteIcon
     line = {
         frame = frame,
         checkbox = checkbox,
@@ -632,6 +691,7 @@ local function acquireMainsAltsLine(view, index)
         expandButton = expandButton,
         promoteButton = promoteButton,
         removeButton = removeButton,
+        noteButton = noteButton,
     }
     view.mainsAltsLines[index] = line
     return line
@@ -649,9 +709,40 @@ local function renderMainsAlts(view)
         line.isAlt = isAlt == true
         line.hasAlts = not line.isAlt and character.altCount > 0
         line.identity = character.identity
+        line.hasNote = character.hasNote == true
         line.frame:ClearAllPoints()
         line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
         line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)
+        line.noteButton.icon:SetVertexColor(
+            line.hasNote and 1 or 0.55,
+            line.hasNote and 0.82 or 0.55,
+            line.hasNote and 0.2 or 0.55,
+            line.hasNote and 1 or 0.65
+        )
+        line.noteButton:SetScript("OnClick", function()
+            local opened, openError = UI.OpenCharacterNote(
+                character.identity,
+                character.displayName,
+                character.note,
+                character.hasNote
+            )
+            if not opened and type(RGMS.Print) == "function" then
+                RGMS.Print("Could not open character note: "
+                    .. tostring(openError) .. ".")
+            end
+        end)
+        line.noteButton:SetScript("OnEnter", function(button)
+            GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+            GameTooltip:SetText(
+                (line.hasNote and "Edit saved note for " or "Add note for ")
+                    .. character.displayName
+            )
+            GameTooltip:Show()
+        end)
+        line.noteButton:SetScript("OnLeave", function(button)
+            hideTooltipIfOwned(button)
+        end)
+        line.noteButton:Show()
 
         if line.isAlt then
             line.checkbox:Hide()
@@ -1056,6 +1147,166 @@ local function createView(parent, tabId)
     return view
 end
 
+local function createNotesEditor()
+    local editor = CreateFrame(
+        "Frame",
+        "RGMSNotesEditor",
+        UIParent,
+        "BackdropTemplate"
+    )
+    editor:SetSize(440, 330)
+    editor:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    editor:SetFrameStrata("DIALOG")
+    editor:SetToplevel(true)
+    editor:EnableMouse(true)
+    editor:SetClampedToScreen(true)
+    editor:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true,
+        tileSize = 32,
+        edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    editor:SetBackdropColor(0.05, 0.05, 0.08, 0.98)
+
+    editor.title = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    editor.title:SetPoint("TOPLEFT", editor, "TOPLEFT", 18, -17)
+    editor.title:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -46, -17)
+    editor.title:SetJustifyH("LEFT")
+    editor.title:SetText("Character Note")
+
+    editor.character = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    editor.character:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -50)
+    editor.character:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -20, -50)
+    editor.character:SetJustifyH("LEFT")
+
+    editor.closeButton = CreateFrame("Button", nil, editor, "UIPanelCloseButton")
+    editor.closeButton:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -5, -5)
+    editor.closeButton:SetScript("OnClick", function()
+        UI.CloseCharacterNoteEditor()
+    end)
+
+    editor.scrollFrame = CreateFrame(
+        "ScrollFrame",
+        nil,
+        editor,
+        "UIPanelScrollFrameTemplate"
+    )
+    editor.scrollFrame:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -78)
+    editor.scrollFrame:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -38, 58)
+
+    editor.editBox = CreateFrame(
+        "EditBox",
+        nil,
+        editor.scrollFrame,
+        "InputBoxTemplate"
+    )
+    editor.editBox:SetMultiLine(true)
+    editor.editBox:SetAutoFocus(false)
+    editor.editBox:SetFontObject("ChatFontNormal")
+    editor.editBox:SetWidth(370)
+    editor.editBox:SetHeight(185)
+    editor.editBox:SetMaxLetters(CHARACTER_NOTE_LIMIT)
+    editor.scrollFrame:SetScrollChild(editor.editBox)
+
+    editor.characterCount = editor:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontHighlightSmall"
+    )
+    editor.characterCount:SetPoint(
+        "BOTTOMRIGHT",
+        editor,
+        "BOTTOMRIGHT",
+        -20,
+        39
+    )
+    editor.characterCount:SetText("0 / " .. CHARACTER_NOTE_LIMIT)
+    editor.editBox:SetScript("OnTextChanged", function(editBox)
+        editor.characterCount:SetText(
+            characterCount(editBox:GetText()) .. " / " .. CHARACTER_NOTE_LIMIT
+        )
+        if type(editBox.GetStringHeight) == "function" then
+            editBox:SetHeight(math.max(185, editBox:GetStringHeight() + 20))
+        end
+        if type(editor.scrollFrame.UpdateScrollChildRect) == "function" then
+            editor.scrollFrame:UpdateScrollChildRect()
+        end
+    end)
+    editor.editBox:SetScript("OnEscapePressed", function()
+        UI.CloseCharacterNoteEditor()
+    end)
+
+    editor.deleteButton = CreateFrame(
+        "Button",
+        nil,
+        editor,
+        "UIPanelButtonTemplate"
+    )
+    editor.deleteButton:SetSize(76, 22)
+    editor.deleteButton:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 20, 18)
+    editor.deleteButton:SetText("Delete")
+    editor.deleteButton:SetScript("OnClick", function()
+        local deleted, deleteError = RGMS.MainsAlts.DeleteCharacterNote(
+            editor.characterIdentity
+        )
+        if deleted then
+            UI.CloseCharacterNoteEditor()
+        elseif type(RGMS.Print) == "function" then
+            RGMS.Print("Could not delete character note: "
+                .. tostring(deleteError) .. ".")
+        end
+    end)
+
+    editor.cancelButton = CreateFrame(
+        "Button",
+        nil,
+        editor,
+        "UIPanelButtonTemplate"
+    )
+    editor.cancelButton:SetSize(76, 22)
+    editor.cancelButton:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -104, 18)
+    editor.cancelButton:SetText("Cancel")
+    editor.cancelButton:SetScript("OnClick", function()
+        UI.CloseCharacterNoteEditor()
+    end)
+
+    editor.saveButton = CreateFrame(
+        "Button",
+        nil,
+        editor,
+        "UIPanelButtonTemplate"
+    )
+    editor.saveButton:SetSize(76, 22)
+    editor.saveButton:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -20, 18)
+    editor.saveButton:SetText("Save")
+    editor.saveButton:SetScript("OnClick", function()
+        local saved, saveError = RGMS.MainsAlts.SaveCharacterNote(
+            editor.characterIdentity,
+            editor.editBox:GetText()
+        )
+        if saved then
+            UI.CloseCharacterNoteEditor()
+        elseif type(RGMS.Print) == "function" then
+            RGMS.Print("Could not save character note: "
+                .. tostring(saveError) .. ".")
+        end
+    end)
+
+    editor:SetScript("OnShow", function()
+        editor.editBox:SetFocus()
+    end)
+    editor:SetScript("OnHide", function()
+        editor.editBox:ClearFocus()
+        editor.characterIdentity = nil
+        editor.displayName = nil
+        editor.noteExists = false
+    end)
+    editor:Hide()
+    return editor
+end
+
 local function createWindow()
     local frame = CreateFrame("Frame", "RGMSMainFrame", UIParent, "BackdropTemplate")
     frame:SetSize(RGMS.UILayout.WINDOW_WIDTH, RGMS.UILayout.WINDOW_HEIGHT)
@@ -1137,6 +1388,7 @@ local function createWindow()
     end
 
     PanelTemplates_SetNumTabs(frame, #TAB_ORDER)
+    frame.notesEditor = createNotesEditor()
 
     frame:SetScript("OnShow", function()
         UI.ClampToScreen()
@@ -1148,6 +1400,9 @@ local function createWindow()
         end
         if type(UI.CollapseMainsAltsGroups) == "function" then
             UI.CollapseMainsAltsGroups()
+        end
+        if frame.notesEditor:IsShown() then
+            UI.CloseCharacterNoteEditor()
         end
     end)
 
@@ -1188,6 +1443,7 @@ function UI.Initialize()
 
     if type(UISpecialFrames) == "table" then
         table.insert(UISpecialFrames, "RGMSMainFrame")
+        table.insert(UISpecialFrames, "RGMSNotesEditor")
     end
 
     UI.eventFrame = CreateFrame("Frame")
@@ -1407,6 +1663,46 @@ function UI.SetRosterReport(report)
     view.text:SetText("No roster data yet")
     view.scrollFrame:SetVerticalScroll(0)
     refreshScrollChild(view)
+    return true
+end
+
+function UI.OpenCharacterNote(identity, displayName, note, hasNote)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(identity) ~= "string" or identity == ""
+        or type(displayName) ~= "string" or displayName == "" then
+        return nil, "character note requires an identity and display name"
+    end
+    local view = UI.frame.views.mainsalts
+    if not mainsAltsControlsEnabled(view) then
+        return nil, "character note controls are disabled"
+    end
+
+    local editor = UI.frame.notesEditor
+    editor.characterIdentity = identity
+    editor.displayName = displayName
+    editor.noteExists = hasNote == true
+    editor.character:SetText("Editing note for " .. displayName)
+    editor.editBox:SetText(type(note) == "string" and note or "")
+    editor.editBox:SetCursorPosition(0)
+    editor.saveButton:SetEnabled(true)
+    editor.deleteButton:SetEnabled(editor.noteExists)
+    if type(editor.editBox.SetEnabled) == "function" then
+        editor.editBox:SetEnabled(true)
+    elseif type(editor.editBox.Enable) == "function" then
+        editor.editBox:Enable()
+    end
+    editor:Show()
+    editor.editBox:SetFocus()
+    return true
+end
+
+function UI.CloseCharacterNoteEditor()
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    UI.frame.notesEditor:Hide()
     return true
 end
 

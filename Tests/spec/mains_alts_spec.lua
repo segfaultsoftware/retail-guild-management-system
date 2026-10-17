@@ -7,6 +7,12 @@ local function newHarness(options)
         DB = {
             roster = { members = options.members or {} },
             mainAltGroups = options.groups or {},
+            characterNotes = options.notes or {},
+        },
+        RosterNames = {
+            identity = function(name, realm)
+                return string.lower(name .. "-" .. realm)
+            end,
         },
         Roster = {
             IsAvailable = function() return options.available ~= false end,
@@ -42,9 +48,22 @@ local function newHarness(options)
         AccountDataState = { model = { original = true } },
         ActiveGuildIdentity = { name = "Guild" },
         AccountData = {
+            MAX_CHARACTER_NOTE_LENGTH = 5500,
             replaceMainAltGroups = function(model, identity, groups)
                 calls.replace = { model = model, identity = identity, groups = groups }
                 return { published = true }, { mainAltGroups = groups }
+            end,
+            replaceCharacterNote = function(model, identity, characterIdentity, note)
+                calls.noteReplaces = calls.noteReplaces or {}
+                calls.noteReplaces[#calls.noteReplaces + 1] = {
+                    model = model,
+                    identity = identity,
+                    characterIdentity = characterIdentity,
+                    note = note,
+                }
+                return { publishedNote = true }, {
+                    characterNotes = note and { [characterIdentity] = note } or {},
+                }
             end,
         },
         ActivateCurrentGuild = function()
@@ -196,5 +215,72 @@ return {
         test.assert_nil(calls.promote)
         test.assert_nil(calls.remove)
         test.assert_nil(calls.replace)
+    end),
+
+    test.case("character notes save trimmed text and remove whitespace-only values", function()
+        local controller, calls, rgms = newHarness({
+            members = { { name = "Main", realm = "Area52" } },
+        })
+
+        test.assert_true(controller.SaveCharacterNote(
+            "main-area52",
+            "  first line\nsecond line  "
+        ))
+        test.assert_equal(calls.noteReplaces[1].characterIdentity, "main-area52")
+        test.assert_equal(calls.noteReplaces[1].note, "first line\nsecond line")
+        test.assert_equal(rgms.AccountDataState.model, { publishedNote = true })
+        test.assert_not_nil(calls.report)
+
+        test.assert_true(controller.SaveCharacterNote("main-area52", " \n\t "))
+        test.assert_nil(calls.noteReplaces[2].note)
+    end),
+
+    test.case("character note deletion changes only the note entry", function()
+        local controller, calls = newHarness({
+            members = { { name = "Main", realm = "Area52" } },
+            groups = { ["Main-Area52"] = { "Alt-Area52" } },
+        })
+
+        test.assert_true(controller.DeleteCharacterNote("main-area52"))
+
+        test.assert_nil(calls.noteReplaces[1].note)
+        test.assert_nil(calls.replace)
+        test.assert_nil(calls.groupApply)
+    end),
+
+    test.case("character note changes reject scans unknown characters and oversized text", function()
+        local scanningController, scanningCalls = newHarness({
+            scanning = true,
+            members = { { name = "Main", realm = "Area52" } },
+        })
+        local saved, saveError = scanningController.SaveCharacterNote(
+            "main-area52",
+            "note"
+        )
+        local deleted, deleteError = scanningController.DeleteCharacterNote(
+            "main-area52"
+        )
+        test.assert_nil(saved)
+        test.assert_matches(saveError, "disabled")
+        test.assert_nil(deleted)
+        test.assert_matches(deleteError, "disabled")
+        test.assert_nil(scanningCalls.noteReplaces)
+
+        local controller, calls = newHarness({
+            members = { { name = "Main", realm = "Area52" } },
+        })
+        local unknown, unknownError = controller.SaveCharacterNote(
+            "other-area52",
+            "note"
+        )
+        local oversized, oversizedError = controller.SaveCharacterNote(
+            "main-area52",
+            string.rep("x", 5501)
+        )
+        test.assert_nil(unknown)
+        test.assert_matches(unknownError, "unavailable")
+        test.assert_nil(oversized)
+        test.assert_matches(oversizedError, "5500")
+        test.assert_nil(calls.noteReplaces)
     end),
 }

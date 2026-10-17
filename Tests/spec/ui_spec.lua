@@ -140,11 +140,30 @@ local function newRegion(parent)
     end
 
     function region:SetText(value)
+        value = tostring(value or "")
+        if self.maxLetters and #value > self.maxLetters then
+            value = string.sub(value, 1, self.maxLetters)
+        end
         self.text = value
+        if self.scripts.OnTextChanged then
+            self.scripts.OnTextChanged(self)
+        end
+    end
+
+    function region:GetText()
+        return self.text or ""
+    end
+
+    function region:GetStringWidth()
+        return #(self.text or "") * 7
     end
 
     function region:SetTexture(value)
         self.texture = value
+    end
+
+    function region:SetVertexColor(red, green, blue, alpha)
+        self.vertexColor = { red, green, blue, alpha }
     end
 
     function region:SetEnabled(enabled)
@@ -161,6 +180,22 @@ local function newRegion(parent)
 
     function region:IsEnabled()
         return self.enabled ~= false
+    end
+
+    function region:SetMaxLetters(maximum)
+        self.maxLetters = maximum
+    end
+
+    function region:SetFocus()
+        self.focused = true
+    end
+
+    function region:ClearFocus()
+        self.focused = false
+    end
+
+    function region:SetCursorPosition(position)
+        self.cursorPosition = position
     end
 
     function region:GetStringHeight()
@@ -216,6 +251,9 @@ local function newRegion(parent)
         "SetJustifyH",
         "SetJustifyV",
         "SetAllPoints",
+        "SetMultiLine",
+        "SetAutoFocus",
+        "SetFontObject",
     }
     for _, methodName in ipairs(noOpMethods) do
         region[methodName] = function() end
@@ -236,6 +274,8 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local groupingRequests = {}
     local promotionRequests = {}
     local removalRequests = {}
+    local noteSaves = {}
+    local noteDeletes = {}
     local tooltip = {
         lines = {},
         shown = false,
@@ -326,6 +366,14 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 removalRequests[#removalRequests + 1] = altIdentity
                 return true
             end,
+            SaveCharacterNote = function(identity, value)
+                noteSaves[#noteSaves + 1] = { identity = identity, value = value }
+                return true
+            end,
+            DeleteCharacterNote = function(identity)
+                noteDeletes[#noteDeletes + 1] = identity
+                return true
+            end,
         },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
@@ -348,6 +396,8 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         groupingRequests = groupingRequests,
         promotionRequests = promotionRequests,
         removalRequests = removalRequests,
+        noteSaves = noteSaves,
+        noteDeletes = noteDeletes,
         tooltip = tooltip,
         modifiedItemClicks = modifiedItemClicks,
         ui = ui,
@@ -408,10 +458,22 @@ return {
                 {
                     identity = "main-area52",
                     displayName = "Main-Area52",
+                    note = "Main note",
+                    hasNote = true,
                     altCount = 2,
                     alts = {
-                        { identity = "alta-area52", displayName = "AltA-Area52" },
-                        { identity = "altb-area52", displayName = "AltB-Area52" },
+                        {
+                            identity = "alta-area52",
+                            displayName = "AltA-Area52",
+                            note = "",
+                            hasNote = false,
+                        },
+                        {
+                            identity = "altb-area52",
+                            displayName = "AltB-Area52",
+                            note = "Alt note",
+                            hasNote = true,
+                        },
                     },
                 },
                 {
@@ -438,6 +500,8 @@ return {
         test.assert_equal(view.groupButton.text, "Group Toons")
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
+        test.assert_true(view.mainsAltsLines[1].noteButton:IsShown())
+        test.assert_true(view.mainsAltsLines[1].hasNote)
         test.assert_true(view.mainsAltsLines[1].checkbox:IsShown())
         test.assert_true(view.mainsAltsLines[2].checkbox:IsShown())
 
@@ -464,6 +528,8 @@ return {
         test.assert_false(view.mainsAltsLines[2].checkbox:IsShown())
         test.assert_true(view.mainsAltsLines[2].promoteButton:IsShown())
         test.assert_true(view.mainsAltsLines[2].removeButton:IsShown())
+        test.assert_true(view.mainsAltsLines[2].noteButton:IsShown())
+        test.assert_false(view.mainsAltsLines[2].hasNote)
         test.assert_equal(view.mainsAltsLines[3].name.text, "AltB-Area52")
         test.assert_equal(view.mainsAltsLines[4].name.text, "Solo-Area52")
         view.mainsAltsLines[2].promoteButton.scripts.OnClick()
@@ -477,6 +543,8 @@ return {
         test.assert_false(view.mainsAltsLines[1].expandButton:IsEnabled())
         test.assert_false(view.mainsAltsLines[2].promoteButton:IsEnabled())
         test.assert_false(view.mainsAltsLines[2].removeButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[1].noteButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[2].noteButton:IsEnabled())
         local toggled, message = harness.ui.ToggleMainsAltsGroup("main-area52")
         test.assert_nil(toggled)
         test.assert_matches(message, "disabled")
@@ -485,6 +553,7 @@ return {
         test.assert_true(view.mainsAltsLines[1].checkbox:IsEnabled())
         test.assert_true(view.mainsAltsLines[2].promoteButton:IsEnabled())
         test.assert_true(view.mainsAltsLines[2].removeButton:IsEnabled())
+        test.assert_true(view.mainsAltsLines[1].noteButton:IsEnabled())
         test.assert_true(view.groupButton:IsEnabled())
         harness.ui.CompleteMainsAltsChange("main-area52")
         test.assert_false(view.groupButton:IsEnabled())
@@ -501,6 +570,87 @@ return {
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
         test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
         test.assert_false(view.mainsAltsLines[4].frame:IsShown())
+    end),
+
+    test.case("one character-note editor switches discards limits saves and deletes", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.SetMainsAltsReport({
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    note = "Saved main note",
+                    hasNote = true,
+                    altCount = 0,
+                    alts = {},
+                },
+                {
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    note = "",
+                    hasNote = false,
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        })
+        local view = harness.frame().views.mainsalts
+        local editor = harness.frame().notesEditor
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        test.assert_true(editor:IsShown())
+        test.assert_equal(editor.character.text, "Editing note for Main-Area52")
+        test.assert_equal(editor.editBox:GetText(), "Saved main note")
+        test.assert_true(editor.deleteButton:IsEnabled())
+
+        editor.editBox:SetText("unsaved change")
+        view.mainsAltsLines[2].noteButton.scripts.OnClick()
+        test.assert_true(editor:IsShown())
+        test.assert_equal(editor.characterIdentity, "solo-area52")
+        test.assert_equal(editor.editBox:GetText(), "")
+        test.assert_false(editor.deleteButton:IsEnabled())
+        editor.cancelButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(harness.noteSaves, {})
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.editBox:SetText(string.rep("x", 5501))
+        test.assert_equal(#editor.editBox:GetText(), 5500)
+        test.assert_true(editor.saveButton:IsEnabled())
+        editor.saveButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(harness.noteSaves[1].identity, "main-area52")
+        test.assert_equal(#harness.noteSaves[1].value, 5500)
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.deleteButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(harness.noteDeletes, { "main-area52" })
+
+        view.mainsAltsLines[1].noteButton.scripts.OnClick()
+        editor.editBox:SetText("discard me")
+        editor.closeButton.scripts.OnClick()
+        test.assert_false(editor:IsShown())
+        test.assert_equal(#harness.noteSaves, 1)
+
+        harness.ui.SetMainsAltsReport({
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    note = "",
+                    hasNote = false,
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        })
+        test.assert_false(view.mainsAltsLines[1].hasNote)
+        test.assert_equal(
+            view.mainsAltsLines[1].noteButton.icon.vertexColor,
+            { 0.55, 0.55, 0.55, 0.65 }
+        )
     end),
 
     test.case("roster refresh button starts manual scans and disables while scanning", function()

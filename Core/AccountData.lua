@@ -10,6 +10,12 @@ local SavedData = type(RGMS) == "table"
     or require("Core.SavedData")
 
 AccountData.CURRENT_SCHEMA_VERSION = 1
+AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
+
+local function characterCount(value)
+    local withoutContinuationBytes = string.gsub(value, "[\128-\191]", "")
+    return #withoutContinuationBytes
+end
 
 local function deepCopy(value, active)
     if type(value) ~= "table" then
@@ -396,6 +402,46 @@ function AccountData.replaceMainAltGroups(model, identity, groups)
     if not guild.mainAltGroups then
         return nil, copyError
     end
+
+    valid, validationError = AccountData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+    return replacement, guild, key
+end
+
+function AccountData.replaceCharacterNote(model, identity, characterIdentity, note)
+    local valid, validationError = AccountData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+    if type(characterIdentity) ~= "string" or characterIdentity == "" then
+        return nil, "character note identity must be a non-empty string"
+    end
+    if note ~= nil and (type(note) ~= "string" or note == "") then
+        return nil, "character note must be a non-empty string or nil"
+    end
+    if note ~= nil
+        and characterCount(note) > AccountData.MAX_CHARACTER_NOTE_LENGTH then
+        return nil, "character note must not exceed "
+            .. AccountData.MAX_CHARACTER_NOTE_LENGTH
+            .. " characters"
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+    local guild, key = AccountData.findGuild(replacement, identity)
+    if not guild then
+        local guildError
+        guild, guildError = AccountData.newGuild(identity)
+        if not guild then
+            return nil, guildError
+        end
+        replacement.guilds[key] = guild
+    end
+    guild.characterNotes[characterIdentity] = note
 
     valid, validationError = AccountData.validate(replacement)
     if not valid then

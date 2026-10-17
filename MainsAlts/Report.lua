@@ -24,24 +24,32 @@ local function characterComesBefore(left, right)
     return left.displayName < right.displayName
 end
 
-local function projectCharacter(member)
+local function projectCharacter(member, savedNotes)
     local displayName = Names.displayName(member.name, member.realm)
+    local identity = Names.identity(member.name, member.realm)
+    local note = savedNotes[identity]
     return {
         name = member.name,
         realm = member.realm,
         displayName = displayName,
-        identity = Names.identity(member.name, member.realm),
+        identity = identity,
         isMissing = member.isMissing == true,
+        note = type(note) == "string" and note or "",
+        hasNote = type(note) == "string" and string.find(note, "%S") ~= nil,
     }
 end
 
-function Report.build(dataset, savedGroups)
+function Report.build(dataset, savedGroups, savedNotes)
     if type(dataset) ~= "table" or type(dataset.members) ~= "table" then
         return nil, "Mains/Alts roster dataset is invalid"
     end
     if savedGroups ~= nil and type(savedGroups) ~= "table" then
         return nil, "Mains/Alts groups must be a table"
     end
+    if savedNotes ~= nil and type(savedNotes) ~= "table" then
+        return nil, "Mains/Alts character notes must be a table"
+    end
+    savedNotes = savedNotes or {}
 
     local characters = {}
     local charactersByIdentity = {}
@@ -54,7 +62,7 @@ function Report.build(dataset, savedGroups)
             return nil, "Mains/Alts roster member is invalid"
         end
 
-        local character = projectCharacter(member)
+        local character = projectCharacter(member, savedNotes)
         if charactersByIdentity[character.identity] then
             return nil, "Mains/Alts roster contains a duplicate character"
         end
@@ -114,6 +122,8 @@ function Report.build(dataset, savedGroups)
                     displayName = definition.main.displayName,
                     identity = definition.main.identity,
                     isMissing = definition.main.isMissing,
+                    note = definition.main.note,
+                    hasNote = definition.main.hasNote,
                     altCount = #alts,
                     alts = alts,
                 }
@@ -133,6 +143,8 @@ function Report.build(dataset, savedGroups)
                 displayName = character.displayName,
                 identity = character.identity,
                 isMissing = character.isMissing,
+                note = character.note,
+                hasNote = character.hasNote,
                 altCount = 0,
                 alts = {},
             }

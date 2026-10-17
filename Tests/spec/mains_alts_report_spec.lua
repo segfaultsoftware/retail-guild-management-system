@@ -26,16 +26,26 @@ return {
             ["NotOnRoster-Area52"] = { "Alpha-Area52" },
         }
 
-        local result = assert(report.build(dataset, groups))
+        local result = assert(report.build(dataset, groups, {
+            ["main-area52"] = "Main note",
+            ["alt-area52"] = "Alt note",
+            ["alpha-area52"] = "   ",
+        }))
 
         test.assert_equal(#result.rows, 3)
         test.assert_equal(result.rows[1].displayName, "Alpha-Area52")
         test.assert_true(result.rows[1].isMissing)
+        test.assert_false(result.rows[1].hasNote)
         test.assert_equal(result.rows[2].displayName, "Alpha-Zulu")
         test.assert_equal(result.rows[3].displayName, "Main-Area52")
+        test.assert_true(result.rows[3].hasNote)
+        test.assert_equal(result.rows[3].note, "Main note")
         test.assert_equal(result.rows[3].altCount, 2)
         test.assert_equal(result.rows[3].alts[1].displayName, "Alt-Area52")
+        test.assert_true(result.rows[3].alts[1].hasNote)
+        test.assert_equal(result.rows[3].alts[1].note, "Alt note")
         test.assert_equal(result.rows[3].alts[2].displayName, "Zulu-Area52")
+        test.assert_false(result.rows[3].alts[2].hasNote)
     end),
 
     test.case("Mains/Alts report excludes stale group members without losing roster members", function()
