@@ -234,6 +234,8 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local bankRefreshRequests = 0
     local bankCancellations = 0
     local groupingRequests = {}
+    local promotionRequests = {}
+    local removalRequests = {}
     local tooltip = {
         lines = {},
         shown = false,
@@ -316,6 +318,14 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 groupingRequests[#groupingRequests + 1] = selectedIdentities
                 return true
             end,
+            PromoteAlt = function(altIdentity)
+                promotionRequests[#promotionRequests + 1] = altIdentity
+                return true
+            end,
+            RemoveAlt = function(altIdentity)
+                removalRequests[#removalRequests + 1] = altIdentity
+                return true
+            end,
         },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
@@ -336,6 +346,8 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
             return bankCancellations
         end,
         groupingRequests = groupingRequests,
+        promotionRequests = promotionRequests,
+        removalRequests = removalRequests,
         tooltip = tooltip,
         modifiedItemClicks = modifiedItemClicks,
         ui = ui,
@@ -450,20 +462,37 @@ return {
         view.mainsAltsLines[1].expandButton.scripts.OnClick()
         test.assert_equal(view.mainsAltsLines[2].name.text, "AltA-Area52")
         test.assert_false(view.mainsAltsLines[2].checkbox:IsShown())
+        test.assert_true(view.mainsAltsLines[2].promoteButton:IsShown())
+        test.assert_true(view.mainsAltsLines[2].removeButton:IsShown())
         test.assert_equal(view.mainsAltsLines[3].name.text, "AltB-Area52")
         test.assert_equal(view.mainsAltsLines[4].name.text, "Solo-Area52")
+        view.mainsAltsLines[2].promoteButton.scripts.OnClick()
+        view.mainsAltsLines[3].removeButton.scripts.OnClick()
+        test.assert_equal(harness.promotionRequests, { "alta-area52" })
+        test.assert_equal(harness.removalRequests, { "altb-area52" })
 
         harness.ui.SetRosterScanInProgress(true)
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_false(view.mainsAltsLines[1].checkbox:IsEnabled())
         test.assert_false(view.mainsAltsLines[1].expandButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[2].promoteButton:IsEnabled())
+        test.assert_false(view.mainsAltsLines[2].removeButton:IsEnabled())
         local toggled, message = harness.ui.ToggleMainsAltsGroup("main-area52")
         test.assert_nil(toggled)
         test.assert_matches(message, "disabled")
 
         harness.ui.SetRosterScanInProgress(false)
         test.assert_true(view.mainsAltsLines[1].checkbox:IsEnabled())
+        test.assert_true(view.mainsAltsLines[2].promoteButton:IsEnabled())
+        test.assert_true(view.mainsAltsLines[2].removeButton:IsEnabled())
         test.assert_true(view.groupButton:IsEnabled())
+        harness.ui.CompleteMainsAltsChange("main-area52")
+        test.assert_false(view.groupButton:IsEnabled())
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+        test.assert_false(view.mainsAltsLines[1].checkbox:GetChecked())
+        test.assert_false(view.mainsAltsLines[4].checkbox:GetChecked())
+        harness.ui.CompleteMainsAltsChange(nil)
+        test.assert_nil(next(view.expandedMainsAlts))
         harness.ui.CompleteMainsAltsGrouping("main-area52")
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_true(view.expandedMainsAlts["main-area52"])

@@ -92,4 +92,72 @@ return {
         test.assert_nil(result)
         test.assert_matches(message, "more than one group")
     end),
+
+    test.case("promoting an alt swaps the main and sorts every remaining alt", function()
+        local saved = {
+            ["Zulu-Area52"] = {
+                "Bravo-Zulu",
+                "Alpha-Area52",
+                "Charlie-Area52",
+            },
+        }
+
+        local result, mainIdentity = groups.promote(saved, "bravo-zulu")
+
+        test.assert_equal(mainIdentity, "bravo-zulu")
+        test.assert_equal(result, {
+            ["Bravo-Zulu"] = {
+                "Alpha-Area52",
+                "Charlie-Area52",
+                "Zulu-Area52",
+            },
+        })
+        test.assert_equal(saved["Zulu-Area52"], {
+            "Bravo-Zulu",
+            "Alpha-Area52",
+            "Charlie-Area52",
+        })
+    end),
+
+    test.case("removing an alt affects only its group and preserves the main", function()
+        local saved = {
+            ["Main-Area52"] = { "Removed-Area52", "Stayed-Area52" },
+            ["Other-Area52"] = { "OtherAlt-Area52" },
+        }
+
+        local result, mainIdentity = groups.remove(saved, "removed-area52")
+
+        test.assert_equal(mainIdentity, "main-area52")
+        test.assert_equal(result, {
+            ["Main-Area52"] = { "Stayed-Area52" },
+            ["Other-Area52"] = { "OtherAlt-Area52" },
+        })
+        test.assert_equal(saved["Main-Area52"], {
+            "Removed-Area52",
+            "Stayed-Area52",
+        })
+    end),
+
+    test.case("removing from a two-character group dissolves the group", function()
+        local result, mainIdentity = groups.remove({
+            ["Main-Area52"] = { "Alt-Area52" },
+        }, "alt-area52")
+
+        test.assert_equal(result, {})
+        test.assert_nil(mainIdentity)
+    end),
+
+    test.case("group changes reject characters that are not existing alts", function()
+        local promoted, promoteError = groups.promote({
+            ["Main-Area52"] = { "Alt-Area52" },
+        }, "main-area52")
+        local removed, removeError = groups.remove({
+            ["Main-Area52"] = { "Alt-Area52" },
+        }, "other-area52")
+
+        test.assert_nil(promoted)
+        test.assert_matches(promoteError, "not an alt")
+        test.assert_nil(removed)
+        test.assert_matches(removeError, "not an alt")
+    end),
 }

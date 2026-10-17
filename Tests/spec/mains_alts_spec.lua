@@ -28,6 +28,16 @@ local function newHarness(options)
                     ["Main-Area52"] = { "Alt-Area52" },
                 }, options.mainIdentity or "main-area52"
             end,
+            promote = function(groups, altIdentity)
+                calls.promote = { groups = groups, altIdentity = altIdentity }
+                return options.promoteResult or {
+                    ["Alt-Area52"] = { "Main-Area52" },
+                }, options.promoteMainIdentity or "alt-area52"
+            end,
+            remove = function(groups, altIdentity)
+                calls.remove = { groups = groups, altIdentity = altIdentity }
+                return options.removeResult or {}, options.removeMainIdentity
+            end,
         },
         AccountDataState = { model = { original = true } },
         ActiveGuildIdentity = { name = "Guild" },
@@ -49,6 +59,9 @@ local function newHarness(options)
             end,
             CompleteMainsAltsGrouping = function(value)
                 calls.completedMain = value
+            end,
+            CompleteMainsAltsChange = function(value)
+                calls.completedChange = value or false
             end,
             SetViewContent = function(tabId, value)
                 calls.content = { tabId = tabId, value = value }
@@ -134,6 +147,54 @@ return {
         test.assert_nil(grouped)
         test.assert_matches(message, "disabled")
         test.assert_nil(calls.groupApply)
+        test.assert_nil(calls.replace)
+    end),
+
+    test.case("promotion publishes the swapped group and expands the new main", function()
+        local controller, calls, rgms = newHarness({
+            groups = { ["Main-Area52"] = { "Alt-Area52" } },
+        })
+
+        local promoted, mainIdentity = controller.PromoteAlt("alt-area52")
+
+        test.assert_true(promoted)
+        test.assert_equal(mainIdentity, "alt-area52")
+        test.assert_equal(calls.promote.altIdentity, "alt-area52")
+        test.assert_equal(calls.replace.groups, {
+            ["Alt-Area52"] = { "Main-Area52" },
+        })
+        test.assert_equal(calls.completedChange, "alt-area52")
+        test.assert_not_nil(calls.report)
+        test.assert_equal(rgms.AccountDataState.model, { published = true })
+    end),
+
+    test.case("removal publishes dissolved groups and clears expansion", function()
+        local controller, calls = newHarness({
+            groups = { ["Main-Area52"] = { "Alt-Area52" } },
+        })
+
+        local removed, mainIdentity = controller.RemoveAlt("alt-area52")
+
+        test.assert_true(removed)
+        test.assert_nil(mainIdentity)
+        test.assert_equal(calls.remove.altIdentity, "alt-area52")
+        test.assert_equal(calls.replace.groups, {})
+        test.assert_false(calls.completedChange)
+        test.assert_not_nil(calls.report)
+    end),
+
+    test.case("promotion and removal are rejected during a roster scan", function()
+        local controller, calls = newHarness({ scanning = true })
+
+        local promoted, promoteError = controller.PromoteAlt("alt-area52")
+        local removed, removeError = controller.RemoveAlt("alt-area52")
+
+        test.assert_nil(promoted)
+        test.assert_matches(promoteError, "disabled")
+        test.assert_nil(removed)
+        test.assert_matches(removeError, "disabled")
+        test.assert_nil(calls.promote)
+        test.assert_nil(calls.remove)
         test.assert_nil(calls.replace)
     end),
 }

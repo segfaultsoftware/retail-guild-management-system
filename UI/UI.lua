@@ -35,6 +35,8 @@ local MAINS_ALTS_ROW_HEIGHT = 24
 local MAINS_ALTS_CHECKBOX_SIZE = 22
 local MAINS_ALTS_ALT_INDENT = 48
 local MAINS_ALTS_EXPAND_WIDTH = 28
+local MAINS_ALTS_PROMOTE_WIDTH = 48
+local MAINS_ALTS_REMOVE_WIDTH = 64
 local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
@@ -281,6 +283,8 @@ local function layoutMainsAltsLines(view, availableWidth)
         line.checkbox:ClearAllPoints()
         line.name:ClearAllPoints()
         line.expandButton:ClearAllPoints()
+        line.promoteButton:ClearAllPoints()
+        line.removeButton:ClearAllPoints()
         if line.isAlt then
             line.name:SetPoint(
                 "LEFT",
@@ -289,7 +293,22 @@ local function layoutMainsAltsLines(view, availableWidth)
                 MAINS_ALTS_ALT_INDENT,
                 0
             )
-            line.name:SetWidth(math.max(1, availableWidth - MAINS_ALTS_ALT_INDENT))
+            line.name:SetWidth(math.max(
+                1,
+                availableWidth
+                    - MAINS_ALTS_ALT_INDENT
+                    - MAINS_ALTS_PROMOTE_WIDTH
+                    - MAINS_ALTS_REMOVE_WIDTH
+                    - 12
+            ))
+            line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
+            line.promoteButton:SetPoint(
+                "RIGHT",
+                line.removeButton,
+                "LEFT",
+                -4,
+                0
+            )
         else
             line.checkbox:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
             line.name:SetPoint(
@@ -557,6 +576,8 @@ local function updateMainsAltsControlState(view)
         if line.frame:IsShown() then
             line.checkbox:SetEnabled(enabled and not line.isAlt)
             line.expandButton:SetEnabled(enabled and line.hasAlts)
+            line.promoteButton:SetEnabled(enabled and line.isAlt)
+            line.removeButton:SetEnabled(enabled and line.isAlt)
         end
     end
 end
@@ -588,11 +609,29 @@ local function acquireMainsAltsLine(view, index)
         "UIPanelButtonTemplate"
     )
     expandButton:SetSize(MAINS_ALTS_EXPAND_WIDTH, 20)
+    local promoteButton = CreateFrame(
+        "Button",
+        nil,
+        frame,
+        "UIPanelButtonTemplate"
+    )
+    promoteButton:SetSize(MAINS_ALTS_PROMOTE_WIDTH, 20)
+    promoteButton:SetText("Main")
+    local removeButton = CreateFrame(
+        "Button",
+        nil,
+        frame,
+        "UIPanelButtonTemplate"
+    )
+    removeButton:SetSize(MAINS_ALTS_REMOVE_WIDTH, 20)
+    removeButton:SetText("Remove")
     line = {
         frame = frame,
         checkbox = checkbox,
         name = name,
         expandButton = expandButton,
+        promoteButton = promoteButton,
+        removeButton = removeButton,
     }
     view.mainsAltsLines[index] = line
     return line
@@ -618,7 +657,31 @@ local function renderMainsAlts(view)
             line.checkbox:Hide()
             line.expandButton:Hide()
             line.name:SetText(character.displayName)
+            line.promoteButton:SetScript("OnClick", function()
+                local promoted, promoteError = RGMS.MainsAlts.PromoteAlt(
+                    character.identity
+                )
+                if not promoted and type(RGMS.Print) == "function" then
+                    RGMS.Print(
+                        "Could not promote alt: " .. tostring(promoteError) .. "."
+                    )
+                end
+            end)
+            line.removeButton:SetScript("OnClick", function()
+                local removed, removeError = RGMS.MainsAlts.RemoveAlt(
+                    character.identity
+                )
+                if not removed and type(RGMS.Print) == "function" then
+                    RGMS.Print(
+                        "Could not remove alt: " .. tostring(removeError) .. "."
+                    )
+                end
+            end)
+            line.promoteButton:Show()
+            line.removeButton:Show()
         else
+            line.promoteButton:Hide()
+            line.removeButton:Hide()
             line.checkbox:SetChecked(
                 view.mainsAltsSelections[character.identity] == true
             )
@@ -1379,6 +1442,24 @@ function UI.CompleteMainsAltsGrouping(mainIdentity)
     local view = UI.frame.views.mainsalts
     view.mainsAltsSelections = {}
     view.expandedMainsAlts = { [mainIdentity] = true }
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
+    return true
+end
+
+function UI.CompleteMainsAltsChange(mainIdentity)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if mainIdentity ~= nil
+        and (type(mainIdentity) ~= "string" or mainIdentity == "") then
+        return nil, "the affected main identity must be a string"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsSelections = {}
+    view.expandedMainsAlts = mainIdentity and { [mainIdentity] = true } or {}
     if type(view.mainsAltsReport) == "table" then
         renderMainsAlts(view)
     end

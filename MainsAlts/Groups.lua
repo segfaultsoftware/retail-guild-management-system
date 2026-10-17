@@ -62,6 +62,29 @@ local function characterComesBefore(left, right)
     return left.displayName < right.displayName
 end
 
+local function sortDisplayNames(displayNames)
+    table.sort(displayNames, function(left, right)
+        local leftName, leftRealm = Names.splitDisplayName(left)
+        local rightName, rightRealm = Names.splitDisplayName(right)
+        return characterComesBefore(
+            { name = leftName, realm = leftRealm, displayName = left },
+            { name = rightName, realm = rightRealm, displayName = right }
+        )
+    end)
+end
+
+local function findAlt(groups, altIdentity)
+    for mainDisplayName, altDisplayNames in pairs(groups) do
+        for index, altDisplayName in ipairs(altDisplayNames) do
+            local altName, altRealm = Names.splitDisplayName(altDisplayName)
+            if Names.identity(altName, altRealm) == altIdentity then
+                return mainDisplayName, altDisplayNames, index, altDisplayName
+            end
+        end
+    end
+    return nil
+end
+
 local function buildRosterCharacters(dataset)
     if type(dataset) ~= "table" or type(dataset.members) ~= "table" then
         return nil, "Mains/Alts roster dataset is invalid"
@@ -148,16 +171,61 @@ function Groups.apply(dataset, savedGroups, selectedIdentities)
         end
     end
 
-    table.sort(alts, function(left, right)
-        local leftName, leftRealm = Names.splitDisplayName(left)
-        local rightName, rightRealm = Names.splitDisplayName(right)
-        return characterComesBefore(
-            { name = leftName, realm = leftRealm, displayName = left },
-            { name = rightName, realm = rightRealm, displayName = right }
-        )
-    end)
+    sortDisplayNames(alts)
 
     return replacement, selectedMainIdentity
+end
+
+function Groups.promote(savedGroups, altIdentity)
+    if type(altIdentity) ~= "string" or altIdentity == "" then
+        return nil, "the alt identity is required"
+    end
+
+    local replacement, copyError = copyGroups(savedGroups)
+    if not replacement then
+        return nil, copyError
+    end
+
+    local mainDisplayName, alts, altIndex, altDisplayName = findAlt(
+        replacement,
+        altIdentity
+    )
+    if not mainDisplayName then
+        return nil, "the character is not an alt in an existing group"
+    end
+
+    table.remove(alts, altIndex)
+    alts[#alts + 1] = mainDisplayName
+    sortDisplayNames(alts)
+    replacement[mainDisplayName] = nil
+    replacement[altDisplayName] = alts
+    return replacement, altIdentity
+end
+
+function Groups.remove(savedGroups, altIdentity)
+    if type(altIdentity) ~= "string" or altIdentity == "" then
+        return nil, "the alt identity is required"
+    end
+
+    local replacement, copyError = copyGroups(savedGroups)
+    if not replacement then
+        return nil, copyError
+    end
+
+    local mainDisplayName, alts, altIndex = findAlt(replacement, altIdentity)
+    if not mainDisplayName then
+        return nil, "the character is not an alt in an existing group"
+    end
+
+    table.remove(alts, altIndex)
+    if #alts == 0 then
+        replacement[mainDisplayName] = nil
+        return replacement
+    end
+
+    local mainName, mainRealm = Names.splitDisplayName(mainDisplayName)
+    sortDisplayNames(alts)
+    return replacement, Names.identity(mainName, mainRealm)
 end
 
 if type(RGMS) == "table" then

@@ -2,27 +2,13 @@ local _, RGMS = ...
 
 local MainsAlts = RGMS.MainsAlts or {}
 
-function MainsAlts.GroupSelected(selectedIdentities)
-    local scanning = type(RGMS.Roster) == "table"
+local function scanInProgress()
+    return type(RGMS.Roster) == "table"
         and type(RGMS.Roster.IsScanInProgress) == "function"
         and RGMS.Roster.IsScanInProgress()
-    if scanning then
-        return nil, "grouping is disabled during a roster scan"
-    end
-    if type(RGMS.DB) ~= "table"
-        or type(RGMS.MainsAltsGroups) ~= "table"
-        or type(RGMS.MainsAltsGroups.apply) ~= "function" then
-        return nil, "Mains/Alts grouping is unavailable"
-    end
+end
 
-    local groups, mainIdentity = RGMS.MainsAltsGroups.apply(
-        RGMS.DB.roster,
-        RGMS.DB.mainAltGroups,
-        selectedIdentities
-    )
-    if not groups then
-        return nil, mainIdentity
-    end
+local function publishGroups(groups)
     if type(RGMS.AccountData) ~= "table"
         or type(RGMS.AccountData.replaceMainAltGroups) ~= "function"
         or type(RGMS.AccountDataState) ~= "table"
@@ -46,12 +32,75 @@ function MainsAlts.GroupSelected(selectedIdentities)
     else
         RGMS.DB.mainAltGroups = guildOrError.mainAltGroups
     end
+    return true
+end
+
+function MainsAlts.GroupSelected(selectedIdentities)
+    if scanInProgress() then
+        return nil, "grouping is disabled during a roster scan"
+    end
+    if type(RGMS.DB) ~= "table"
+        or type(RGMS.MainsAltsGroups) ~= "table"
+        or type(RGMS.MainsAltsGroups.apply) ~= "function" then
+        return nil, "Mains/Alts grouping is unavailable"
+    end
+
+    local groups, mainIdentity = RGMS.MainsAltsGroups.apply(
+        RGMS.DB.roster,
+        RGMS.DB.mainAltGroups,
+        selectedIdentities
+    )
+    if not groups then
+        return nil, mainIdentity
+    end
+    local published, publishError = publishGroups(groups)
+    if not published then
+        return nil, publishError
+    end
     if type(RGMS.UI) == "table"
         and type(RGMS.UI.CompleteMainsAltsGrouping) == "function" then
         RGMS.UI.CompleteMainsAltsGrouping(mainIdentity)
     end
     MainsAlts.RefreshStatus()
     return true, mainIdentity
+end
+
+local function changeAltGroup(methodName, altIdentity)
+    if scanInProgress() then
+        return nil, "group changes are disabled during a roster scan"
+    end
+    if type(RGMS.DB) ~= "table"
+        or type(RGMS.MainsAltsGroups) ~= "table"
+        or type(RGMS.MainsAltsGroups[methodName]) ~= "function" then
+        return nil, "Mains/Alts group changes are unavailable"
+    end
+
+    local groups, mainIdentityOrError = RGMS.MainsAltsGroups[methodName](
+        RGMS.DB.mainAltGroups,
+        altIdentity
+    )
+    if not groups then
+        return nil, mainIdentityOrError
+    end
+
+    local published, publishError = publishGroups(groups)
+    if not published then
+        return nil, publishError
+    end
+    if type(RGMS.UI) == "table"
+        and type(RGMS.UI.CompleteMainsAltsChange) == "function" then
+        RGMS.UI.CompleteMainsAltsChange(mainIdentityOrError)
+    end
+    MainsAlts.RefreshStatus()
+    return true, mainIdentityOrError
+end
+
+function MainsAlts.PromoteAlt(altIdentity)
+    return changeAltGroup("promote", altIdentity)
+end
+
+function MainsAlts.RemoveAlt(altIdentity)
+    return changeAltGroup("remove", altIdentity)
 end
 
 function MainsAlts.RefreshStatus()
