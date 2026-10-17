@@ -253,6 +253,10 @@ function Roster.RefreshStatus()
     if type(RGMS.UI.SetRosterAvailable) == "function" then
         RGMS.UI.SetRosterAvailable(available)
     end
+    if type(RGMS.MainsAlts) == "table"
+        and type(RGMS.MainsAlts.RefreshStatus) == "function" then
+        RGMS.MainsAlts.RefreshStatus()
+    end
 
     if type(RGMS.UI.SetRosterReport) == "function"
         and type(RGMS.RosterReport) == "table"

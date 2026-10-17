@@ -10,6 +10,8 @@ migration sources remain per character. It does not send data anywhere.
 
 - Scans the guild roster once after login and on demand, then groups members by
   configured guild rank.
+- Shows roster-backed main/alt groups in a dedicated read-only tab, including
+  retained missing members, with expandable groups and no separate scan.
 - Tracks how long a member has remained at the same numeric rank and retains a
   recently missing member with a warning for up to 21 Pacific calendar days.
 - Scans every purchased guild-bank tab that the character can access when the

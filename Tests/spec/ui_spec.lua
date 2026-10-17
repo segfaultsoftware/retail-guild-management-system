@@ -151,6 +151,14 @@ local function newRegion(parent)
         self.enabled = enabled
     end
 
+    function region:SetChecked(checked)
+        self.checked = checked == true
+    end
+
+    function region:GetChecked()
+        return self.checked == true
+    end
+
     function region:IsEnabled()
         return self.enabled ~= false
     end
@@ -339,10 +347,14 @@ return {
         test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 266)
         test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 200)
         test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 218)
+        test.assert_equal(frame.numTabs, 3)
+        test.assert_equal(frame.tabs[2].text, "Mains/Alts")
         test.assert_false(frame.resizable)
         test.assert_nil(harness.database.ui.windowPosition)
         test.assert_equal(frame.views.roster.text.text, "No roster data yet")
         test.assert_equal(frame.views.roster.status.text, "No roster data yet")
+        test.assert_equal(frame.views.mainsalts.text.text, "No roster data yet")
+        test.assert_equal(frame.views.mainsalts.status.text, "No roster data yet")
         test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
         test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
     end),
@@ -366,6 +378,57 @@ return {
 
         harness.frame().closeButton.scripts.OnClick()
         test.assert_false(harness.ui.IsShown())
+    end),
+
+    test.case("Mains/Alts rows expand transiently and disable during roster scans", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local report = {
+            rows = {
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    altCount = 2,
+                    alts = {
+                        { identity = "alta-area52", displayName = "AltA-Area52" },
+                        { identity = "altb-area52", displayName = "AltB-Area52" },
+                    },
+                },
+                {
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        }
+
+        test.assert_true(harness.ui.SetMainsAltsReport(report))
+        test.assert_true(harness.ui.Show("mainsalts"))
+        local view = harness.frame().views.mainsalts
+        test.assert_nil(view.refreshButton)
+        test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
+        test.assert_true(view.mainsAltsLines[1].checkbox:IsShown())
+        test.assert_true(view.mainsAltsLines[2].checkbox:IsShown())
+
+        view.mainsAltsLines[1].expandButton.scripts.OnClick()
+        test.assert_equal(view.mainsAltsLines[2].name.text, "AltA-Area52")
+        test.assert_false(view.mainsAltsLines[2].checkbox:IsShown())
+        test.assert_equal(view.mainsAltsLines[3].name.text, "AltB-Area52")
+        test.assert_equal(view.mainsAltsLines[4].name.text, "Solo-Area52")
+
+        harness.ui.SetRosterScanInProgress(true)
+        test.assert_false(view.mainsAltsLines[1].checkbox:IsEnabled())
+        test.assert_false(view.mainsAltsLines[1].expandButton:IsEnabled())
+        local toggled, message = harness.ui.ToggleMainsAltsGroup("main-area52")
+        test.assert_nil(toggled)
+        test.assert_matches(message, "disabled")
+
+        harness.ui.SetRosterScanInProgress(false)
+        test.assert_true(view.mainsAltsLines[1].checkbox:IsEnabled())
+        harness.ui.Hide()
+        test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
+        test.assert_false(view.mainsAltsLines[3].frame:IsShown())
     end),
 
     test.case("roster refresh button starts manual scans and disables while scanning", function()
@@ -837,7 +900,7 @@ return {
 
         local selected, message = harness.ui.SelectPrimaryTab("settings")
         test.assert_nil(selected)
-        test.assert_matches(message, "roster or bank")
+        test.assert_matches(message, "mainsalts")
         test.assert_equal(harness.ui.selectedTab, "roster")
     end),
 }

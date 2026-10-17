@@ -2,14 +2,16 @@ local _, RGMS = ...
 
 local UI = RGMS.UI or {}
 
-local TAB_ORDER = { "roster", "bank" }
+local TAB_ORDER = { "roster", "mainsalts", "bank" }
 local TAB_TITLES = {
     roster = "Roster",
+    mainsalts = "Mains/Alts",
     bank = "Bank",
 }
 
 local INITIAL_COPY = {
     roster = "No roster data yet",
+    mainsalts = "No roster data yet",
     bank = "No bank scan yet",
 }
 
@@ -29,6 +31,10 @@ local ROSTER_TITLE_HEIGHT = 26
 local ROSTER_GROUP_HEIGHT = 22
 local ROSTER_ROW_HEIGHT = 20
 local ROSTER_GROUP_GAP = 8
+local MAINS_ALTS_ROW_HEIGHT = 24
+local MAINS_ALTS_CHECKBOX_SIZE = 22
+local MAINS_ALTS_ALT_INDENT = 48
+local MAINS_ALTS_EXPAND_WIDTH = 28
 local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
@@ -265,16 +271,58 @@ local function layoutBankLines(view, availableWidth)
     end
 end
 
+local function layoutMainsAltsLines(view, availableWidth)
+    if type(view.mainsAltsLines) ~= "table" then
+        return
+    end
+
+    for _, line in ipairs(view.mainsAltsLines) do
+        line.frame:SetWidth(availableWidth)
+        line.checkbox:ClearAllPoints()
+        line.name:ClearAllPoints()
+        line.expandButton:ClearAllPoints()
+        if line.isAlt then
+            line.name:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                MAINS_ALTS_ALT_INDENT,
+                0
+            )
+            line.name:SetWidth(math.max(1, availableWidth - MAINS_ALTS_ALT_INDENT))
+        else
+            line.checkbox:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+            line.name:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                MAINS_ALTS_CHECKBOX_SIZE + 4,
+                0
+            )
+            line.name:SetWidth(math.max(
+                1,
+                availableWidth
+                    - MAINS_ALTS_CHECKBOX_SIZE
+                    - MAINS_ALTS_EXPAND_WIDTH
+                    - 12
+            ))
+            line.expandButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
+        end
+    end
+end
+
 local function refreshScrollChild(view)
     local availableWidth = math.max(1, view.scrollFrame:GetWidth() - 8)
     view.scrollChild:SetWidth(availableWidth)
     view.text:SetWidth(availableWidth)
     layoutRosterLines(view, availableWidth)
     layoutBankLines(view, availableWidth)
+    layoutMainsAltsLines(view, availableWidth)
 
     local viewportHeight = math.max(1, view.scrollFrame:GetHeight())
     local contentHeight = view.rosterTableHeight
         or view.bankTableHeight
+        or view.mainsAltsTableHeight
         or (view.text:GetStringHeight() + 16)
     view.scrollChild:SetHeight(math.max(viewportHeight, contentHeight))
 end
@@ -473,6 +521,134 @@ local function findRosterRank(view, rankIndex)
     return nil
 end
 
+local function mainsAltsControlsEnabled(view)
+    return UI.dataEnabled ~= false
+        and view.mainsAltsAvailable ~= false
+        and view.mainsAltsScanInProgress ~= true
+end
+
+local function hideMainsAltsLines(view)
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        line.frame:Hide()
+    end
+    view.mainsAltsTableHeight = nil
+end
+
+local function updateMainsAltsControlState(view)
+    local enabled = mainsAltsControlsEnabled(view)
+    for _, line in ipairs(view.mainsAltsLines or {}) do
+        if line.frame:IsShown() then
+            line.checkbox:SetEnabled(enabled and not line.isAlt)
+            line.expandButton:SetEnabled(enabled and line.hasAlts)
+        end
+    end
+end
+
+local function acquireMainsAltsLine(view, index)
+    local line = view.mainsAltsLines[index]
+    if line then
+        return line
+    end
+
+    local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local checkbox = CreateFrame(
+        "CheckButton",
+        nil,
+        frame,
+        "UICheckButtonTemplate"
+    )
+    checkbox:SetSize(MAINS_ALTS_CHECKBOX_SIZE, MAINS_ALTS_CHECKBOX_SIZE)
+    local name = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    name:SetJustifyH("LEFT")
+    name:SetJustifyV("MIDDLE")
+    if type(name.SetWordWrap) == "function" then
+        name:SetWordWrap(false)
+    end
+    local expandButton = CreateFrame(
+        "Button",
+        nil,
+        frame,
+        "UIPanelButtonTemplate"
+    )
+    expandButton:SetSize(MAINS_ALTS_EXPAND_WIDTH, 20)
+    line = {
+        frame = frame,
+        checkbox = checkbox,
+        name = name,
+        expandButton = expandButton,
+    }
+    view.mainsAltsLines[index] = line
+    return line
+end
+
+local function renderMainsAlts(view)
+    hideMainsAltsLines(view)
+    view.text:Hide()
+    local lineIndex = 0
+    local offset = 4
+
+    local function addLine(character, isAlt)
+        lineIndex = lineIndex + 1
+        local line = acquireMainsAltsLine(view, lineIndex)
+        line.isAlt = isAlt == true
+        line.hasAlts = not line.isAlt and character.altCount > 0
+        line.identity = character.identity
+        line.frame:ClearAllPoints()
+        line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)
+
+        if line.isAlt then
+            line.checkbox:Hide()
+            line.expandButton:Hide()
+            line.name:SetText(character.displayName)
+        else
+            line.checkbox:SetChecked(
+                view.mainsAltsSelections[character.identity] == true
+            )
+            line.checkbox:SetScript("OnClick", function(button)
+                view.mainsAltsSelections[character.identity] = button:GetChecked()
+                    == true
+            end)
+            line.checkbox:Show()
+            if line.hasAlts then
+                line.name:SetText(string.format(
+                    "%s (+%d)",
+                    character.displayName,
+                    character.altCount
+                ))
+                local expanded = view.expandedMainsAlts[character.identity] == true
+                line.expandButton:SetText(expanded and "-" or "+")
+                line.expandButton:SetScript("OnClick", function()
+                    UI.ToggleMainsAltsGroup(character.identity)
+                end)
+                line.expandButton:Show()
+            else
+                line.name:SetText(character.displayName)
+                line.expandButton:Hide()
+            end
+        end
+        line.frame:Show()
+        offset = offset + MAINS_ALTS_ROW_HEIGHT
+    end
+
+    for _, row in ipairs(view.mainsAltsReport.rows) do
+        addLine(row, false)
+        if view.expandedMainsAlts[row.identity] then
+            for _, alt in ipairs(row.alts) do
+                addLine(alt, true)
+            end
+        end
+    end
+
+    for index = lineIndex + 1, #view.mainsAltsLines do
+        view.mainsAltsLines[index].frame:Hide()
+    end
+    view.mainsAltsTableHeight = offset + 4
+    view.scrollFrame:SetVerticalScroll(0)
+    updateMainsAltsControlState(view)
+    refreshScrollChild(view)
+end
+
 local function hideBankLines(view)
     if view.bankHeader then
         view.bankHeader.frame:Hide()
@@ -655,7 +831,7 @@ local function createView(parent, tabId)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     view.status:SetPoint("TOPLEFT", 2, 0)
-    view.status:SetPoint("TOPRIGHT", -94, 0)
+    view.status:SetPoint("TOPRIGHT", tabId == "mainsalts" and -2 or -94, 0)
     view.status:SetJustifyH("LEFT")
     view.status:SetText(INITIAL_COPY[tabId])
 
@@ -699,6 +875,12 @@ local function createView(parent, tabId)
         view.rankScrollFrame:SetScript("OnSizeChanged", function()
             refreshRankScrollChild(view)
         end)
+    elseif tabId == "mainsalts" then
+        view.mainsAltsAvailable = true
+        view.mainsAltsScanInProgress = false
+        view.mainsAltsLines = {}
+        view.mainsAltsSelections = {}
+        view.expandedMainsAlts = {}
     elseif tabId == "bank" then
         view.bankTabScrollFrame = CreateFrame(
             "ScrollFrame",
@@ -866,6 +1048,9 @@ local function createWindow()
             and type(RGMS.Bank.CancelScan) == "function" then
             RGMS.Bank.CancelScan()
         end
+        if type(UI.CollapseMainsAltsGroups) == "function" then
+            UI.CollapseMainsAltsGroups()
+        end
     end)
 
     return frame
@@ -971,7 +1156,7 @@ end
 function UI.SelectPrimaryTab(tabId)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster or bank"
+        return nil, "primary tab must be roster, mainsalts, or bank"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -981,7 +1166,14 @@ function UI.SelectPrimaryTab(tabId)
         local selected = currentTabId == tabId
         UI.frame.views[currentTabId]:SetShown(selected)
     end
-    PanelTemplates_SetTab(UI.frame, tabId == "roster" and 1 or 2)
+    local selectedIndex
+    for index, currentTabId in ipairs(TAB_ORDER) do
+        if currentTabId == tabId then
+            selectedIndex = index
+            break
+        end
+    end
+    PanelTemplates_SetTab(UI.frame, selectedIndex)
     UI.selectedTab = tabId
     return true
 end
@@ -989,7 +1181,7 @@ end
 function UI.SetViewContent(tabId, content)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster or bank"
+        return nil, "primary tab must be roster, mainsalts, or bank"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -1002,6 +1194,9 @@ function UI.SetViewContent(tabId, content)
             button:Hide()
         end
         refreshRankScrollChild(view)
+        view.text:Show()
+    elseif tabId == "mainsalts" then
+        hideMainsAltsLines(view)
         view.text:Show()
     elseif tabId == "bank" then
         hideBankLines(view)
@@ -1020,7 +1215,7 @@ end
 function UI.SetViewStatus(tabId, status)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster or bank"
+        return nil, "primary tab must be roster, mainsalts, or bank"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -1114,6 +1309,60 @@ function UI.SetRosterReport(report)
     view.text:SetText("No roster data yet")
     view.scrollFrame:SetVerticalScroll(0)
     refreshScrollChild(view)
+    return true
+end
+
+function UI.SetMainsAltsReport(report)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(report) ~= "table" or type(report.rows) ~= "table" then
+        return nil, "Mains/Alts report must contain rows"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsReport = report
+    renderMainsAlts(view)
+    return true
+end
+
+function UI.ToggleMainsAltsGroup(identity)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.mainsalts
+    if not mainsAltsControlsEnabled(view) then
+        return nil, "Mains/Alts controls are disabled"
+    end
+    local row
+    for _, candidate in ipairs(
+        type(view.mainsAltsReport) == "table" and view.mainsAltsReport.rows or {}
+    ) do
+        if candidate.identity == identity and candidate.altCount > 0 then
+            row = candidate
+            break
+        end
+    end
+    if not row then
+        return nil, "Mains/Alts group is unavailable"
+    end
+
+    view.expandedMainsAlts[identity] = not view.expandedMainsAlts[identity]
+    renderMainsAlts(view)
+    return true
+end
+
+function UI.CollapseMainsAltsGroups()
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.expandedMainsAlts = {}
+    if type(view.mainsAltsReport) == "table" then
+        renderMainsAlts(view)
+    end
     return true
 end
 
@@ -1219,6 +1468,9 @@ function UI.SetRosterScanInProgress(inProgress)
             and view.rosterAvailable ~= false
             and not view.rosterScanInProgress
     )
+    local mainsAltsView = UI.frame.views.mainsalts
+    mainsAltsView.mainsAltsScanInProgress = inProgress == true
+    updateMainsAltsControlState(mainsAltsView)
     return true
 end
 
@@ -1246,6 +1498,17 @@ function UI.SetRosterAvailable(isAvailable)
     local view = UI.frame.views.roster
     view.rosterAvailable = isAvailable == true
     updateRosterRefreshButton(view)
+    return true
+end
+
+function UI.SetMainsAltsAvailable(isAvailable)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local view = UI.frame.views.mainsalts
+    view.mainsAltsAvailable = isAvailable == true
+    updateMainsAltsControlState(view)
     return true
 end
 
@@ -1279,6 +1542,7 @@ function UI.SetDataState(enabled, state)
     UI.dataEnabled = enabled == true
     updateRosterRefreshButton(UI.frame.views.roster)
     updateBankRefreshButton(UI.frame.views.bank)
+    updateMainsAltsControlState(UI.frame.views.mainsalts)
 
     if UI.dataEnabled then
         return true
