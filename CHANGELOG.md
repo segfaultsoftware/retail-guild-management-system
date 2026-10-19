@@ -1,22 +1,11 @@
 # Changelog
 
-All notable user-visible changes to RGMS are documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## Unreleased
+## 0.3.0
 
 ### Fixed
 
 - The RGMS minimap button now uses LibDBIcon so it follows the active minimap's
   size and shape and integrates with EllesmereUI and MinimapButtonButton.
-
-### Changed
-
-- Release candidates and patch releases can now be built and promoted from
-  validated `release/X.Y` branches while workflow definitions remain anchored
-  to `main`.
 
 ## 0.2.0
 
