@@ -7,8 +7,12 @@ on:
         description: Release version without the v prefix (for example, 0.1.0-rc.1)
         required: true
         type: string
+      branch:
+        description: Release line branch (for example, release/0.1)
+        required: true
+        type: string
       commit:
-        description: Full 40-character candidate commit SHA already merged into main
+        description: Full 40-character candidate commit SHA at the release branch tip
         required: true
         type: string
 
@@ -16,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-candidate-${{ inputs.version }}
+  group: release-candidate-${{ inputs.branch }}-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
@@ -32,16 +36,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BRANCH: ${{ inputs.branch }}
           CANDIDATE_COMMIT: ${{ inputs.commit }}
           WORKFLOW_REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
           version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
+          branch_pattern='^release/(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           commit_pattern='^[0-9a-fA-F]{40}$'
 
-          [[ "$RELEASE_VERSION" =~ $version_pattern ]] || {
+          if [[ ! "$RELEASE_VERSION" =~ $version_pattern ]]; then
             echo "Version must be X.Y.Z or X.Y.Z-rc.N." >&2
+            exit 1
+          fi
+          expected_branch="release/${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+          [[ "$RELEASE_BRANCH" =~ $branch_pattern ]] || {
+            echo "Branch must be release/X.Y with no leading zeroes." >&2
+            exit 1
+          }
+          [[ "$RELEASE_BRANCH" == "$expected_branch" ]] || {
+            echo "Version $RELEASE_VERSION must be built from $expected_branch, not $RELEASE_BRANCH." >&2
             exit 1
           }
           [[ "$CANDIDATE_COMMIT" =~ $commit_pattern ]] || {
@@ -59,10 +74,11 @@ jobs:
             exit 1
           }
 
-          git fetch --no-tags origin main
-          main_commit="$(git rev-parse origin/main)"
-          [[ "${actual_commit,,}" == "${main_commit,,}" ]] || {
-            echo "Candidate commit is not the current origin/main commit." >&2
+          git fetch --no-tags origin \
+            "+refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH"
+          branch_commit="$(git rev-parse "refs/remotes/origin/$RELEASE_BRANCH^{commit}")"
+          [[ "${actual_commit,,}" == "${branch_commit,,}" ]] || {
+            echo "Candidate commit is not the current origin/$RELEASE_BRANCH commit." >&2
             exit 1
           }
 
@@ -137,6 +153,7 @@ jobs:
         id: qa_record
         env:
           RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BRANCH: ${{ inputs.branch }}
           CANDIDATE_COMMIT: ${{ inputs.commit }}
           PACKAGE_CHECKSUM: ${{ steps.package.outputs.checksum }}
           TEST_RESULT: ${{ steps.package.outputs.test_result }}
@@ -158,12 +175,14 @@ jobs:
           qa_record="${qa_records[0]}"
           awk \
             -v candidate_commit="${CANDIDATE_COMMIT,,}" \
+            -v release_branch="$RELEASE_BRANCH" \
             -v candidate_run="$GITHUB_RUN_ID" \
             -v test_result="$TEST_RESULT" \
             -v package_checksum="$PACKAGE_CHECKSUM" \
             -v evidence_location="$qa_record" '
               BEGIN {
                 candidate_commit_count = 0
+                release_branch_count = 0
                 candidate_run_count = 0
                 test_result_count = 0
                 package_checksum_count = 0
@@ -172,6 +191,11 @@ jobs:
               /^- Candidate commit:/ {
                 print "- Candidate commit: " candidate_commit
                 candidate_commit_count += 1
+                next
+              }
+              /^- Release branch:/ {
+                print "- Release branch: " release_branch
+                release_branch_count += 1
                 next
               }
               /^- Candidate build run:/ {
@@ -196,7 +220,8 @@ jobs:
               }
               { print }
               END {
-                if (candidate_commit_count != 1 || candidate_run_count != 1 ||
+                if (candidate_commit_count != 1 || release_branch_count != 1 ||
+                    candidate_run_count != 1 ||
                     test_result_count != 1 || package_checksum_count != 1 ||
                     evidence_location_count != 1) {
                   exit 42
@@ -213,6 +238,7 @@ jobs:
       - name: Write candidate metadata
         env:
           RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_BRANCH: ${{ inputs.branch }}
           CANDIDATE_COMMIT: ${{ inputs.commit }}
           ARTIFACT_NAME: ${{ steps.package.outputs.artifact_name }}
           PACKAGE_CHECKSUM: ${{ steps.package.outputs.checksum }}
@@ -221,9 +247,10 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
-            --argjson schemaVersion 2 \
+            --argjson schemaVersion 3 \
             --arg repository "$GITHUB_REPOSITORY" \
             --arg version "$RELEASE_VERSION" \
+            --arg branch "$RELEASE_BRANCH" \
             --arg commit "${CANDIDATE_COMMIT,,}" \
             --argjson runId "$GITHUB_RUN_ID" \
             --argjson runAttempt "$GITHUB_RUN_ATTEMPT" \
@@ -235,6 +262,7 @@ jobs:
               schemaVersion: $schemaVersion,
               repository: $repository,
               version: $version,
+              branch: $branch,
               commit: $commit,
               runId: $runId,
               runAttempt: $runAttempt,
@@ -260,6 +288,7 @@ jobs:
       - name: Summarize QA evidence
         env:
           CANDIDATE_COMMIT: ${{ inputs.commit }}
+          RELEASE_BRANCH: ${{ inputs.branch }}
           CANDIDATE_RUN: ${{ github.run_id }}
           CANDIDATE_ARTIFACT_ID: ${{ steps.candidate_artifact.outputs.artifact-id }}
           CANDIDATE_ARTIFACT_URL: ${{ steps.candidate_artifact.outputs.artifact-url }}
@@ -274,6 +303,7 @@ jobs:
             echo
             echo "- Artifact: $CANDIDATE_ARTIFACT_URL"
             echo "- Candidate commit: \`${CANDIDATE_COMMIT,,}\`"
+            echo "- Release branch: \`$RELEASE_BRANCH\`"
             echo "- Candidate build run: \`$CANDIDATE_RUN\`"
             echo "- Candidate artifact ID: \`$CANDIDATE_ARTIFACT_ID\`"
             echo "- Automated result and test count: \`PASS ($TEST_RESULT)\`"

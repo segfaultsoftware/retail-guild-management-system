@@ -86,15 +86,17 @@ do not replace Retail client verification.
 
 ## Prepare a release candidate
 
-On a clean release candidate branch, use the Git Bash preparation entry point:
+On the clean release-line branch matching the version (for example,
+`release/0.1`), use the Git Bash preparation entry point:
 
 ```text
 bash ./scripts/prepare-release.sh --version 0.1.0-rc.1 --tester YOUR-NAME
 ```
 
 The command updates the manifest version and creates a tester-specific QA
-record for review and merge to `main`. After that merge, the **Build Release
-Candidate** workflow runs the complete Lua suite, validates the manifest and
+record on the release branch. After that branch is pushed, dispatch **Build
+Release Candidate** from `main` with its name and full tip SHA. The workflow
+runs the complete Lua suite, validates the manifest and
 runtime files, and retains the canonical `RGMS-<version>.zip` together with an
 automation-populated QA record. QA, the draft GitHub release, and the manual
 CurseForge upload all use that exact ZIP without rebuilding it. See

@@ -5,6 +5,14 @@ All notable user-visible changes to RGMS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Release candidates and patch releases can now be built and promoted from
+  validated `release/X.Y` branches while workflow definitions remain anchored
+  to `main`.
+
 ## 0.2.0
 
 ### Added

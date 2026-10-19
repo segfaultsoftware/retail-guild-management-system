@@ -21,9 +21,10 @@ Options:
   -h, --help              Show this help.
 
 --retail-version and --interface must be supplied together. The script updates
-RGMS.toc and creates a prepopulated QA record for review and merge to main.
-GitHub builds the canonical package only after that merge. This script never
-builds, commits, pushes, tags, or installs files into the Retail client.
+RGMS.toc and creates a prepopulated QA record on a release/X.Y branch.
+GitHub builds the canonical package only after that branch is pushed. This
+script never builds, commits, pushes, tags, or installs files into the Retail
+client.
 EOF
 }
 
@@ -79,7 +80,10 @@ done
 [[ -n "$tester" ]] || fail "--tester is required"
 
 release_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
-[[ "$version" =~ $release_pattern ]] || fail "version must be X.Y.Z or X.Y.Z-rc.N"
+if [[ ! "$version" =~ $release_pattern ]]; then
+    fail "version must be X.Y.Z or X.Y.Z-rc.N"
+fi
+expected_branch="release/${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 [[ "$tester" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
     fail "tester must contain only letters, numbers, dots, underscores, and hyphens"
 
@@ -104,19 +108,14 @@ cd "$repository_path"
 
 branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" || \
     fail "release preparation requires a branch, not a detached HEAD"
-[[ "$branch" != "main" ]] || \
-    fail "create and check out a release candidate branch before preparing a release"
+[[ "$branch" == "$expected_branch" ]] || \
+    fail "version $version must be prepared on $expected_branch, not $branch"
 
 worktree_status="$(git status --porcelain --untracked-files=all)"
 [[ -z "$worktree_status" ]] || {
     printf '%s\n' "$worktree_status" >&2
     fail "the working tree must be clean before release preparation"
 }
-
-git show-ref --verify --quiet refs/remotes/origin/main || \
-    fail "origin/main is unavailable; fetch it before preparing a release"
-git merge-base --is-ancestor refs/remotes/origin/main HEAD || \
-    fail "the candidate branch must contain the locally known origin/main"
 
 tag="v$version"
 if git show-ref --verify --quiet "refs/tags/$tag"; then
@@ -184,11 +183,16 @@ manifest_changed=true
 
 awk \
     -v version="$version" \
+    -v branch="$branch" \
     -v tester="$tester" \
     -v retail_version="$retail_version" \
     -v interface_number="$interface_number" '
     /^- Release candidate:/ {
         print "- Release candidate: " version
+        next
+    }
+    /^- Release branch:/ {
+        print "- Release branch: " branch
         next
     }
     /^- Retail version\/build from/ && retail_version != "" {
@@ -219,9 +223,9 @@ printf '\nPrepared release candidate files:\n'
 printf '  Manifest: RGMS.toc\n'
 printf '  QA record: %s\n' "$qa_record"
 printf '\nNext steps:\n'
-printf '  1. Commit and push this candidate branch, then merge its reviewed PR to main.\n'
-printf '  2. Dispatch Build Release Candidate for version %s and the merged main SHA.\n' "$version"
+printf '  1. Commit and push %s, then copy its full tip SHA.\n' "$branch"
+printf '  2. Dispatch Build Release Candidate from main for branch %s, version %s, and that SHA.\n' "$branch" "$version"
 printf '  3. Download that workflow artifact and replace %s with its populated qa-record.md.\n' "$qa_record"
 printf '  4. Test the canonical ZIP, complete the record, and add the QA signoff.\n'
-printf '  5. Commit only that completed QA record and merge it to main.\n'
-printf '  6. Dispatch Release with the full QA commit SHA from main.\n'
+printf '  5. Commit and push only that completed QA record on %s.\n' "$branch"
+printf '  6. Dispatch Release from main with branch %s and the full QA commit SHA.\n' "$branch"

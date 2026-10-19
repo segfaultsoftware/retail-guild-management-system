@@ -1,9 +1,9 @@
 # RGMS release runbook
 
-This runbook takes a candidate already merged to `main` through a canonical
-GitHub-built package, live Retail verification, an automated draft GitHub
-release, and a **manual** CurseForge upload. Local package builds are useful for
-development validation, but only the retained **Build Release Candidate**
+This runbook takes a candidate at the tip of a `release/X.Y` branch through a
+canonical GitHub-built package, live Retail verification, an automated draft
+GitHub release, and a **manual** CurseForge upload. Local package builds are
+useful for development validation, but only the retained **Build Release Candidate**
 artifact may be live-tested, promoted, or uploaded to CurseForge.
 
 GitHub automation uses only the repository-scoped `GITHUB_TOKEN`. RGMS does not
@@ -23,6 +23,8 @@ RGMS follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
   for every rebuilt candidate.
 - Git tags are `vX.Y.Z` or `vX.Y.Z-rc.N`. The `## Version` value in `RGMS.toc`
   is the same version without the leading `v`.
+- Release branches are named `release/X.Y` and retain the complete history for
+  every `X.Y.Z` and `X.Y.Z-rc.N` release in that major/minor line.
 - Never move a shared tag, replace a release asset, or reuse a version. Create
   a new version instead.
 
@@ -52,19 +54,21 @@ release-critical checks in one command:
 - refuse to overwrite an existing `RGMS-<version>.zip`.
 
 The **Tests** workflow runs the Lua suite and package validation for every pull
-request and push to `main`. After candidate source and a blank QA record are on
-`main`, a maintainer dispatches **Build Release Candidate** for that exact
-commit. GitHub runs the authoritative tests and builder once, then retains the
+request and push to `main` or `release/*`. After candidate source and a blank QA
+record are at the tip of their `release/X.Y` branch, a maintainer dispatches
+**Build Release Candidate** from `main` for that branch and exact commit. GitHub
+runs the authoritative tests and builder once, then retains the
 canonical ZIP, signed-by-context metadata, and an automation-populated QA
 record as one immutable Actions artifact.
 
 The tester downloads that artifact, live-tests its inner ZIP without
 rebuilding, and commits exactly one completed QA record. The **Release**
 workflow infers that record and the release version from the QA commit, then
-validates the candidate run, artifact, checksum, commit ancestry, and QA-only
-diff before requesting `release` Environment approval. Promotion
-downloads the same retained artifact, tags the QA commit, attaches the original
-ZIP to a draft GitHub release, downloads it again, and verifies its checksum.
+validates the release branch tip, candidate run, artifact, checksum, commit
+ancestry, and QA-only diff before requesting `release` Environment approval.
+Promotion downloads the same retained artifact, tags the QA commit, attaches
+the original ZIP to a draft GitHub release, downloads it again, and verifies
+its checksum.
 Any failed build, expired or mismatched artifact, failed or malformed QA
 signoff, packaged-source change, reused version, or missing changelog section
 stops promotion. Checklist boxes remain human evidence and are not automated
@@ -110,13 +114,15 @@ support Classic, PTR, or Beta clients.
    release date and restore an empty `Unreleased` section. An RC may use the
    current `Unreleased` section in its generated draft notes.
 
-## Prepare and merge a release candidate
+## Prepare a release-branch candidate
 
-Use a dedicated release branch or pull request. Replace the example version in
-every command with the version being prepared.
+Use the dedicated release-line branch. Replace the example version in every
+command with the version being prepared.
 
-1. Confirm the checkout is based on the intended `main` commit and contains no
-   unrelated changes:
+1. For a new major/minor line, confirm the checkout is at the intended `main`
+   commit and contains no unrelated changes. For a patch, start from the
+   existing `release/X.Y` branch and cherry-pick only the fixes intended for
+   that patch:
 
    ```text
    git status --short --branch
@@ -124,12 +130,12 @@ every command with the version being prepared.
    git log --oneline --decorate -5
    ```
 
-2. Create and check out a dedicated release candidate branch. Make and commit
-   any required `CHANGELOG.md` or behavior-documentation updates so the branch
-   is clean before preparation.
+2. Create and check out `release/X.Y` for a new line, or check out its existing
+   remote branch for a patch. Make and commit any required `CHANGELOG.md` or
+   behavior-documentation updates so the branch is clean before preparation.
 
    ```text
-   git switch -c release/0.1.0-rc.1
+   git switch -c release/0.1
    ```
 
 3. From Git Bash at the repository root, run the release preparation command.
@@ -149,19 +155,24 @@ every command with the version being prepared.
    The script does not build, commit, push, tag, or install the addon. A second
    invocation with the same version must fail rather than replace the record.
 4. Review the manifest and blank QA record, commit all candidate source and
-   metadata, push the branch, and merge its reviewed pull request into `main`.
-5. Copy the full 40-character SHA of the resulting candidate commit at the tip
-   of `main`. Dispatch the build before merging anything else.
+   metadata, and push `release/X.Y`. Do not merge the release preparation back
+   to `main` as part of this procedure.
+5. Copy the full 40-character SHA at the remote release branch tip. Dispatch
+   the build before pushing anything else to that branch. A cherry-picked fix
+   has a new SHA on the release branch; use that release-branch history, not
+   the original SHA from `main`.
 
 ## Build and inspect the canonical candidate
 
-1. Manually dispatch **Build Release Candidate** from `main` with the version
-   and candidate commit. The equivalent authenticated GitHub CLI command is:
+1. Manually dispatch **Build Release Candidate** from `main` with the release
+   branch, version, and candidate commit. The equivalent authenticated GitHub
+   CLI command is:
 
    ```text
    gh workflow run "Build Release Candidate" \
      --repo segfaultsoftware/retail-guild-management-system \
      --ref main \
+     -f branch=release/0.1 \
      -f version=0.1.0-rc.1 \
      -f commit=FULL_40_CHARACTER_CANDIDATE_COMMIT_SHA
    ```
@@ -206,9 +217,9 @@ verification.
    `PASS` or `FAIL`. Use `FAIL` and record an owner when testing is blocked. Do
    not tag or release a failed candidate.
 7. Restore the development link only after Retail is closed.
-8. Commit exactly one completed QA record as the only file change. Open and
-   merge that QA-only pull request into `main`; do not include source, workflow,
-   changelog, manifest, or another QA-record change.
+8. Commit exactly one completed QA record as the only file change and push it
+   to the same `release/X.Y` branch; do not include source, workflow, changelog,
+   manifest, or another QA-record change.
 
 Before the first public release, a second person must follow
 [`CONTRIBUTING.md`](../CONTRIBUTING.md) from a clean checkout and repeat this
@@ -238,27 +249,27 @@ checks this configuration before it performs any release mutation.
    ```
 
    `FAIL` is valid recorded evidence but stops release promotion.
-2. Commit and push exactly that completed QA record as the only file change.
-   Open a pull request and merge it into `main` after review and required checks
-   pass.
-3. Copy the full 40-character SHA of the resulting QA commit on `main`, then
-   manually dispatch the **Release** workflow from GitHub Actions. Supply only
-   that QA commit SHA. The workflow infers the record path and release version.
+2. Commit and push exactly that completed QA record as the only file change on
+   the same `release/X.Y` branch after review and required checks pass.
+3. Copy the full 40-character SHA at the release branch tip, then manually
+   dispatch the **Release** workflow from `main`. Supply the branch and that QA
+   commit SHA. The workflow infers the record path and release version.
    The equivalent authenticated GitHub CLI command is:
 
    ```text
    gh workflow run Release \
      --repo segfaultsoftware/retail-guild-management-system \
      --ref main \
-      -f qa_commit=FULL_40_CHARACTER_QA_COMMIT_SHA
+     -f branch=release/0.1 \
+     -f qa_commit=FULL_40_CHARACTER_QA_COMMIT_SHA
    ```
 
-4. Wait for preflight. It validates that both commits are on `main`, the QA
-   commit and all post-candidate changes affect exactly the inferred record,
-   the recorded workflow run succeeded for that candidate, exactly one matching
-   immutable artifact remains available, the signoff is `PASS`, and the
-   downloaded ZIP has the exact live-tested checksum. It does not inspect
-   checkbox state.
+4. Wait for preflight. It validates that the QA commit is the named release
+   branch tip, the candidate is its ancestor, and all post-candidate changes
+   affect exactly the inferred record. It also requires that the recorded
+   workflow run succeeded, exactly one matching immutable artifact remains
+   available, the signoff is `PASS`, and the downloaded ZIP has the exact
+   live-tested checksum. It does not inspect checkbox state.
 5. Approve the waiting `release` Environment deployment. The promotion job
    rechecks version availability, creates and pushes the annotated tag, creates
    a draft named `RGMS 0.1.0-rc.1`, attaches the original candidate ZIP,
@@ -363,8 +374,9 @@ If a public release is defective:
    removal.
 4. Restore a known-good version only through supported store controls; never
    repoint tags.
-5. Prepare a PATCH hotfix, add a `Fixed` changelog entry, and repeat every
-   automated, package, live-QA, GitHub, and CurseForge step.
+5. Cherry-pick the fix onto the affected `release/X.Y` branch, prepare the next
+   PATCH version and QA record there, and repeat every automated, package,
+   live-QA, GitHub, and CurseForge step.
 
 The release is complete only when both distribution pages, their downloaded
 artifacts, QA records, changelog, version, checksum, and Retail support agree.

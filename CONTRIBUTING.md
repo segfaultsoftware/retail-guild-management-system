@@ -161,8 +161,9 @@ SavedVariables flushing, or the default guild-bank UI. For a release candidate:
 1. Copy `docs/MVP_SCENARIO_CHECKLIST.md` to
    `docs/qa/<version>-<tester>.md`, for example
    `docs/qa/0.1.0-rc.1-segfaultsoftware.md`.
-2. Merge the prepared record with the release-candidate work. The successful
-   **Build Release Candidate** workflow returns an automation-populated copy as
+2. Commit the prepared record with the release-candidate work on the matching
+   `release/X.Y` branch. The successful **Build Release Candidate** workflow
+   returns an automation-populated copy as
    `qa-record.md` beside the canonical ZIP.
 3. Replace the prepared record at its original path with `qa-record.md`, then
    fill the observations while executing the checklist. Do not check an item
@@ -170,9 +171,10 @@ SavedVariables flushing, or the default guild-bank UI. For a release candidate:
 4. Add the final QA GitHub username, Pacific date, and `PASS` or `FAIL` signoff.
    Document an owner for each blocker or failure.
 5. Remove private account and character identifiers from evidence.
-6. Commit exactly that one completed QA record as the only file change. Large
-   images or videos should be attached to the corresponding GitHub issue or
-   release and linked from the record instead of committed.
+6. Commit exactly that one completed QA record as the only file change on the
+   same release branch. Large images or videos should be attached to the
+   corresponding GitHub issue or release and linked from the record instead of
+   committed.
 
 A second person must follow the contributor setup and dry-run the release
 runbook through creation and inspection of an unpublished package before the
