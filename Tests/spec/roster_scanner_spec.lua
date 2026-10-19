@@ -112,6 +112,10 @@ local function newHarness(options)
         completeSuccess = function()
             successfulCompletions = successfulCompletions + 1
         end,
+        beginScan = options.beginScan,
+        isScanLocked = options.isScanLocked,
+        endScan = options.endScan,
+        rejectConcurrentScan = options.rejectConcurrentScan,
     })
 
     return {
@@ -276,6 +280,41 @@ return {
         test.assert_equal(reason, "scan-in-progress")
         test.assert_equal(harness.requests(), 1)
         test.assert_matches(harness.messages[1], "already in progress")
+    end),
+
+    test.case("global scan admission releases on roster success failure and rejection", function()
+        local active
+        local releases = 0
+        local function begin()
+            if active then return nil end
+            active = true
+            return true
+        end
+        local function finish()
+            active = false
+            releases = releases + 1
+        end
+
+        local success = newHarness({ beginScan = begin, endScan = finish })
+        test.assert_true(success.scanner:Request("manual"))
+        test.assert_true(active)
+        test.assert_true(success.scanner:OnDataUpdated())
+        test.assert_false(active)
+
+        local failure = newHarness({
+            beginScan = begin,
+            endScan = finish,
+            requestError = "simulated",
+        })
+        test.assert_nil(failure.scanner:Request("manual"))
+        test.assert_false(active)
+
+        active = true
+        local rejected = newHarness({ beginScan = begin, endScan = finish })
+        local started, reason = rejected.scanner:Request("manual")
+        test.assert_nil(started)
+        test.assert_equal(reason, "scan-in-progress")
+        test.assert_equal(releases, 2)
     end),
 
     test.case("closing the window does not cancel an in-progress scan", function()

@@ -1,4 +1,5 @@
 local test = require("Tests.lib.runner")
+local portal = require("UI.Portal")
 
 local function newHarness(options)
     options = options or {}
@@ -88,6 +89,7 @@ local function newHarness(options)
         DB = options.database,
         BankReport = options.bankReport,
         DateTime = options.dateTime,
+        Portal = portal,
     }
 
     local previousCreateFrame = CreateFrame
@@ -151,7 +153,7 @@ return {
             {
                 action = "status",
                 tabId = "bank",
-                status = "Last successful scan: 2024-06-01 05:34 PT",
+                status = "Last scan: 2024-06-01 05:34 PT",
             },
         })
         harness.restore()
@@ -232,10 +234,16 @@ return {
                     tabs = {},
                     slots = {},
                 },
+                ui = { selectedBankTabIndex = 1 },
             },
             bankReport = {
                 build = function()
-                    return { tabs = {} }
+                    return { tabs = {
+                        {
+                            index = 1,
+                            lastAccessibleText = "2024-05-31 23:45 PT",
+                        },
+                    } }
                 end,
             },
             dateTime = {
@@ -254,7 +262,8 @@ return {
         test.assert_equal(harness.actions[#harness.actions], {
             action = "status",
             tabId = "bank",
-            status = "Guild bank closed. Last successful scan: 2024-06-01 05:34 PT",
+            status = "Guild bank closed. Last scan: 2024-06-01 05:34 PT\n"
+                .. "Tab last accessible: 2024-05-31 23:45 PT",
         })
         harness.restore()
     end),

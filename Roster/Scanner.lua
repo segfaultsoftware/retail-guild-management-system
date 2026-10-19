@@ -31,6 +31,9 @@ function Scanner.create(dependencies)
 
     function scanner:SetProgress(inProgress)
         self.inProgress = inProgress
+        if not inProgress and type(dependencies.endScan) == "function" then
+            dependencies.endScan()
+        end
         dependencies.setInProgress(inProgress)
     end
 
@@ -49,9 +52,20 @@ function Scanner.create(dependencies)
         source = source == "automatic" and "automatic" or "manual"
 
         if self.inProgress then
-            printMessage(
-                "A guild roster scan is already in progress; no second scan was started."
-            )
+            if type(dependencies.rejectConcurrentScan) == "function" then
+                dependencies.rejectConcurrentScan()
+            else
+                printMessage(
+                    "A guild roster scan is already in progress; no second scan was started."
+                )
+            end
+            return nil, "scan-in-progress"
+        end
+        if type(dependencies.isScanLocked) == "function"
+            and dependencies.isScanLocked() then
+            if type(dependencies.rejectConcurrentScan) == "function" then
+                dependencies.rejectConcurrentScan()
+            end
             return nil, "scan-in-progress"
         end
 
@@ -66,6 +80,13 @@ function Scanner.create(dependencies)
 
         if not dependencies.canScan() then
             return nil, "scanning-disabled"
+        end
+
+        if type(dependencies.beginScan) == "function" then
+            local admitted = dependencies.beginScan()
+            if not admitted then
+                return nil, "scan-in-progress"
+            end
         end
 
         self.elapsed = 0

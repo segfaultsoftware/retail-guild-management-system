@@ -7,13 +7,37 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Added per-character numeric roster-rank and guild-bank-tab selections, modern
+  dropdown behavior, per-view session scrolling, and a global scan interaction
+  lock with behavior-focused coverage.
+- Bundled the Inter Regular and SemiBold fonts, the selected pink RGMS logo,
+  and the minimal Lucide icon set used by the portal.
+
 ### Fixed
 
+- Contextual dropdowns now hide with their inactive view, sidebar tab labels
+  render only once, and the header logo renders above its background.
+- Expanding or collapsing a Mains/Alts group now keeps the clicked main at the
+  same visible row, including near the bottom of the table.
+- Guild Bank item rows now render their numeric slot position in a dedicated
+  fixed-width cell, with Slot and Count centered in their columns.
+- Guild Bank status now stacks the overall scan and selected-tab accessibility
+  timestamps on separate contextual-bar lines.
+- The Mains/Alts Note header and note icons are centered within their column.
+- The animated scan indicator now includes a visible `Scanning...` label on
+  every main view while the global scan lock is active.
 - The RGMS minimap button now uses LibDBIcon so it follows the active minimap's
   size and shape and integrates with EllesmereUI and MinimapButtonButton.
 
 ### Changed
 
+- Redesigned RGMS as a fixed 840x560 management portal with a contextual
+  header, left navigation, dashboard tables, modern controls, RGMS tooltips,
+  and a restyled Character Note editor.
+- Closing RGMS no longer cancels an active guild-bank scan, and every open now
+  starts on Roster while retaining the character's saved window position.
 - Release candidates and patch releases can now be built and promoted from
   validated `release/X.Y` branches while workflow definitions remain anchored
   to `main`.

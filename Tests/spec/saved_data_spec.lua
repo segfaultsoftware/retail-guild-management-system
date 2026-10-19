@@ -10,7 +10,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 7,
+            schemaVersion = 8,
             roster = {
                 ranks = {},
                 members = {},
@@ -37,6 +37,25 @@ return {
         test.assert_equal(original.ui.windowPosition.x, 120)
     end),
 
+    test.case("schema version seven adds optional per-character dropdown selections", function()
+        local original = fixtures.saved_model()
+        original.schemaVersion = 7
+        original.ui = { windowPosition = original.ui.windowPosition }
+
+        local state = savedData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_nil(state.model.ui.selectedRosterRankIndex)
+        test.assert_nil(state.model.ui.selectedBankTabIndex)
+        state.model.ui.selectedRosterRankIndex = 0
+        state.model.ui.selectedBankTabIndex = 3
+        test.assert_true(savedData.validate(state.model))
+        state.model.ui.selectedBankTabIndex = 0
+        test.assert_nil(savedData.validate(state.model))
+    end),
+
     test.case("separate character loads never share nested state", function()
         local firstCharacter = savedData.load(nil).model
         local secondCharacter = savedData.load(nil).model
@@ -56,7 +75,7 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 7)
+        test.assert_equal(first.model.schemaVersion, 8)
         test.assert_equal(first.model.roster.guild, original.roster.guildIdentity)
         test.assert_equal(first.model.roster.scannedAt, original.roster.scanTimestamp)
         test.assert_equal(first.model.bank.guild, original.bank.guildIdentity)
@@ -71,7 +90,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
@@ -94,7 +113,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
@@ -109,7 +128,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
         test.assert_false(state.model.roster.members[1].isMissing)
         test.assert_equal(original.schemaVersion, 3)
@@ -143,7 +162,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(state.model.roster.guild.realm.name, "Ner'zhul")
         test.assert_equal(state.model.roster.guild.realm.slug, "Ner'zhul")
         test.assert_equal(state.model.bank.guild.realm.name, "Deep-Rock")
@@ -166,7 +185,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(
             state.model.bank.slots[1].stableSinceDate,
             "2024-06-01"
@@ -202,7 +221,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(
             state.model.bank.tabs[1].lastAccessibleAt,
             original.bank.scannedAt

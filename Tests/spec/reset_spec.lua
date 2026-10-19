@@ -67,6 +67,30 @@ return {
         test.assert_equal(#harness.saved.bank.slots, 1)
     end),
 
+    test.case("scan lock rejects opening and accepting reset confirmation", function()
+        local harness = newHarness(fixtures.saved_model())
+        harness.controller = resetModule.create({
+            savedData = savedData,
+            getSavedData = function() return harness.saved end,
+            getState = function() return harness.state end,
+            commit = function() error("reset must not commit while locked") end,
+            showConfirmation = function() error("reset must not open while locked") end,
+            print = function(message) harness.messages[#harness.messages + 1] = message end,
+            isScanLocked = function() return true end,
+        })
+
+        local requested, requestError = harness.controller:requestManual()
+        test.assert_nil(requested)
+        test.assert_equal(requestError, "scan-in-progress")
+        local confirmed, confirmError = harness.controller:confirm({ recovery = false })
+        test.assert_nil(confirmed)
+        test.assert_equal(confirmError, "scan-in-progress")
+        test.assert_equal(harness.messages, {
+            "Scan already in progress",
+            "Scan already in progress",
+        })
+    end),
+
     test.case("confirm clears exact observation fields and preserves UI", function()
         local harness = newHarness(fixtures.saved_model())
         local originalPosition = harness.saved.ui.windowPosition
@@ -76,7 +100,7 @@ return {
 
         test.assert_true(confirmed, resetError)
         test.assert_equal(harness.saved, {
-            schemaVersion = 7,
+            schemaVersion = 8,
             roster = {
                 ranks = {},
                 members = {},

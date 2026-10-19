@@ -21,7 +21,19 @@ end
 function Reset.create(dependencies)
     local controller = {}
 
+    local function rejectScanLock()
+        if type(dependencies.isScanLocked) == "function"
+            and dependencies.isScanLocked() then
+            dependencies.print("Scan already in progress")
+            return true
+        end
+        return false
+    end
+
     function controller:requestManual()
+        if rejectScanLock() then
+            return nil, "scan-in-progress"
+        end
         local request = {
             recovery = false,
         }
@@ -39,6 +51,9 @@ function Reset.create(dependencies)
     end
 
     function controller:confirm(request)
+        if rejectScanLock() then
+            return nil, "scan-in-progress"
+        end
         request = request or { recovery = false }
 
         if dependencies.accountData then
@@ -82,6 +97,10 @@ function Reset.create(dependencies)
                     dependencies.print("Reset failed: " .. tostring(resetError) .. ".")
                     return nil, resetError
                 end
+            end
+            if type(characterModel) == "table" and type(characterModel.ui) == "table" then
+                characterModel.ui.selectedRosterRankIndex = nil
+                characterModel.ui.selectedBankTabIndex = nil
             end
 
             dependencies.commitAccount(accountModel, characterModel, guildIdentity)
@@ -284,6 +303,7 @@ if type(RGMS) == "table" then
         end,
         showConfirmation = showConfirmation,
         print = RGMS.Print,
+        isScanLocked = RGMS.IsScanLocked,
         setDataState = function(enabled)
             if type(RGMS.UI) == "table"
                 and type(RGMS.UI.SetDataState) == "function" then

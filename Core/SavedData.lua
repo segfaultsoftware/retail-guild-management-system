@@ -8,7 +8,7 @@ local SavedData = {}
 local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTime")
 local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
 
-SavedData.CURRENT_SCHEMA_VERSION = 7
+SavedData.CURRENT_SCHEMA_VERSION = 8
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -770,12 +770,41 @@ function SavedData.validate(model)
 
     valid, validationError = validateExactTable(model.ui, {
         windowPosition = true,
+        selectedRosterRankIndex = true,
+        selectedBankTabIndex = true,
     }, "saved data.ui")
     if not valid then
         return nil, validationError
     end
 
-    return validateWindowPosition(model.ui.windowPosition, "saved data.ui.windowPosition")
+    valid, validationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "saved data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, validationError
+    end
+    if model.ui.selectedRosterRankIndex ~= nil then
+        valid, validationError = requireInteger(
+            model.ui.selectedRosterRankIndex,
+            "saved data.ui.selectedRosterRankIndex",
+            0
+        )
+        if not valid then
+            return nil, validationError
+        end
+    end
+    if model.ui.selectedBankTabIndex ~= nil then
+        valid, validationError = requireInteger(
+            model.ui.selectedBankTabIndex,
+            "saved data.ui.selectedBankTabIndex",
+            1
+        )
+        if not valid then
+            return nil, validationError
+        end
+    end
+    return true
 end
 
 function SavedData.copyGuildIdentity(identity)
@@ -1279,6 +1308,52 @@ local function migrateVersionSix(model)
     return model
 end
 
+local function migrateVersionSeven(model)
+    if model.schemaVersion ~= 7 then
+        return nil, "schema version 7 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 7 data")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.roster, "schema version 7 data.roster", {
+        ranks = validateRosterRank,
+        members = validateCurrentRosterMember,
+    }, true)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateDataset(model.bank, "schema version 7 data.bank", {
+        tabs = validateBankTab,
+        slots = validateBankSlot,
+    }, true)
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+    }, "schema version 7 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 7 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    model.schemaVersion = 8
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
@@ -1287,6 +1362,7 @@ local MIGRATIONS = {
     [4] = migrateVersionFour,
     [5] = migrateVersionFive,
     [6] = migrateVersionSix,
+    [7] = migrateVersionSeven,
 }
 
 local function isLegacyDevelopmentState(value)

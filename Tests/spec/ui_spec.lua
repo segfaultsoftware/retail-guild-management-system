@@ -217,6 +217,10 @@ local function newRegion(parent)
         return countLines(self.text) * 14
     end
 
+    function region:SetJustifyH(justification)
+        self.justifyH = justification
+    end
+
     function region:CreateFontString()
         return newRegion(self)
     end
@@ -268,7 +272,6 @@ local function newRegion(parent)
         "SetClampRectInsets",
         "SetBackdrop",
         "SetBackdropColor",
-        "SetJustifyH",
         "SetJustifyV",
         "SetAllPoints",
         "SetMultiLine",
@@ -433,12 +436,20 @@ return {
         test.assert_false(frame:IsShown())
         test.assert_equal(frame:GetWidth(), layout.WINDOW_WIDTH)
         test.assert_equal(frame:GetHeight(), layout.WINDOW_HEIGHT)
-        test.assert_equal(frame.views.roster.rankScrollFrame:GetWidth(), 242)
-        test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 266)
-        test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 200)
-        test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 218)
+        test.assert_equal(frame.views.roster.rankScrollFrame:GetWidth(), 1)
+        test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 0)
+        test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 1)
+        test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 0)
         test.assert_equal(frame.numTabs, 3)
-        test.assert_equal(frame.tabs[2].text, "Mains/Alts")
+        test.assert_equal(frame.tabs[2].label.text, "Mains/Alts")
+        test.assert_nil(frame.tabs[2].text)
+        test.assert_equal(frame.views.roster.rankDropdown.parent, frame.views.roster)
+        test.assert_equal(frame.views.bank.bankDropdown.parent, frame.views.bank)
+        test.assert_equal(frame.logo.parent, frame.header)
+        test.assert_equal(
+            frame.logo.texture,
+            "Interface\\AddOns\\RGMS\\assets\\rgms-logo.png"
+        )
         test.assert_false(frame.resizable)
         test.assert_nil(harness.database.ui.windowPosition)
         test.assert_equal(frame.views.roster.text.text, "No roster data yet")
@@ -521,6 +532,9 @@ return {
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
         test.assert_true(view.mainsAltsLines[1].noteButton:IsShown())
+        test.assert_equal(view.mainsAltsHeader.note.justifyH, "CENTER")
+        test.assert_equal(view.mainsAltsLines[1].noteButton.relativePoint, "RIGHT")
+        test.assert_equal(view.mainsAltsLines[1].noteButton.x, -196)
         test.assert_true(view.mainsAltsLines[1].hasNote)
         test.assert_true(view.mainsAltsLines[1].checkbox:IsShown())
         test.assert_true(view.mainsAltsLines[2].checkbox:IsShown())
@@ -556,6 +570,8 @@ return {
         test.assert_true(view.mainsAltsLines[2].promoteButton:IsShown())
         test.assert_true(view.mainsAltsLines[2].removeButton:IsShown())
         test.assert_true(view.mainsAltsLines[2].noteButton:IsShown())
+        test.assert_equal(view.mainsAltsLines[2].noteButton.relativePoint, "RIGHT")
+        test.assert_equal(view.mainsAltsLines[2].noteButton.x, -196)
         test.assert_false(view.mainsAltsLines[2].hasNote)
         test.assert_equal(view.mainsAltsLines[3].name.text, "AltB-Area52")
         test.assert_equal(view.mainsAltsLines[4].name.text, "Solo-Area52")
@@ -607,10 +623,11 @@ return {
         test.assert_false(view.mainsAltsLines[4].frame:IsShown())
     end),
 
-    test.case("Mains/Alts mutation scrolling waits for the final report and eases to a clamped row", function()
+    test.case("Mains/Alts mutation scrolling waits for the final report and jumps to a clamped row", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show("mainsalts")
+        harness.ui.SelectPrimaryTab("mainsalts")
         local view = harness.frame().views.mainsalts
         view.scrollFrame:SetHeight(72)
         local report = mainsAltsReport(10)
@@ -625,24 +642,13 @@ return {
         reordered.rows[5], reordered.rows[8] = reordered.rows[8], reordered.rows[5]
         harness.ui.SetMainsAltsReport(reordered)
         test.assert_nil(view.pendingMainsAltsScrollTarget)
-        test.assert_equal(view.mainsAltsScrollAnimation.destination, 100)
-        test.assert_equal(view.scrollChild:GetHeight(), 248)
-
-        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.0625)
-        local firstOffset = view.scrollFrame:GetVerticalScroll()
-        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.0625)
-        local secondOffset = view.scrollFrame:GetVerticalScroll()
-        test.assert_true(firstOffset > 0)
-        test.assert_true(firstOffset > secondOffset - firstOffset)
-        test.assert_true(secondOffset < 100)
-        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.125)
-        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 100)
         test.assert_nil(view.mainsAltsScrollAnimation)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 100)
+        test.assert_equal(view.scrollChild:GetHeight(), 248)
 
         harness.ui.CompleteMainsAltsChange("char10-area52")
         harness.ui.SetMainsAltsReport(report)
-        test.assert_equal(view.mainsAltsScrollAnimation.destination, 176)
-        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.25)
+        test.assert_nil(view.mainsAltsScrollAnimation)
         test.assert_equal(view.scrollFrame:GetVerticalScroll(), 176)
         test.assert_equal(view.scrollChild:GetHeight(), 248)
     end),
@@ -711,10 +717,63 @@ return {
         test.assert_equal(view.mainsAltsLines[3].identity, "alta-area52")
     end),
 
-    test.case("Mains/Alts animation retargets and user or lifecycle input cancels it", function()
+    test.case("Mains/Alts toggles keep the clicked main at the same visible row", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        harness.ui.SetMainsAltsReport({
+            rows = {
+                {
+                    identity = "first-area52",
+                    displayName = "First-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+                {
+                    identity = "second-area52",
+                    displayName = "Second-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+                {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    altCount = 2,
+                    alts = {
+                        { identity = "alta-area52", displayName = "AltA-Area52" },
+                        { identity = "altb-area52", displayName = "AltB-Area52" },
+                    },
+                },
+                {
+                    identity = "last-area52",
+                    displayName = "Last-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        })
+
+        test.assert_true(harness.ui.ToggleMainsAltsGroup("main-area52"))
+        view.scrollFrame:SetVerticalScroll(56)
+        local expandedMain = view.mainsAltsLines[3]
+        test.assert_equal(expandedMain.identity, "main-area52")
+        local relativeOffset = expandedMain.offset - view.scrollFrame:GetVerticalScroll()
+
+        test.assert_true(harness.ui.ToggleMainsAltsGroup("main-area52"))
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 56)
+        test.assert_equal(view.mainsAltsLines[3].offset - 56, relativeOffset)
+
+        test.assert_true(harness.ui.ToggleMainsAltsGroup("main-area52"))
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 56)
+        test.assert_equal(view.mainsAltsLines[3].offset - 56, relativeOffset)
+    end),
+
+    test.case("Mains/Alts target scrolling is immediate and lifecycle input remains stable", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show("mainsalts")
+        harness.ui.SelectPrimaryTab("mainsalts")
         local view = harness.frame().views.mainsalts
         view.scrollFrame:SetHeight(72)
         local report = mainsAltsReport(10)
@@ -723,22 +782,20 @@ return {
         local function start(identity)
             harness.ui.CompleteMainsAltsChange(identity)
             harness.ui.SetMainsAltsReport(report)
-            test.assert_not_nil(view.mainsAltsScrollAnimation)
+            test.assert_nil(view.mainsAltsScrollAnimation)
         end
 
         start("char08-area52")
-        view.scrollFrame.scripts.OnUpdate(view.scrollFrame, 0.1)
         local retargetOffset = view.scrollFrame:GetVerticalScroll()
         harness.ui.CompleteMainsAltsChange("char04-area52")
         test.assert_nil(view.mainsAltsScrollAnimation)
         harness.ui.SetMainsAltsReport(report)
-        test.assert_equal(view.mainsAltsScrollAnimation.startOffset, retargetOffset)
-        test.assert_equal(view.mainsAltsScrollAnimation.destination, 76)
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 76)
 
         view.scrollFrame.scripts.OnMouseWheel(view.scrollFrame, -1)
         test.assert_nil(view.mainsAltsScrollAnimation)
         local wheelOffset = view.scrollFrame:GetVerticalScroll()
-        test.assert_true(wheelOffset > retargetOffset)
+        test.assert_true(wheelOffset > 76)
 
         start("char08-area52")
         view.scrollFrame.scripts.OnVerticalScroll(view.scrollFrame, 25)
@@ -971,7 +1028,7 @@ return {
         test.assert_true(frame.views.roster.rosterReport == rosterReport)
         test.assert_true(frame.views.roster.rosterLines[1].frame:IsShown())
         test.assert_true(frame.views.bank.bankReport == bankReport)
-        test.assert_true(frame.views.bank.bankTitle:IsShown())
+        test.assert_true(frame.views.bank.bankMessage:IsShown())
 
         harness.ui.SetRosterScanInProgress(false)
         harness.ui.SetViewStatus("roster", "Last successful update: prior")
@@ -980,7 +1037,7 @@ return {
         test.assert_true(frame.views.roster.rosterReport == rosterReport)
         test.assert_true(frame.views.roster.rosterLines[1].frame:IsShown())
         test.assert_true(frame.views.bank.bankReport == bankReport)
-        test.assert_true(frame.views.bank.bankTitle:IsShown())
+        test.assert_true(frame.views.bank.bankMessage:IsShown())
     end),
 
     test.case("bank tabs render access state rows stale styling tooltips and links", function()
@@ -1041,11 +1098,19 @@ return {
         local view = harness.frame().views.bank
         test.assert_equal(view.bankTabButtons[1].text, "   Materials")
         test.assert_equal(view.bankTabButtons[1].icon.texture, 9001)
-        test.assert_equal(view.bankTitle.text, "Last accessible: 2024-06-22 09:30 PT")
+        test.assert_equal(view.bankDropdown.label.text, "Materials")
+        test.assert_equal(view.bankDropdown.icon.texture, 9001)
         test.assert_equal(view.bankRows[1].item.text, "Ancient Cloth")
-        test.assert_equal(view.bankRows[1].tab.text, "Materials")
+        test.assert_nil(view.bankRows[1].tab)
         test.assert_equal(view.bankRows[1].slot.text, "4")
+        test.assert_equal(view.bankRows[1].slot.parent, view.bankRows[1].slotCell)
+        test.assert_equal(view.bankRows[1].slotCell:GetWidth(), 56)
+        test.assert_equal(view.bankHeader.slot.justifyH, "CENTER")
+        test.assert_equal(view.bankRows[1].slot.justifyH, "CENTER")
         test.assert_equal(view.bankRows[1].count.text, "20")
+        test.assert_equal(view.bankHeader.count.justifyH, "CENTER")
+        test.assert_equal(view.bankRows[1].count.justifyH, "CENTER")
+        test.assert_equal(view.bankRows[1].count:GetWidth(), 64)
         test.assert_equal(view.bankRows[1].stable.text, "2024-06-01")
         test.assert_equal(view.bankRows[1].age.text, "|cffff555521 days|r")
 
@@ -1060,16 +1125,16 @@ return {
         view.bankTabButtons[2].scripts.OnClick()
         test.assert_equal(view.selectedBankTabIndex, 2)
         test.assert_equal(view.bankMessage.text, "|cffff5555No access|r")
-        test.assert_equal(view.bankTitle.text, "Last accessible: 2024-06-20 08:00 PT")
+        test.assert_equal(view.bankDropdown.label.text, "Restricted")
         test.assert_false(view.bankRows[1].frame:IsShown())
 
         view.bankTabButtons[3].scripts.OnClick()
         test.assert_equal(view.bankMessage.text, "|cffff5555No access|r")
-        test.assert_equal(view.bankTitle.text, "No successful access yet")
+        test.assert_equal(view.bankDropdown.label.text, "Never Seen")
 
         view.bankTabButtons[4].scripts.OnClick()
         test.assert_equal(view.bankMessage.text, "|cff888888No occupied slots|r")
-        test.assert_equal(view.bankTitle.text, "Last accessible: 2024-06-22 09:35 PT")
+        test.assert_equal(view.bankDropdown.label.text, "Empty")
     end),
 
     test.case("large bank tab and inventory lists scroll inside the fixed view", function()
@@ -1111,7 +1176,7 @@ return {
         test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
     end),
 
-    test.case("closing RGMS cancels a bank scan without clearing bank content", function()
+    test.case("closing RGMS preserves a bank scan and committed bank content", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.SetViewContent("bank", "Previously committed bank report")
@@ -1119,7 +1184,7 @@ return {
 
         harness.frame().closeButton.scripts.OnClick()
 
-        test.assert_equal(harness.bankCancellations(), 1)
+        test.assert_equal(harness.bankCancellations(), 0)
         test.assert_equal(
             harness.frame().views.bank.text.text,
             "Previously committed bank report"
@@ -1148,13 +1213,13 @@ return {
         test.assert_true(harness.ui.SetRosterReport(report))
         local view = harness.frame().views.roster
         test.assert_equal(view.rankButtons[1].text, "Guild Master")
-        test.assert_equal(view.rankButtons[2].text, "Trial (Rank 7)")
+        test.assert_equal(view.rankButtons[2].text, "Trial")
         local tableText = rosterTableText(view)
         test.assert_matches(tableText, "Current%-Example Realm")
         test.assert_matches(tableText, "5 hours ago")
         test.assert_matches(tableText, "12 days")
         test.assert_false(string.find(tableText, " | ", 1, true) ~= nil)
-        local memberLine = view.rosterLines[4]
+        local memberLine = view.rosterLines[2]
         test.assert_equal(memberLine.primary.text, "Current-Example Realm")
         test.assert_equal(memberLine.secondary.text, "5 hours ago")
         test.assert_equal(memberLine.tertiary.text, "12 days")
@@ -1166,7 +1231,7 @@ return {
         test.assert_equal(select(2, string.gsub(tableText, EMPTY_TEXT, "")), 4)
     end),
 
-    test.case("missing roster rows show a warning with the standard hover tooltip", function()
+    test.case("missing roster rows show a warning with the RGMS hover tooltip", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local first = rosterRank(1, "Guild Master")
@@ -1188,8 +1253,8 @@ return {
 
         test.assert_true(harness.ui.SetRosterReport({ ranks = { first } }))
         local view = harness.frame().views.roster
-        local currentLine = view.rosterLines[4]
-        local missingLine = view.rosterLines[5]
+        local currentLine = view.rosterLines[2]
+        local missingLine = view.rosterLines[3]
 
         test.assert_false(currentLine.warningIndicator:IsShown())
         test.assert_true(missingLine.warningIndicator:IsShown())
@@ -1199,17 +1264,14 @@ return {
         )
 
         missingLine.warningIndicator.scripts.OnEnter()
-        test.assert_true(harness.tooltip.shown)
-        test.assert_equal(harness.tooltip.owner, missingLine.warningIndicator)
-        test.assert_equal(harness.tooltip.anchor, "ANCHOR_RIGHT")
-        test.assert_equal(harness.tooltip.lines, {
-            "Missing roster member",
-            "Not found in the current successful roster snapshot.",
-            "Last appeared (Pacific): 2024-05-22",
-        })
+        local tooltip = harness.frame().ownedTooltip
+        test.assert_true(tooltip:IsShown())
+        test.assert_true(tooltip.owner == missingLine.warningIndicator)
+        test.assert_equal(tooltip.title.text, "Missing roster member")
+        test.assert_matches(tooltip.body.text, "Last appeared %(Pacific%): 2024%-05%-22")
 
         missingLine.warningIndicator.scripts.OnLeave()
-        test.assert_false(harness.tooltip.shown)
+        test.assert_false(tooltip:IsShown())
 
         local otherOwner = {}
         harness.tooltip.owner = otherOwner
@@ -1227,8 +1289,9 @@ return {
             isMissing = false,
         }
         test.assert_true(harness.ui.SetRosterReport({ ranks = { reappeared } }))
-        test.assert_false(view.rosterLines[4].warningIndicator:IsShown())
-        test.assert_false(harness.tooltip.shown)
+        test.assert_false(view.rosterLines[2].warningIndicator:IsShown())
+        test.assert_false(tooltip:IsShown())
+        test.assert_true(harness.tooltip.shown)
     end),
 
     test.case("long rank and member lists scroll inside the fixed roster view", function()
@@ -1345,6 +1408,73 @@ return {
         local selected, message = harness.ui.SelectPrimaryTab("settings")
         test.assert_nil(selected)
         test.assert_matches(message, "mainsalts")
+        test.assert_equal(harness.ui.selectedTab, "roster")
+    end),
+
+    test.case("numeric dropdown selections persist rename fallback and empty states", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local ranks = {
+            rosterRank(3, "Officer"),
+            rosterRank(7, "Officer"),
+        }
+        test.assert_true(harness.ui.SetRosterReport({ ranks = ranks }))
+        test.assert_true(harness.ui.SelectRosterRank(7))
+        test.assert_equal(harness.database.ui.selectedRosterRankIndex, 7)
+        ranks[2].name = "Renamed"
+        test.assert_true(harness.ui.SetRosterReport({ ranks = ranks }))
+        test.assert_equal(harness.frame().views.roster.selectedRankIndex, 7)
+        test.assert_equal(harness.frame().views.roster.rankDropdown.label.text, "Renamed")
+
+        harness.database.ui.selectedBankTabIndex = 99
+        test.assert_true(harness.ui.SetBankReport({ tabs = {
+            { index = 5, name = "Fifth", icon = 5, isViewable = false, rows = {} },
+            { index = 2, name = "Second", icon = 2, isViewable = false, rows = {} },
+        } }))
+        test.assert_equal(harness.frame().views.bank.selectedBankTabIndex, 2)
+        test.assert_equal(harness.database.ui.selectedBankTabIndex, 2)
+
+        test.assert_true(harness.ui.SetRosterReport({ ranks = {} }))
+        test.assert_equal(harness.frame().views.roster.rankDropdown.label.text, "No ranks")
+        test.assert_false(harness.frame().views.roster.rankDropdown:IsEnabled())
+        test.assert_true(harness.ui.SetBankReport({ tabs = {} }))
+        test.assert_equal(harness.frame().views.bank.bankDropdown.label.text, "No bank tabs")
+        test.assert_false(harness.frame().views.bank.bankDropdown:IsEnabled())
+    end),
+
+    test.case("global scan lock blocks the portal discards note drafts and leaves close available", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show()
+        test.assert_true(harness.ui.OpenCharacterNote(
+            "hero-area52",
+            "Hero-Area52",
+            "unsaved",
+            false
+        ))
+        test.assert_true(harness.frame().notesEditor:IsShown())
+
+        test.assert_true(harness.ui.SetGlobalScanLock(true))
+        test.assert_true(harness.frame().globalDimmer:IsShown())
+        test.assert_false(harness.frame().notesEditor:IsShown())
+        for _, tabId in ipairs({ "roster", "mainsalts", "bank" }) do
+            local spinner = harness.frame().views[tabId].spinner
+            test.assert_true(spinner:IsShown())
+            test.assert_equal(spinner.label.text, "Scanning...")
+        end
+        local selected, reason = harness.ui.SelectPrimaryTab("bank")
+        test.assert_nil(selected)
+        test.assert_equal(reason, "scan-locked")
+        harness.frame().dragHandle.scripts.OnDragStart()
+        test.assert_false(harness.frame().moving == true)
+        harness.frame().closeButton.scripts.OnClick()
+        test.assert_false(harness.ui.IsShown())
+
+        test.assert_true(harness.ui.SetGlobalScanLock(false))
+        for _, tabId in ipairs({ "roster", "mainsalts", "bank" }) do
+            test.assert_false(harness.frame().views[tabId].spinner:IsShown())
+        end
+        harness.ui.Show("bank")
         test.assert_equal(harness.ui.selectedTab, "roster")
     end),
 }

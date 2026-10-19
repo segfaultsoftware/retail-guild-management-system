@@ -353,6 +353,14 @@ if type(Roster.Scanner) ~= "table"
             )
         end,
         canScan = Roster.CanScan,
+        isScanLocked = RGMS.IsScanLocked,
+        beginScan = function()
+            return RGMS.BeginScan("roster")
+        end,
+        endScan = function()
+            return RGMS.EndScan("roster")
+        end,
+        rejectConcurrentScan = RGMS.RejectConcurrentScan,
         print = RGMS.Print,
         setInProgress = function(inProgress)
             if type(RGMS.UI) == "table"

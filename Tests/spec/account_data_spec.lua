@@ -444,6 +444,8 @@ return {
             completedRoster(other, "Other")
         ))
         local character = fixtures.saved_model()
+        character.ui.selectedRosterRankIndex = 3
+        character.ui.selectedBankTabIndex = 2
         local originalPosition = character.ui.windowPosition
         local controller = reset.create({
             savedData = savedData,
@@ -468,6 +470,8 @@ return {
             "Other"
         )
         test.assert_true(character.ui.windowPosition == originalPosition)
+        test.assert_nil(character.ui.selectedRosterRankIndex)
+        test.assert_nil(character.ui.selectedBankTabIndex)
         test.assert_equal(character.roster.members[1].name, "Aeloria")
     end),
 

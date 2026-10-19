@@ -119,7 +119,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 7,
+        schemaVersion = 8,
         roster = {
             guild = guild,
             scannedAt = timestamp,

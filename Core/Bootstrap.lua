@@ -2,6 +2,7 @@ local addonName, RGMS = ...
 
 RGMS.name = addonName
 RGMS.DebugEnabled = false
+RGMS.PortalState = type(RGMS.Portal) == "table" and RGMS.Portal.create() or nil
 
 function RGMS.Print(message)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RGMS|r: " .. message)
@@ -21,6 +22,43 @@ end
 function RGMS.ToggleDebug()
     RGMS.DebugEnabled = not RGMS.DebugEnabled
     return RGMS.DebugEnabled
+end
+
+function RGMS.IsScanLocked()
+    return type(RGMS.PortalState) == "table" and RGMS.PortalState:isLocked()
+end
+
+function RGMS.BeginScan(owner)
+    if type(RGMS.PortalState) ~= "table" then
+        return true
+    end
+    local admitted = RGMS.PortalState:beginScan(owner)
+    if not admitted then
+        RGMS.Print("Scan already in progress")
+        return nil, "scan-in-progress"
+    end
+    if type(RGMS.UI) == "table"
+        and type(RGMS.UI.SetGlobalScanLock) == "function" then
+        RGMS.UI.SetGlobalScanLock(true)
+    end
+    return true
+end
+
+function RGMS.EndScan(owner)
+    if type(RGMS.PortalState) ~= "table" then
+        return true
+    end
+    local released = RGMS.PortalState:finishScan(owner)
+    if released and type(RGMS.UI) == "table"
+        and type(RGMS.UI.SetGlobalScanLock) == "function" then
+        RGMS.UI.SetGlobalScanLock(false)
+    end
+    return released
+end
+
+function RGMS.RejectConcurrentScan()
+    RGMS.Print("Scan already in progress")
+    return nil, "scan-in-progress"
 end
 
 local REGION_NAMES = {

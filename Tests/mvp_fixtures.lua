@@ -228,7 +228,7 @@ end
 
 function MvpFixtures.empty_model(windowPosition)
     return {
-        schemaVersion = 7,
+        schemaVersion = 8,
         roster = {
             ranks = {},
             members = {},
