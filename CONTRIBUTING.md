@@ -183,8 +183,11 @@ record; do not create a second release QA record.
 
 ## Dependencies, assets, and attribution
 
-RGMS currently bundles no third-party libraries, code, fonts, icons, textures,
-audio, or other assets. WoW Retail APIs are platform APIs, not bundled project
+RGMS bundles LibDBIcon-1.0 and its minimal runtime dependencies: LibStub,
+CallbackHandler-1.0, and LibDataBroker-1.1. Their versions, source, license, and
+included files are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+RGMS otherwise bundles no third-party code, fonts, icons, textures, audio, or
+other assets. WoW Retail APIs are platform APIs, not bundled project
 dependencies. The test runner and fixtures are project-owned source.
 
 Before adding a dependency or asset:

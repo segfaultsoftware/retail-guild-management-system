@@ -124,6 +124,7 @@ or partially supported features.
 ## License
 
 RGMS is available under the [MIT License](LICENSE). Copyright is held by
-`segfaultsoftware`. The project currently bundles no third-party libraries or
-assets; dependency and attribution rules are documented in
+`segfaultsoftware`. The bundled minimap libraries and their licenses are
+documented in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md); dependency and
+attribution rules are documented in
 [`CONTRIBUTING.md`](CONTRIBUTING.md#dependencies-assets-and-attribution).

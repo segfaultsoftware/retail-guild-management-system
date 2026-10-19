@@ -9,9 +9,9 @@ local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
-AccountData.CURRENT_SCHEMA_VERSION = 2
+AccountData.CURRENT_SCHEMA_VERSION = 3
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
-AccountData.DEFAULT_MINIMAP_ANGLE = 225
+AccountData.DEFAULT_MINIMAP_POSITION = 225
 
 local function characterCount(value)
     local withoutContinuationBytes = string.gsub(value, "[\128-\191]", "")
@@ -172,7 +172,7 @@ function AccountData.newModel()
     return {
         schemaVersion = AccountData.CURRENT_SCHEMA_VERSION,
         settings = {
-            minimapAngle = AccountData.DEFAULT_MINIMAP_ANGLE,
+            minimapPos = AccountData.DEFAULT_MINIMAP_POSITION,
         },
         guilds = {},
     }
@@ -214,18 +214,18 @@ function AccountData.validate(model)
         return nil, "account data.settings must be a table"
     end
     for key in pairs(model.settings) do
-        if key ~= "minimapAngle" then
+        if key ~= "minimapPos" then
             return nil, "account data.settings contains unexpected field " .. tostring(key)
         end
     end
-    local minimapAngle = model.settings.minimapAngle
-    if type(minimapAngle) ~= "number"
-        or minimapAngle ~= minimapAngle
-        or minimapAngle == math.huge
-        or minimapAngle == -math.huge
-        or minimapAngle < 0
-        or minimapAngle >= 360 then
-        return nil, "account data.settings.minimapAngle must be at least 0 and less than 360"
+    local minimapPos = model.settings.minimapPos
+    if type(minimapPos) ~= "number"
+        or minimapPos ~= minimapPos
+        or minimapPos == math.huge
+        or minimapPos == -math.huge
+        or minimapPos < 0
+        or minimapPos >= 360 then
+        return nil, "account data.settings.minimapPos must be at least 0 and less than 360"
     end
 
     for key, guild in pairs(model.guilds) do
@@ -354,7 +354,43 @@ function AccountData.load(saved)
         migratedFrom = 1
         working.schemaVersion = 2
         working.settings = {
-            minimapAngle = AccountData.DEFAULT_MINIMAP_ANGLE,
+            minimapAngle = AccountData.DEFAULT_MINIMAP_POSITION,
+        }
+    end
+    if working.schemaVersion == 2 then
+        if type(working.settings) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.settings must be a table",
+                saved
+            )
+        end
+        for key in pairs(working.settings) do
+            if key ~= "minimapAngle" then
+                return disabledState(
+                    "corrupt",
+                    "account data.settings contains unexpected field " .. tostring(key),
+                    saved
+                )
+            end
+        end
+        local minimapAngle = working.settings.minimapAngle
+        if type(minimapAngle) ~= "number"
+            or minimapAngle ~= minimapAngle
+            or minimapAngle == math.huge
+            or minimapAngle == -math.huge
+            or minimapAngle < 0
+            or minimapAngle >= 360 then
+            return disabledState(
+                "corrupt",
+                "account data.settings.minimapAngle must be at least 0 and less than 360",
+                saved
+            )
+        end
+        migratedFrom = migratedFrom or 2
+        working.schemaVersion = 3
+        working.settings = {
+            minimapPos = minimapAngle,
         }
     end
     local valid, validationError = AccountData.validate(working)

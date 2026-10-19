@@ -1,130 +1,148 @@
-local minimap = require("Core.Minimap")
 local test = require("Tests.lib.runner")
 
-local function assertNear(actual, expected)
-    test.assert_true(math.abs(actual - expected) < 0.001)
-end
+local function loadHarness(options)
+    options = options or {}
+    local previousLibStub = _G.LibStub
+    local previousAccount = RGMSAccountDB
+    local registrations = {}
+    local dataObjects = {}
+    local button = {}
 
-local function newRegion()
-    local region = {}
-    for _, method in ipairs({ "SetSize", "SetPoint", "SetTexture", "SetTexCoord" }) do
-        region[method] = function(self, ...)
-            self[method] = { ... }
-        end
+    local dataBroker = {
+        NewDataObject = function(_, name, object)
+            dataObjects[#dataObjects + 1] = { name = name, object = object }
+            return object
+        end,
+    }
+    local dbIcon = {
+        Register = function(_, name, object, settings)
+            registrations[#registrations + 1] = {
+                name = name,
+                object = object,
+                settings = settings,
+            }
+        end,
+        GetMinimapButton = function()
+            return button
+        end,
+    }
+    local libraries = {
+        ["LibDataBroker-1.1"] = dataBroker,
+        ["LibDBIcon-1.0"] = dbIcon,
+    }
+    if options.withoutDataBroker then
+        libraries["LibDataBroker-1.1"] = nil
     end
-    return region
+    if options.withoutDBIcon then
+        libraries["LibDBIcon-1.0"] = nil
+    end
+    _G.LibStub = {
+        GetLibrary = function(_, name)
+            return libraries[name]
+        end,
+    }
+
+    local accountModel = {
+        settings = { minimapPos = 225 },
+    }
+    local toggles = {}
+    local fakeRGMS = {
+        AccountDataState = {
+            enabled = true,
+            model = accountModel,
+        },
+        UI = {
+            Toggle = function(tabId)
+                toggles[#toggles + 1] = tabId
+            end,
+        },
+    }
+    RGMSAccountDB = accountModel
+
+    local chunk = assert(loadfile("Core/Minimap.lua"))
+    local minimap = chunk("RGMS", fakeRGMS)
+
+    return {
+        accountModel = accountModel,
+        button = button,
+        dataObjects = dataObjects,
+        minimap = minimap,
+        registrations = registrations,
+        restore = function()
+            _G.LibStub = previousLibStub
+            RGMSAccountDB = previousAccount
+        end,
+        toggles = toggles,
+    }
 end
 
 return {
-    test.case("minimap geometry converts angles and cursor points", function()
-        local x, y = minimap.positionForAngle(0, 80)
-        assertNear(x, 80)
-        assertNear(y, 0)
+    test.case("LibDBIcon registration uses the account-wide settings table", function()
+        local harness = loadHarness()
 
-        x, y = minimap.positionForAngle(270, 80)
-        assertNear(x, 0)
-        assertNear(y, -80)
+        test.assert_true(harness.minimap.Initialize())
+        test.assert_true(harness.minimap.button == harness.button)
+        test.assert_equal(#harness.dataObjects, 1)
+        test.assert_equal(harness.dataObjects[1].name, "RGMS")
 
-        test.assert_equal(minimap.angleForPoint(0, 10), 90)
-        test.assert_equal(minimap.angleForPoint(-10, 0), 180)
-        test.assert_equal(minimap.angleForPoint(0, -10), 270)
-        assertNear(minimap.angleForPoint(10, -10), 315)
-    end),
-
-    test.case("button toggles RGMS and saves its dragged account-wide angle", function()
-        local previousCreateFrame = CreateFrame
-        local previousMinimap = _G.Minimap
-        local previousUIParent = UIParent
-        local previousCursor = GetCursorPosition
-        local previousTooltip = GameTooltip
-        local previousAccount = RGMSAccountDB
-        local button
-        local toggles = {}
-        local textures = {}
-
-        _G.Minimap = {
-            GetFrameLevel = function() return 2 end,
-            GetCenter = function() return 100, 100 end,
-        }
-        UIParent = {
-            GetEffectiveScale = function() return 2 end,
-        }
-        GetCursorPosition = function() return 200, 360 end
-        GameTooltip = {
-            SetOwner = function() end,
-            AddLine = function() end,
-            Show = function() end,
-            Hide = function() end,
-        }
-        CreateFrame = function()
-            button = {
-                scripts = {},
-                textures = {},
-                SetSize = function() end,
-                SetFrameStrata = function() end,
-                SetFrameLevel = function() end,
-                RegisterForClicks = function() end,
-                RegisterForDrag = function() end,
-                SetHighlightTexture = function() end,
-                ClearAllPoints = function() end,
-                SetPoint = function(self, ...)
-                    self.point = { ... }
-                end,
-                SetScript = function(self, event, handler)
-                    self.scripts[event] = handler
-                end,
-                CreateTexture = function(self)
-                    local texture = newRegion()
-                    self.textures[#self.textures + 1] = texture
-                    textures[#textures + 1] = texture
-                    return texture
-                end,
-            }
-            return button
-        end
-
-        local accountModel = {
-            settings = { minimapAngle = 225 },
-        }
-        local fakeRGMS = {
-            AccountDataState = {
-                enabled = true,
-                model = accountModel,
-            },
-            UI = {
-                Toggle = function(tabId)
-                    toggles[#toggles + 1] = tabId
-                end,
-            },
-        }
-        local chunk = assert(loadfile("Core/Minimap.lua"))
-        local loaded = chunk("RGMS", fakeRGMS)
-
-        test.assert_true(loaded.Initialize())
-        test.assert_equal(button.point[1], "CENTER")
-        test.assert_equal(button.point[2], _G.Minimap)
-        assertNear(button.point[4], -56.568542)
-        assertNear(button.point[5], -56.568542)
+        local object = harness.dataObjects[1].object
+        test.assert_equal(object.type, "launcher")
+        test.assert_equal(object.text, "RGMS")
+        test.assert_equal(object.label, "Retail Guild Management System")
         test.assert_equal(
-            textures[2].SetTexture[1],
+            object.icon,
             "Interface\\AddOns\\RGMS\\assets\\rgms-minimap-icon.png"
         )
+        test.assert_equal(object.iconCoords, { 0.03, 0.97, 0.12, 0.88 })
 
-        button.scripts.OnClick(button, "LeftButton")
-        button.scripts.OnClick(button, "RightButton")
-        test.assert_equal(toggles, { "roster" })
+        test.assert_equal(#harness.registrations, 1)
+        test.assert_equal(harness.registrations[1].name, "RGMS")
+        test.assert_true(harness.registrations[1].object == object)
+        test.assert_true(
+            harness.registrations[1].settings == harness.accountModel.settings
+        )
 
-        button.scripts.OnDragStart(button)
-        test.assert_equal(button.angle, 90)
-        button.scripts.OnDragStop(button)
-        test.assert_equal(accountModel.settings.minimapAngle, 90)
-        test.assert_true(RGMSAccountDB == accountModel)
+        harness.registrations[1].settings.minimapPos = 90
+        test.assert_equal(harness.accountModel.settings.minimapPos, 90)
+        test.assert_true(RGMSAccountDB == harness.accountModel)
 
-        CreateFrame = previousCreateFrame
-        _G.Minimap = previousMinimap
-        UIParent = previousUIParent
-        GetCursorPosition = previousCursor
-        GameTooltip = previousTooltip
-        RGMSAccountDB = previousAccount
+        test.assert_true(harness.minimap.Initialize())
+        test.assert_equal(#harness.registrations, 1)
+        harness.restore()
+    end),
+
+    test.case("broker callbacks toggle RGMS and populate the tooltip", function()
+        local harness = loadHarness()
+        test.assert_true(harness.minimap.Initialize())
+        local object = harness.dataObjects[1].object
+
+        object.OnClick(nil, "LeftButton")
+        object.OnClick(nil, "RightButton")
+        test.assert_equal(harness.toggles, { "roster" })
+
+        local lines = {}
+        object.OnTooltipShow({
+            AddLine = function(_, ...)
+                lines[#lines + 1] = { ... }
+            end,
+        })
+        test.assert_equal(lines[1][1], "Retail Guild Management System")
+        test.assert_equal(lines[2][1], "Left-click to open or close RGMS.")
+        test.assert_equal(lines[3][1], "Drag to reposition this button.")
+        harness.restore()
+    end),
+
+    test.case("initialization reports unavailable broker libraries", function()
+        local harness = loadHarness({ withoutDataBroker = true })
+        local initialized, message = harness.minimap.Initialize()
+        test.assert_nil(initialized)
+        test.assert_matches(message, "LibDataBroker")
+        harness.restore()
+
+        harness = loadHarness({ withoutDBIcon = true })
+        initialized, message = harness.minimap.Initialize()
+        test.assert_nil(initialized)
+        test.assert_matches(message, "LibDBIcon")
+        harness.restore()
     end),
 }
