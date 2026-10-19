@@ -24,6 +24,7 @@ $distributionFiles = @(
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "assets/rgms-minimap-icon.png"
 )
 

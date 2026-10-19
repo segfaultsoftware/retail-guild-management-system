@@ -45,7 +45,8 @@ release-critical checks in one command:
 - validate required manifest fields and every manifest-listed Lua file;
 - run the complete dependency-free Lua test suite before writing an artifact;
 - package only the manifest, its runtime Lua files, `README.md`,
-  `CHANGELOG.md`, and `LICENSE` under one top-level `RGMS` directory;
+  `CHANGELOG.md`, `LICENSE`, and `THIRD_PARTY_NOTICES.md` under one top-level
+  `RGMS` directory;
 - reject duplicate, missing, contributor-only, generated, metadata,
   credential, and secret-like archive paths;
 - compare every archived file with its verified source content;
@@ -186,9 +187,9 @@ command with the version being prepared.
 4. Confirm the inner ZIP's SHA-256 matches both the workflow summary and
    `candidate.json`. Inspect it: it must contain exactly one `RGMS/` root with
    `RGMS.toc`, all manifest-listed runtime Lua files, `README.md`,
-   `CHANGELOG.md`, and `LICENSE`. It must not contain `.github`, `.git`,
-   `.release`, `docs`, `scripts`, `Tests`, fixtures, caches, local tooling,
-   repository metadata, SavedVariables, or credentials.
+   `CHANGELOG.md`, `LICENSE`, and `THIRD_PARTY_NOTICES.md`. It must not contain
+   `.github`, `.git`, `.release`, `docs`, `scripts`, `Tests`, fixtures, caches,
+   local tooling, repository metadata, SavedVariables, or credentials.
 5. Replace the prepared QA record at the path shown in the workflow summary
    with `qa-record.md`. Its candidate commit, workflow run ID, automated result,
    package SHA-256, and evidence path are already populated. Do not copy or

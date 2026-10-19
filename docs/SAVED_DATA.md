@@ -14,13 +14,13 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 2
+## Account-wide schema: version 3
 
 ```text
 {
-  schemaVersion = 2,
+  schemaVersion = 3,
   settings = {
-    minimapAngle = number,
+    minimapPos = number,
   },
   guilds = {
     [GuildKey] = {
@@ -40,11 +40,12 @@ view and does not create, bind, replace, or erase an account guild partition.
 }
 ```
 
-`settings.minimapAngle` is a finite angle from 0 (inclusive) to 360
-(exclusive). It places the draggable RGMS button around the minimap and is
-shared by every character on the account. Version 1 account data migrates
-copy-on-write by adding the default angle of 225 degrees; the original table is
-left untouched if validation fails.
+`settings.minimapPos` is a finite angle from 0 (inclusive) to 360 (exclusive).
+LibDBIcon uses it to place the draggable RGMS button around the current minimap
+shape and size. The position is shared by every character on the account.
+Version 1 account data gains the default position of 225 degrees, and version 2
+renames `minimapAngle` to LibDBIcon's `minimapPos`; both migrations are
+copy-on-write, so the original table is left untouched if validation fails.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically

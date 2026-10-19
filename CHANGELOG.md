@@ -7,6 +7,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Fixed
+
+- The RGMS minimap button now uses LibDBIcon so it follows the active minimap's
+  size and shape and integrates with EllesmereUI and MinimapButtonButton.
+
 ### Changed
 
 - Release candidates and patch releases can now be built and promoted from

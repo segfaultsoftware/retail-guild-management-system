@@ -36,9 +36,9 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 2,
+            schemaVersion = 3,
             settings = {
-                minimapAngle = 225,
+                minimapPos = 225,
             },
             guilds = {},
         })
@@ -55,9 +55,9 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 2,
+            schemaVersion = 3,
             settings = {
-                minimapAngle = 225,
+                minimapPos = 225,
             },
             guilds = {},
         })
@@ -67,17 +67,56 @@ return {
         })
     end),
 
-    test.case("account data validates the saved minimap angle", function()
+    test.case("version 2 account data preserves its minimap position copy-on-write", function()
+        local original = {
+            schemaVersion = 2,
+            settings = { minimapAngle = 42 },
+            guilds = {},
+        }
+
+        local state = accountData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 2)
+        test.assert_equal(state.model, {
+            schemaVersion = 3,
+            settings = { minimapPos = 42 },
+            guilds = {},
+        })
+        test.assert_equal(original, {
+            schemaVersion = 2,
+            settings = { minimapAngle = 42 },
+            guilds = {},
+        })
+    end),
+
+    test.case("account data validates the saved LibDBIcon position", function()
         local model = accountData.newModel()
-        model.settings.minimapAngle = 359.5
+        model.settings.minimapPos = 359.5
         test.assert_true(accountData.validate(model))
 
         for _, angle in ipairs({ -1, 360, math.huge }) do
-            model.settings.minimapAngle = angle
+            model.settings.minimapPos = angle
             local valid, message = accountData.validate(model)
             test.assert_nil(valid)
-            test.assert_matches(message, "minimapAngle")
+            test.assert_matches(message, "minimapPos")
         end
+    end),
+
+    test.case("version 2 rejects an invalid minimap angle without changing input", function()
+        local original = {
+            schemaVersion = 2,
+            settings = { minimapAngle = 360 },
+            guilds = {},
+        }
+
+        local state = accountData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "minimapAngle")
+        test.assert_true(state.original == original)
+        test.assert_equal(original.settings.minimapAngle, 360)
     end),
 
     test.case("version 1 migration rejects unknown settings without changing input", function()
