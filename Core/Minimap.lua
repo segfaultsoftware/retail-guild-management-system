@@ -34,6 +34,20 @@ local function toggleRGMS(_, mouseButton)
 end
 
 local function showTooltip(tooltip)
+    if type(RGMS) == "table"
+        and type(RGMS.UI) == "table"
+        and type(RGMS.UI.ShowTooltip) == "function"
+        and MinimapButton.button ~= nil then
+        if type(tooltip.Hide) == "function" then
+            tooltip:Hide()
+        end
+        RGMS.UI.ShowTooltip(
+            MinimapButton.button,
+            DISPLAY_NAME,
+            "Left-click to open or close RGMS.\nDrag to reposition this button."
+        )
+        return
+    end
     if type(tooltip) ~= "table" or type(tooltip.AddLine) ~= "function" then
         return
     end
@@ -79,6 +93,13 @@ function MinimapButton.Initialize()
 
     MinimapButton.dataObject = dataObject
     MinimapButton.button = button
+    if type(button.HookScript) == "function"
+        and type(RGMS.UI) == "table"
+        and type(RGMS.UI.HideTooltip) == "function" then
+        button:HookScript("OnLeave", function()
+            RGMS.UI.HideTooltip(button)
+        end)
+    end
     return true
 end
 

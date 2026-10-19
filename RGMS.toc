@@ -17,6 +17,7 @@ Core\AccountData.lua
 Core\RosterMigration.lua
 Core\BankMigration.lua
 UI\Layout.lua
+UI\Portal.lua
 Core\Minimap.lua
 Core\Bootstrap.lua
 Core\Reset.lua

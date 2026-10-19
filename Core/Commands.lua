@@ -46,6 +46,10 @@ function Commands.handle(input, api)
     end
 
     if command == "reset" then
+        if type(api.IsScanLocked) == "function" and api.IsScanLocked() then
+            api.Print("Scan already in progress")
+            return
+        end
         api.Reset:requestManual()
         return
     end

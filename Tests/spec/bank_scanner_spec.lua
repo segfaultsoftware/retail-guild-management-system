@@ -124,6 +124,10 @@ local function newHarness(options)
         refreshStatus = function()
             refreshes = refreshes + 1
         end,
+        beginScan = options.beginScan,
+        isScanLocked = options.isScanLocked,
+        endScan = options.endScan,
+        rejectConcurrentScan = options.rejectConcurrentScan,
     })
 
     return {

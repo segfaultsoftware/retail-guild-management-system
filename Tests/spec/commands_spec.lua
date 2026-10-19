@@ -159,6 +159,16 @@ return {
         test.assert_equal(harness.messages, commands.HELP_LINES)
     end),
 
+    test.case("reset is rejected with exact wording while the global scan lock is held", function()
+        local harness = newCommandHarness()
+        harness.api.IsScanLocked = function() return true end
+
+        commands.handle("reset", harness.api)
+
+        test.assert_equal(harness.actions, {})
+        test.assert_equal(harness.messages, { "Scan already in progress" })
+    end),
+
     test.case("slash registration is restored when the command file reloads", function()
         local previousSlashCmdList = SlashCmdList
         local previousSlashName = SLASH_RGMS1

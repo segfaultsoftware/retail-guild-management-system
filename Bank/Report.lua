@@ -79,6 +79,15 @@ function Report.build(dataset, currentDate, dateTime)
     end)
 
     local result = { tabs = {} }
+    if dataset.scannedAt ~= nil then
+        local scannedAtText, formatError = dateTime.formatPacificTimestamp(
+            dataset.scannedAt.unixSeconds
+        )
+        if not scannedAtText then
+            return nil, formatError
+        end
+        result.scannedAtText = scannedAtText
+    end
     local projectedTabsByIndex = {}
     for _, tab in ipairs(orderedTabs) do
         local projected = {

@@ -6,7 +6,7 @@ local TAB_ORDER = { "roster", "mainsalts", "bank" }
 local TAB_TITLES = {
     roster = "Roster",
     mainsalts = "Mains/Alts",
-    bank = "Bank",
+    bank = "Guild Bank",
 }
 
 local INITIAL_COPY = {
@@ -15,37 +15,176 @@ local INITIAL_COPY = {
     bank = "No bank scan yet",
 }
 
-local RANK_TAB_WIDTH = 242
+local HEADER_HEIGHT = 56
+local SIDEBAR_WIDTH = 136
+local CONTENT_PADDING = 16
+local CONTROL_GAP = 8
+local RANK_TAB_WIDTH = 0
 local RANK_TAB_HEIGHT = 24
 local RANK_TAB_GAP = 3
 local ROSTER_CONTENT_GAP = 24
-local BANK_TAB_WIDTH = 200
+local BANK_TAB_WIDTH = 0
 local BANK_CONTENT_GAP = 18
 local BANK_TAB_HEIGHT = 28
 local BANK_TAB_GAP = 3
-local BANK_ROW_HEIGHT = 22
+local BANK_ROW_HEIGHT = 24
 local BANK_ICON_SIZE = 18
-local BANK_HEADER_HEIGHT = 22
-local BANK_TITLE_HEIGHT = 24
-local ROSTER_TITLE_HEIGHT = 26
-local ROSTER_GROUP_HEIGHT = 22
-local ROSTER_ROW_HEIGHT = 20
-local ROSTER_GROUP_GAP = 8
+local BANK_HEADER_HEIGHT = 28
+local BANK_TITLE_HEIGHT = 0
+local ROSTER_TITLE_HEIGHT = 0
+local ROSTER_GROUP_HEIGHT = 24
+local ROSTER_ROW_HEIGHT = 24
+local ROSTER_GROUP_GAP = 0
 local MAINS_ALTS_ROW_HEIGHT = 24
-local MAINS_ALTS_CHECKBOX_SIZE = 22
-local MAINS_ALTS_ALT_INDENT = 48
-local MAINS_ALTS_EXPAND_WIDTH = 28
-local MAINS_ALTS_PROMOTE_WIDTH = 48
-local MAINS_ALTS_REMOVE_WIDTH = 64
-local MAINS_ALTS_NOTE_SIZE = 20
+local MAINS_ALTS_CHECKBOX_SIZE = 16
+local MAINS_ALTS_ALT_INDENT = 64
+local MAINS_ALTS_EXPAND_WIDTH = 16
+local MAINS_ALTS_PROMOTE_WIDTH = 76
+local MAINS_ALTS_REMOVE_WIDTH = 68
+local MAINS_ALTS_NOTE_SIZE = 16
 local MAINS_ALTS_NOTE_GAP = 4
-local MAINS_ALTS_SCROLL_DURATION = 0.25
+local MAINS_ALTS_SCROLL_DURATION = 0
 local MAINS_ALTS_WHEEL_ROWS = 3
 local CHARACTER_NOTE_LIMIT = 5500
-local CHARACTER_NOTE_TEXTURE = "Interface\\Buttons\\UI-GuildButton-PublicNote-Up"
+local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
 local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
+local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8"
+local BORDER_TEXTURE = "Interface\\Tooltips\\UI-Tooltip-Border"
+local LOGO_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\rgms-logo.png"
+local CLOSE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\x.png"
+local CHEVRON_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\chevron-right.png"
+local FONT_REGULAR = "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-Regular.ttf"
+local FONT_SEMIBOLD = "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf"
+local PALETTE = type(RGMS.Portal) == "table" and RGMS.Portal.PALETTE or {
+    shell = { 0.059, 0.067, 0.082, 1 }, surface = { 0.094, 0.106, 0.129, 1 },
+    control = { 0.133, 0.149, 0.18, 1 }, border = { 0.204, 0.227, 0.275, 1 },
+    pink = { 0.925, 0.282, 0.6, 1 }, pinkHover = { 0.957, 0.447, 0.714, 1 }, text = { 0.957, 0.957, 0.961, 1 },
+    secondary = { 0.631, 0.631, 0.667, 1 }, disabled = { 0.443, 0.443, 0.478, 1 },
+    error = { 0.973, 0.443, 0.443, 1 },
+}
+
+local function unpackColor(color)
+    return color[1], color[2], color[3], color[4]
+end
+
+local function setFont(region, path, size)
+    if region and type(region.SetFont) == "function" then
+        region:SetFont(path, size, "")
+    end
+end
+
+local function setTextColor(region, color)
+    if region and type(region.SetTextColor) == "function" then
+        region:SetTextColor(unpackColor(color))
+    end
+end
+
+local function flatBackdrop(frame, color, borderColor)
+    if type(frame.SetBackdrop) ~= "function" then
+        return
+    end
+    frame:SetBackdrop({
+        bgFile = WHITE_TEXTURE,
+        edgeFile = BORDER_TEXTURE,
+        tile = false,
+        edgeSize = 8,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    frame:SetBackdropColor(unpackColor(color))
+    if type(frame.SetBackdropBorderColor) == "function" then
+        frame:SetBackdropBorderColor(unpackColor(borderColor or PALETTE.border))
+    end
+end
+
+local function styleButton(button, kind, height)
+    if not button then
+        return
+    end
+    button:SetHeight(height or 32)
+    local background = kind == "primary" and PALETTE.pink or PALETTE.control
+    flatBackdrop(button, background, kind == "danger" and PALETTE.error or PALETTE.border)
+    if type(button.GetFontString) == "function" then
+        local label = button:GetFontString()
+        setFont(label, FONT_SEMIBOLD, 12)
+        setTextColor(label, kind == "danger" and PALETTE.error or PALETTE.text)
+    end
+    button:SetScript("OnEnter", function(self)
+        if self:IsEnabled() and type(self.SetBackdropColor) == "function" then
+            self:SetBackdropColor(unpackColor(kind == "primary" and PALETTE.pinkHover or PALETTE.border))
+        end
+    end)
+    button:SetScript("OnLeave", function(self)
+        if type(self.SetBackdropColor) == "function" then
+            self:SetBackdropColor(unpackColor(background))
+        end
+    end)
+    button:SetScript("OnMouseDown", function(self)
+        if self:IsEnabled() and type(self.SetBackdropColor) == "function" then
+            local pressed = kind == "primary" and PALETTE.pinkHover or PALETTE.shell
+            self:SetBackdropColor(unpackColor(pressed))
+        end
+    end)
+    button:SetScript("OnMouseUp", function(self)
+        if type(self.SetBackdropColor) == "function" then
+            self:SetBackdropColor(unpackColor(background))
+        end
+    end)
+end
+
+local function styleScrollFrame(scrollFrame)
+    local scrollBar = scrollFrame and (scrollFrame.ScrollBar or scrollFrame.scrollBar)
+    if not scrollBar then
+        return
+    end
+    if type(scrollBar.SetWidth) == "function" then
+        scrollBar:SetWidth(8)
+    end
+    for _, button in ipairs({
+        scrollBar.ScrollUpButton,
+        scrollBar.ScrollDownButton,
+        scrollBar.Back,
+        scrollBar.Forward,
+    }) do
+        if button and type(button.Hide) == "function" then
+            button:Hide()
+        end
+    end
+    local thumb = scrollBar.ThumbTexture
+        or (type(scrollBar.GetThumbTexture) == "function" and scrollBar:GetThumbTexture())
+    if thumb then
+        thumb:SetTexture(WHITE_TEXTURE)
+        thumb:SetVertexColor(unpackColor(PALETTE.border))
+    end
+end
+
+local showOwnedTooltip
+local hideOwnedTooltip
+
+local function attachTruncationTooltip(parent, textRegion)
+    local hitbox = CreateFrame("Button", nil, parent)
+    hitbox:SetAllPoints(textRegion)
+    hitbox:SetScript("OnEnter", function(button)
+        if type(textRegion.IsTruncated) == "function" and textRegion:IsTruncated() then
+            showOwnedTooltip(button, "Full value", textRegion:GetText())
+        end
+    end)
+    hitbox:SetScript("OnLeave", function(button)
+        hideOwnedTooltip(button)
+    end)
+    return hitbox
+end
+
+local function enableRowHover(line)
+    line.frame:EnableMouse(true)
+    line.frame:SetScript("OnEnter", function()
+        line.background:SetVertexColor(unpackColor(PALETTE.control))
+    end)
+    line.frame:SetScript("OnLeave", function()
+        line.background:SetVertexColor(unpackColor(line.baseColor or PALETTE.surface))
+    end)
+end
 
 local function characterCount(value)
     if type(strlenutf8) == "function" then
@@ -162,7 +301,14 @@ local function layoutRosterLines(view, availableWidth)
     local lastOnlineWidth = math.floor(availableWidth * 0.3)
     local tenureWidth = availableWidth - nameWidth - lastOnlineWidth
 
+    local lines = {}
+    if view.rosterHeader then
+        lines[#lines + 1] = view.rosterHeader
+    end
     for _, line in ipairs(view.rosterLines) do
+        lines[#lines + 1] = line
+    end
+    for _, line in ipairs(lines) do
         line.frame:SetWidth(availableWidth)
         line.primary:ClearAllPoints()
         line.secondary:ClearAllPoints()
@@ -212,24 +358,23 @@ local function layoutBankLines(view, availableWidth)
         return
     end
 
-    local tabWidth = 92
-    local slotWidth = 38
-    local countWidth = 48
-    local stableWidth = 88
-    local ageWidth = 60
+    local slotWidth = 56
+    local countWidth = 64
+    local stableWidth = 112
+    local ageWidth = 56
     local itemWidth = math.max(
         120,
-        availableWidth - tabWidth - slotWidth - countWidth - stableWidth - ageWidth
+        availableWidth - slotWidth - countWidth - stableWidth - ageWidth
     )
-    local usedWidth = itemWidth + tabWidth + slotWidth + countWidth + stableWidth + ageWidth
+    local usedWidth = itemWidth + slotWidth + countWidth + stableWidth + ageWidth
     if usedWidth > availableWidth then
         itemWidth = math.max(1, itemWidth - (usedWidth - availableWidth))
     end
 
     local function positionColumns(line)
         line.frame:SetWidth(availableWidth)
-        for _, field in ipairs({ "item", "tab", "slot", "count", "stable", "age" }) do
-            if line[field] then
+        for _, field in ipairs({ "item", "slot", "count", "stable", "age" }) do
+            if line[field] and not (field == "slot" and line.slotCell) then
                 line[field]:ClearAllPoints()
             end
         end
@@ -244,23 +389,29 @@ local function layoutBankLines(view, availableWidth)
                 "LEFT",
                 line.itemButton,
                 "LEFT",
-                BANK_ICON_SIZE + 4,
+                BANK_ICON_SIZE + 8,
                 0
             )
-            line.item:SetWidth(math.max(1, itemWidth - BANK_ICON_SIZE - 6))
+            line.item:SetWidth(math.max(1, itemWidth - BANK_ICON_SIZE - 10))
         else
             line.item:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
             line.item:SetWidth(itemWidth)
         end
-        line.tab:SetPoint("LEFT", line.frame, "LEFT", itemWidth, 0)
-        line.tab:SetWidth(tabWidth)
-        line.slot:SetPoint("LEFT", line.frame, "LEFT", itemWidth + tabWidth, 0)
-        line.slot:SetWidth(slotWidth)
+        if line.slotCell then
+            line.slotCell:ClearAllPoints()
+            line.slotCell:SetPoint("LEFT", line.frame, "LEFT", itemWidth, 0)
+            line.slotCell:SetSize(slotWidth, BANK_ROW_HEIGHT)
+            line.slot:ClearAllPoints()
+            line.slot:SetAllPoints(line.slotCell)
+        else
+            line.slot:SetPoint("LEFT", line.frame, "LEFT", itemWidth, 0)
+            line.slot:SetWidth(slotWidth)
+        end
         line.count:SetPoint(
             "LEFT",
             line.frame,
             "LEFT",
-            itemWidth + tabWidth + slotWidth,
+            itemWidth + slotWidth,
             0
         )
         line.count:SetWidth(countWidth)
@@ -268,7 +419,7 @@ local function layoutBankLines(view, availableWidth)
             "LEFT",
             line.frame,
             "LEFT",
-            itemWidth + tabWidth + slotWidth + countWidth,
+            itemWidth + slotWidth + countWidth,
             0
         )
         line.stable:SetWidth(stableWidth)
@@ -276,7 +427,7 @@ local function layoutBankLines(view, availableWidth)
             "LEFT",
             line.frame,
             "LEFT",
-            itemWidth + tabWidth + slotWidth + countWidth + stableWidth,
+            itemWidth + slotWidth + countWidth + stableWidth,
             0
         )
         line.age:SetWidth(ageWidth)
@@ -308,30 +459,20 @@ local function layoutMainsAltsLines(view, availableWidth)
                 "LEFT",
                 line.frame,
                 "LEFT",
-                MAINS_ALTS_ALT_INDENT,
+                56 + 16,
                 0
             )
             local maximumNameWidth = math.max(
                 1,
                 availableWidth
-                    - MAINS_ALTS_ALT_INDENT
-                    - MAINS_ALTS_PROMOTE_WIDTH
-                    - MAINS_ALTS_REMOVE_WIDTH
-                    - MAINS_ALTS_NOTE_SIZE
-                    - 16
+                    - 56 - 16 - 56 - 168
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
-            line.noteButton:SetPoint(
-                "LEFT",
-                line.name,
-                "RIGHT",
-                MAINS_ALTS_NOTE_GAP,
-                0
-            )
-            line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
+            line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
+            line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -4, 0)
             line.promoteButton:SetPoint(
                 "RIGHT",
                 line.removeButton,
@@ -341,35 +482,59 @@ local function layoutMainsAltsLines(view, availableWidth)
             )
         else
             line.checkbox:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
+            line.checkbox:SetPoint("CENTER", line.frame, "LEFT", 28, 0)
+            line.expandButton:SetPoint("LEFT", line.frame, "LEFT", 56, 0)
             line.name:SetPoint(
                 "LEFT",
                 line.frame,
                 "LEFT",
-                MAINS_ALTS_CHECKBOX_SIZE + 4,
+                56 + MAINS_ALTS_EXPAND_WIDTH + 4,
                 0
             )
             local maximumNameWidth = math.max(
                 1,
                 availableWidth
-                    - MAINS_ALTS_CHECKBOX_SIZE
-                    - MAINS_ALTS_EXPAND_WIDTH
-                    - MAINS_ALTS_NOTE_SIZE
-                    - 16
+                    - 56 - MAINS_ALTS_EXPAND_WIDTH - 4 - 56 - 168
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
-            line.noteButton:SetPoint(
-                "LEFT",
-                line.name,
-                "RIGHT",
-                MAINS_ALTS_NOTE_GAP,
-                0
-            )
-            line.expandButton:SetPoint("RIGHT", line.frame, "RIGHT", -2, 0)
+            line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
         end
     end
+end
+
+local function createMainsAltsHeader(view)
+    local frame = CreateFrame("Frame", nil, view, "BackdropTemplate")
+    flatBackdrop(frame, PALETTE.control, PALETTE.border)
+    frame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
+    frame:SetPoint("TOPRIGHT", view, "TOPRIGHT", -8, 0)
+    frame:SetHeight(28)
+    local selectText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    local characterText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    local noteText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    local actionsText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    selectText:SetPoint("LEFT", frame, "LEFT", 8, 0)
+    selectText:SetWidth(48)
+    characterText:SetPoint("LEFT", frame, "LEFT", 56, 0)
+    characterText:SetPoint("RIGHT", frame, "RIGHT", -224, 0)
+    noteText:SetPoint("RIGHT", frame, "RIGHT", -168, 0)
+    noteText:SetWidth(56)
+    actionsText:SetPoint("RIGHT", frame, "RIGHT", -8, 0)
+    actionsText:SetWidth(160)
+    selectText:SetText("Select")
+    characterText:SetText("Character")
+    noteText:SetText("Note")
+    actionsText:SetText("Actions")
+    for _, label in ipairs({ selectText, characterText, noteText, actionsText }) do
+        label:SetJustifyH("LEFT")
+        setFont(label, FONT_SEMIBOLD, 12)
+        setTextColor(label, PALETTE.text)
+    end
+    noteText:SetJustifyH("CENTER")
+    frame.note = noteText
+    view.mainsAltsHeader = frame
 end
 
 local function refreshScrollChild(view)
@@ -422,10 +587,33 @@ local function hideTooltipIfOwned(owner)
     end
 end
 
+showOwnedTooltip = function(owner, title, body)
+    if type(UI.ShowTooltip) == "function" then
+        UI.ShowTooltip(owner, title, body)
+        return
+    end
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(title)
+    if body and body ~= "" then
+        GameTooltip:AddLine(body, 1, 1, 1, true)
+    end
+    GameTooltip:Show()
+end
+
+hideOwnedTooltip = function(owner)
+    if type(UI.HideTooltip) == "function" then
+        UI.HideTooltip(owner)
+    end
+    hideTooltipIfOwned(owner)
+end
+
 local function hideRosterLines(view)
     for _, line in ipairs(view.rosterLines or {}) do
-        hideTooltipIfOwned(line.warningIndicator)
+        hideOwnedTooltip(line.warningIndicator)
         line.frame:Hide()
+    end
+    if view.rosterHeader then
+        view.rosterHeader.frame:Hide()
     end
     view.rosterTableHeight = nil
 end
@@ -437,6 +625,15 @@ local function acquireRosterLine(view, index)
     end
 
     local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local background = frame:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints(frame)
+    background:SetTexture(WHITE_TEXTURE)
+    local divider = frame:CreateTexture(nil, "BORDER")
+    divider:SetTexture(WHITE_TEXTURE)
+    divider:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    divider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    divider:SetHeight(1)
+    divider:SetVertexColor(unpackColor(PALETTE.border))
     local primary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     local secondary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     local tertiary = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -448,7 +645,7 @@ local function acquireRosterLine(view, index)
     warningIndicator:Hide()
     primary:SetJustifyH("LEFT")
     secondary:SetJustifyH("LEFT")
-    tertiary:SetJustifyH("LEFT")
+    tertiary:SetJustifyH("RIGHT")
     primary:SetJustifyV("MIDDLE")
     secondary:SetJustifyV("MIDDLE")
     tertiary:SetJustifyV("MIDDLE")
@@ -459,44 +656,71 @@ local function acquireRosterLine(view, index)
     end
     line = {
         frame = frame,
+        background = background,
         primary = primary,
         secondary = secondary,
         tertiary = tertiary,
         warningIndicator = warningIndicator,
     }
+    line.primaryHitbox = attachTruncationTooltip(frame, primary)
+    line.secondaryHitbox = attachTruncationTooltip(frame, secondary)
+    line.tertiaryHitbox = attachTruncationTooltip(frame, tertiary)
+    enableRowHover(line)
     warningIndicator:SetScript("OnEnter", function()
         if line.missingLastSeenDate == nil then
             return
         end
-        GameTooltip:SetOwner(warningIndicator, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Missing roster member", 1, 0.82, 0)
-        GameTooltip:AddLine(
-            "Not found in the current successful roster snapshot.",
-            1,
-            1,
-            1,
-            true
+        showOwnedTooltip(
+            warningIndicator,
+            "Missing roster member",
+            "Not found in the current successful roster snapshot.\nLast appeared (Pacific): "
+                .. line.missingLastSeenDate
         )
-        GameTooltip:AddLine(
-            "Last appeared (Pacific): " .. line.missingLastSeenDate,
-            1,
-            1,
-            1,
-            true
-        )
-        GameTooltip:Show()
     end)
     warningIndicator:SetScript("OnLeave", function()
-        hideTooltipIfOwned(warningIndicator)
+        hideOwnedTooltip(warningIndicator)
     end)
     view.rosterLines[index] = line
     return line
 end
 
+local function createRosterHeader(view)
+    if view.rosterHeader then
+        return view.rosterHeader
+    end
+    local frame = CreateFrame("Frame", nil, view, "BackdropTemplate")
+    local header = {
+        frame = frame,
+        primary = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        secondary = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        tertiary = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
+        warningIndicator = CreateFrame("Frame", nil, frame),
+        columns = true,
+        memberRow = false,
+    }
+    header.warningIndicator:Hide()
+    header.primary:SetText("Name-Realm")
+    header.secondary:SetText("Last online")
+    header.tertiary:SetText("Rank tenure")
+    for _, field in ipairs({ "primary", "secondary", "tertiary" }) do
+        header[field]:SetJustifyH(field == "tertiary" and "RIGHT" or "LEFT")
+        header[field]:SetJustifyV("MIDDLE")
+        setFont(header[field], FONT_SEMIBOLD, 12)
+        setTextColor(header[field], PALETTE.text)
+    end
+    flatBackdrop(frame, PALETTE.control, PALETTE.border)
+    frame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
+    frame:SetPoint("TOPRIGHT", view, "TOPRIGHT", -8, 0)
+    frame:SetHeight(28)
+    view.rosterHeader = header
+    return header
+end
+
 local function renderRosterRank(view, rank)
     view.text:Hide()
+    createRosterHeader(view).frame:Show()
     local lineIndex = 0
-    local offset = 4
+    local offset = 0
 
     local function addLine(
         height,
@@ -515,35 +739,40 @@ local function renderRosterRank(view, rank)
             and member.missingLastSeenDate
             or nil
         if line.missingLastSeenDate == nil then
-            hideTooltipIfOwned(line.warningIndicator)
+            hideOwnedTooltip(line.warningIndicator)
         end
         line.warningIndicator:SetShown(line.missingLastSeenDate ~= nil)
         line.frame:ClearAllPoints()
         line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
         line.frame:SetHeight(height)
+        local rowColor = member and ((lineIndex % 2 == 0) and PALETTE.zebra or PALETTE.surface)
+            or PALETTE.control
+        line.baseColor = rowColor
+        line.background:SetVertexColor(unpackColor(rowColor))
         line.primary:SetText(primary or "")
         line.secondary:SetText(secondary or "")
         line.tertiary:SetText(tertiary or "")
+        if member then
+            if type(line.primary.SetFontObject) == "function" then
+                line.primary:SetFontObject("GameFontHighlight")
+            end
+            setFont(line.secondary, FONT_REGULAR, 12)
+            setFont(line.tertiary, FONT_REGULAR, 12)
+        else
+            setFont(line.primary, FONT_SEMIBOLD, 12)
+        end
         line.frame:Show()
         offset = offset + height
     end
 
-    addLine(ROSTER_TITLE_HEIGHT, "|cffffd100" .. rank.name .. "|r")
     for groupIndex, group in ipairs(rank.groups) do
-        addLine(ROSTER_GROUP_HEIGHT, "|cffffd100" .. group.title .. "|r")
+        addLine(ROSTER_GROUP_HEIGHT, group.title)
         if #group.members == 0 then
             addLine(
                 ROSTER_ROW_HEIGHT,
                 "|cff888888" .. group.emptyText .. "|r"
             )
         else
-            addLine(
-                ROSTER_ROW_HEIGHT,
-                "|cffaaaaaaName-Realm|r",
-                "|cffaaaaaaLast online|r",
-                "|cffaaaaaaRank tenure|r",
-                true
-            )
             for _, member in ipairs(group.members) do
                 local dayLabel = member.tenureDays == 1 and "day" or "days"
                 addLine(
@@ -562,7 +791,7 @@ local function renderRosterRank(view, rank)
     end
 
     for index = lineIndex + 1, #view.rosterLines do
-        hideTooltipIfOwned(view.rosterLines[index].warningIndicator)
+        hideOwnedTooltip(view.rosterLines[index].warningIndicator)
         view.rosterLines[index].frame:Hide()
     end
     view.rosterTableHeight = offset + 4
@@ -584,6 +813,7 @@ end
 
 local function mainsAltsControlsEnabled(view)
     return UI.dataEnabled ~= false
+        and UI.globalScanLocked ~= true
         and view.mainsAltsAvailable ~= false
         and view.mainsAltsScanInProgress ~= true
 end
@@ -646,26 +876,41 @@ local function acquireMainsAltsLine(view, index)
     end
 
     local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local background = frame:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints(frame)
+    background:SetTexture(WHITE_TEXTURE)
+    local divider = frame:CreateTexture(nil, "BORDER")
+    divider:SetTexture(WHITE_TEXTURE)
+    divider:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    divider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    divider:SetHeight(1)
+    divider:SetVertexColor(unpackColor(PALETTE.border))
     local checkbox = CreateFrame(
         "CheckButton",
         nil,
         frame,
-        "UICheckButtonTemplate"
+        "BackdropTemplate"
     )
     checkbox:SetSize(MAINS_ALTS_CHECKBOX_SIZE, MAINS_ALTS_CHECKBOX_SIZE)
+    flatBackdrop(checkbox, PALETTE.control, PALETTE.border)
+    if type(checkbox.SetCheckedTexture) == "function" then
+        checkbox:SetCheckedTexture("Interface\\AddOns\\RGMS\\assets\\icons\\check.png")
+    end
+    if type(checkbox.SetHighlightTexture) == "function" then
+        checkbox:SetHighlightTexture(WHITE_TEXTURE, "ADD")
+    end
     local name = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     name:SetJustifyH("LEFT")
     name:SetJustifyV("MIDDLE")
     if type(name.SetWordWrap) == "function" then
         name:SetWordWrap(false)
     end
-    local expandButton = CreateFrame(
-        "Button",
-        nil,
-        frame,
-        "UIPanelButtonTemplate"
-    )
-    expandButton:SetSize(MAINS_ALTS_EXPAND_WIDTH, 20)
+    local expandButton = CreateFrame("Button", nil, frame)
+    expandButton:SetSize(MAINS_ALTS_EXPAND_WIDTH, 16)
+    local expandIcon = expandButton:CreateTexture(nil, "ARTWORK")
+    expandIcon:SetAllPoints(expandButton)
+    expandIcon:SetTexture(CHEVRON_TEXTURE)
+    expandButton.icon = expandIcon
     local promoteButton = CreateFrame(
         "Button",
         nil,
@@ -673,7 +918,8 @@ local function acquireMainsAltsLine(view, index)
         "UIPanelButtonTemplate"
     )
     promoteButton:SetSize(MAINS_ALTS_PROMOTE_WIDTH, 20)
-    promoteButton:SetText("Main")
+    promoteButton:SetText("Make Main")
+    styleButton(promoteButton, "secondary", 20)
     local removeButton = CreateFrame(
         "Button",
         nil,
@@ -682,6 +928,7 @@ local function acquireMainsAltsLine(view, index)
     )
     removeButton:SetSize(MAINS_ALTS_REMOVE_WIDTH, 20)
     removeButton:SetText("Remove")
+    styleButton(removeButton, "danger", 20)
     local noteButton = CreateFrame("Button", nil, frame)
     noteButton:SetSize(MAINS_ALTS_NOTE_SIZE, MAINS_ALTS_NOTE_SIZE)
     local noteIcon = noteButton:CreateTexture(nil, "ARTWORK")
@@ -690,6 +937,7 @@ local function acquireMainsAltsLine(view, index)
     noteButton.icon = noteIcon
     line = {
         frame = frame,
+        background = background,
         checkbox = checkbox,
         name = name,
         expandButton = expandButton,
@@ -697,6 +945,14 @@ local function acquireMainsAltsLine(view, index)
         removeButton = removeButton,
         noteButton = noteButton,
     }
+    line.nameHitbox = attachTruncationTooltip(frame, name)
+    enableRowHover(line)
+    expandButton:SetScript("OnEnter", function(button)
+        showOwnedTooltip(button, line.expandTooltip or "Expand", "Show or hide this main's alts.")
+    end)
+    expandButton:SetScript("OnLeave", function(button)
+        hideOwnedTooltip(button)
+    end)
     view.mainsAltsLines[index] = line
     return line
 end
@@ -770,47 +1026,16 @@ end
 
 local function startMainsAltsScrollAnimation(view, line)
     cancelMainsAltsScrollAnimation(view)
-    view.mainsAltsScrollAnimation = {
-        startOffset = view.scrollFrame:GetVerticalScroll(),
-        destination = clampMainsAltsScroll(view, line.offset),
-        elapsed = 0,
-    }
+    setMainsAltsScroll(view, line.offset)
 end
 
 local function updateMainsAltsScrollAnimation(view, elapsed)
-    local animation = view.mainsAltsScrollAnimation
-    if not animation then
-        return
-    end
-    if not UI.frame:IsShown()
-        or UI.selectedTab ~= "mainsalts"
-        or not view:IsShown()
-        or view.mainsAltsAvailable == false
-        or view.mainsAltsScanInProgress == true then
-        cancelMainsAltsScrollAnimation(view)
-        return
-    end
-    animation.elapsed = math.min(
-        MAINS_ALTS_SCROLL_DURATION,
-        animation.elapsed + math.max(0, elapsed or 0)
-    )
-    local progress = animation.elapsed / MAINS_ALTS_SCROLL_DURATION
-    local remaining = 1 - progress
-    local easedProgress = 1 - remaining * remaining * remaining
-    setMainsAltsScroll(
-        view,
-        animation.startOffset
-            + (animation.destination - animation.startOffset) * easedProgress
-    )
-    if animation.elapsed >= MAINS_ALTS_SCROLL_DURATION then
-        setMainsAltsScroll(view, animation.destination)
-        view.mainsAltsScrollAnimation = nil
-    end
+    cancelMainsAltsScrollAnimation(view)
 end
 
-local function renderMainsAlts(view, resolvePendingTarget)
+local function renderMainsAlts(view, resolvePendingTarget, preferredAnchor)
     cancelMainsAltsScrollAnimation(view)
-    local anchor = captureMainsAltsScrollAnchor(view)
+    local anchor = preferredAnchor or captureMainsAltsScrollAnchor(view)
     hideMainsAltsLines(view)
     view.text:Hide()
     local lineIndex = 0
@@ -846,15 +1071,14 @@ local function renderMainsAlts(view, resolvePendingTarget)
             end
         end)
         line.noteButton:SetScript("OnEnter", function(button)
-            GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-            GameTooltip:SetText(
+            showOwnedTooltip(button,
                 (line.hasNote and "Edit saved note for " or "Add note for ")
-                    .. character.displayName
+                    .. character.displayName,
+                "Open the character note editor."
             )
-            GameTooltip:Show()
         end)
         line.noteButton:SetScript("OnLeave", function(button)
-            hideTooltipIfOwned(button)
+            hideOwnedTooltip(button)
         end)
         line.noteButton:Show()
 
@@ -909,7 +1133,12 @@ local function renderMainsAlts(view, resolvePendingTarget)
                     character.altCount
                 ))
                 local expanded = view.expandedMainsAlts[character.identity] == true
-                line.expandButton:SetText(expanded and "-" or "+")
+                line.expandTooltip = expanded and "Collapse alts" or "Expand alts"
+                line.expandButton:SetText("")
+                if line.expandButton.icon
+                    and type(line.expandButton.icon.SetRotation) == "function" then
+                    line.expandButton.icon:SetRotation(expanded and math.pi / 2 or 0)
+                end
                 line.expandButton:SetScript("OnClick", function()
                     UI.ToggleMainsAltsGroup(character.identity)
                 end)
@@ -919,6 +1148,8 @@ local function renderMainsAlts(view, resolvePendingTarget)
                 line.expandButton:Hide()
             end
         end
+        line.baseColor = (lineIndex % 2 == 0) and PALETTE.zebra or PALETTE.surface
+        line.background:SetVertexColor(unpackColor(line.baseColor))
         line.frame:Show()
         offset = offset + MAINS_ALTS_ROW_HEIGHT
     end
@@ -936,6 +1167,23 @@ local function renderMainsAlts(view, resolvePendingTarget)
         view.mainsAltsLines[index].frame:Hide()
     end
     view.mainsAltsTableHeight = offset + 4
+    if preferredAnchor and preferredAnchor.identity then
+        local anchoredLine = findVisibleMainsAltsLine(
+            view,
+            preferredAnchor.identity,
+            true
+        )
+        if anchoredLine then
+            local anchoredOffset = math.max(
+                0,
+                anchoredLine.offset - preferredAnchor.relativeOffset
+            )
+            view.mainsAltsTableHeight = math.max(
+                view.mainsAltsTableHeight,
+                anchoredOffset + view.scrollFrame:GetHeight()
+            )
+        end
+    end
     updateMainsAltsControlState(view)
     refreshScrollChild(view)
 
@@ -987,25 +1235,28 @@ local function configureBankText(text)
 end
 
 local function createBankHeader(view)
-    local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local frame = CreateFrame("Frame", nil, view)
     local header = {
         frame = frame,
         item = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
-        tab = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
         slot = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
         count = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
         stable = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
         age = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall"),
     }
-    for _, field in ipairs({ "item", "tab", "slot", "count", "stable", "age" }) do
+    for _, field in ipairs({ "item", "slot", "count", "stable", "age" }) do
         configureBankText(header[field])
+        setFont(header[field], FONT_SEMIBOLD, 12)
+        setTextColor(header[field], PALETTE.text)
     end
     header.item:SetText("Item")
-    header.tab:SetText("Tab")
     header.slot:SetText("Slot")
     header.count:SetText("Count")
+    header.slot:SetJustifyH("CENTER")
+    header.count:SetJustifyH("CENTER")
     header.stable:SetText("Stable since")
     header.age:SetText("Age")
+    flatBackdrop(frame, PALETTE.control, PALETTE.border)
     view.bankHeader = header
     return header
 end
@@ -1017,29 +1268,52 @@ local function acquireBankLine(view, index)
     end
 
     local frame = CreateFrame("Frame", nil, view.scrollChild)
+    local background = frame:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints(frame)
+    background:SetTexture(WHITE_TEXTURE)
+    local divider = frame:CreateTexture(nil, "BORDER")
+    divider:SetTexture(WHITE_TEXTURE)
+    divider:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    divider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    divider:SetHeight(1)
+    divider:SetVertexColor(unpackColor(PALETTE.border))
     local itemButton = CreateFrame("Button", nil, frame)
     local itemIcon = itemButton:CreateTexture(nil, "ARTWORK")
     itemIcon:SetSize(BANK_ICON_SIZE, BANK_ICON_SIZE)
     local item = itemButton:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    local tab = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    local slot = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local slotCell = CreateFrame("Frame", nil, frame)
+    local slot = slotCell:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    slot:SetAllPoints(slotCell)
     local count = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     local stable = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     local age = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     line = {
         frame = frame,
+        background = background,
         itemButton = itemButton,
         itemIcon = itemIcon,
         item = item,
-        tab = tab,
+        slotCell = slotCell,
         slot = slot,
         count = count,
         stable = stable,
         age = age,
     }
-    for _, field in ipairs({ "item", "tab", "slot", "count", "stable", "age" }) do
+    line.countHitbox = attachTruncationTooltip(frame, count)
+    line.stableHitbox = attachTruncationTooltip(frame, stable)
+    line.ageHitbox = attachTruncationTooltip(frame, age)
+    enableRowHover(line)
+    for _, field in ipairs({ "item", "slot", "count", "stable", "age" }) do
         configureBankText(line[field])
     end
+    setFont(slot, FONT_REGULAR, 12)
+    setFont(count, FONT_REGULAR, 12)
+    setFont(stable, FONT_REGULAR, 12)
+    setFont(age, FONT_REGULAR, 12)
+    setTextColor(slot, PALETTE.text)
+    slot:SetJustifyH("CENTER")
+    count:SetJustifyH("CENTER")
+    age:SetJustifyH("RIGHT")
     itemButton:SetScript("OnEnter", function()
         if line.itemLink == nil then
             return
@@ -1063,35 +1337,27 @@ end
 local function renderBankTab(view, tab)
     view.text:Hide()
     hideBankLines(view)
-    view.bankTitle:Show()
     view.bankMessage:Show()
 
-    local timestampText = tab.lastAccessibleText
-        and ("Last accessible: " .. tab.lastAccessibleText)
-        or "No successful access yet"
-    view.bankTitle:SetText(timestampText)
-    view.bankTitle:ClearAllPoints()
-    view.bankTitle:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -4)
-
-    local offset = 4 + BANK_TITLE_HEIGHT
+    local offset = 0
     if not tab.isViewable then
         view.bankMessage:SetText("|cffff5555No access|r")
         view.bankMessage:ClearAllPoints()
-        view.bankMessage:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        view.bankMessage:SetPoint("CENTER", view, "CENTER", 0, 0)
         offset = offset + BANK_ROW_HEIGHT
     elseif #tab.rows == 0 then
         view.bankMessage:SetText("|cff888888No occupied slots|r")
         view.bankMessage:ClearAllPoints()
-        view.bankMessage:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        view.bankMessage:SetPoint("CENTER", view, "CENTER", 0, 0)
         offset = offset + BANK_ROW_HEIGHT
     else
         view.bankMessage:Hide()
         local header = view.bankHeader or createBankHeader(view)
         header.frame:ClearAllPoints()
-        header.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
+        header.frame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
+        header.frame:SetPoint("TOPRIGHT", view, "TOPRIGHT", -8, 0)
         header.frame:SetHeight(BANK_HEADER_HEIGHT)
         header.frame:Show()
-        offset = offset + BANK_HEADER_HEIGHT
 
         for index, row in ipairs(tab.rows) do
             local line = acquireBankLine(view, index)
@@ -1101,7 +1367,6 @@ local function renderBankTab(view, tab)
             line.frame:SetHeight(BANK_ROW_HEIGHT)
             line.itemIcon:SetTexture(row.icon)
             line.item:SetText(row.itemName)
-            line.tab:SetText(row.tabName)
             line.slot:SetText(tostring(row.slotIndex))
             line.count:SetText(tostring(row.quantity))
             line.stable:SetText(row.stableSinceDate)
@@ -1110,6 +1375,8 @@ local function renderBankTab(view, tab)
                 ageLabel = "|cffff5555" .. ageLabel .. "|r"
             end
             line.age:SetText(ageLabel)
+            line.baseColor = (index % 2 == 0) and PALETTE.zebra or PALETTE.surface
+            line.background:SetVertexColor(unpackColor(line.baseColor))
             line.frame:Show()
             offset = offset + BANK_ROW_HEIGHT
         end
@@ -1136,22 +1403,149 @@ local function findBankTab(view, tabIndex)
     return nil
 end
 
+local function updateDropdownLabel(dropdown, option, emptyLabel)
+    if not dropdown then
+        return
+    end
+    dropdown.selectedOption = option
+    dropdown.label:ClearAllPoints()
+    dropdown.label:SetPoint("LEFT", dropdown, "LEFT", option and option.icon and 34 or 12, 0)
+    dropdown.label:SetPoint("RIGHT", dropdown, "RIGHT", -28, 0)
+    dropdown.label:SetText(option and option.name or emptyLabel)
+    dropdown:SetEnabled(option ~= nil and UI.globalScanLocked ~= true)
+    if dropdown.icon then
+        dropdown.icon:SetShown(option ~= nil and option.icon ~= nil)
+        if option and option.icon then
+            dropdown.icon:SetTexture(option.icon)
+        end
+    end
+end
+
+local function createDropdown(parent, width, emptyLabel, selected, options)
+    local frameType = type(MenuUtil) == "table" and "DropdownButton" or "Button"
+    local dropdown = CreateFrame(frameType, nil, parent, "BackdropTemplate")
+    dropdown:SetSize(width, 32)
+    flatBackdrop(dropdown, PALETTE.control, PALETTE.border)
+    dropdown.label = dropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    dropdown.label:SetPoint("LEFT", dropdown, "LEFT", 12, 0)
+    dropdown.label:SetPoint("RIGHT", dropdown, "RIGHT", -28, 0)
+    dropdown.label:SetJustifyH("LEFT")
+    setFont(dropdown.label, FONT_SEMIBOLD, 12)
+    setTextColor(dropdown.label, PALETTE.text)
+    dropdown.icon = dropdown:CreateTexture(nil, "ARTWORK")
+    dropdown.icon:SetSize(18, 18)
+    dropdown.icon:SetPoint("LEFT", dropdown, "LEFT", 8, 0)
+    dropdown.arrow = dropdown:CreateTexture(nil, "ARTWORK")
+    dropdown.arrow:SetSize(16, 16)
+    dropdown.arrow:SetPoint("RIGHT", dropdown, "RIGHT", -8, 0)
+    dropdown.arrow:SetTexture("Interface\\AddOns\\RGMS\\assets\\icons\\chevron-down.png")
+    dropdown.emptyLabel = emptyLabel
+    dropdown.options = options
+    dropdown.selectOption = selected
+    dropdown:SetScript("OnClick", function()
+        if type(dropdown.OpenMenu) == "function" then
+            dropdown:OpenMenu()
+        end
+    end)
+    if type(dropdown.SetupMenu) == "function" then
+        dropdown:SetupMenu(function(_, rootDescription)
+            rootDescription:SetScrollMode(240)
+            rootDescription:SetMinimumWidth(200)
+            for _, option in ipairs(dropdown.options() or {}) do
+                local menuOption = option
+                local description = rootDescription:CreateRadio(
+                    menuOption.name,
+                    function(value)
+                        return dropdown.selectedOption
+                            and dropdown.selectedOption.index == value
+                    end,
+                    function(value)
+                        dropdown.selectOption(value)
+                    end,
+                    menuOption.index
+                )
+                description:AddInitializer(function(button)
+                    button:SetHeight(32)
+                    if button.fontString then
+                        setFont(button.fontString, FONT_SEMIBOLD, 12)
+                    end
+                    if menuOption.icon and type(button.AttachTexture) == "function" then
+                        local icon = button:AttachTexture()
+                        icon:SetSize(18, 18)
+                        icon:SetPoint("RIGHT", button, "RIGHT", -8, 0)
+                        icon:SetTexture(menuOption.icon)
+                    end
+                end)
+            end
+        end)
+    end
+    updateDropdownLabel(dropdown, nil, emptyLabel)
+    return dropdown
+end
+
 local function createView(parent, tabId)
     local view = CreateFrame("Frame", nil, parent)
-    view:SetPoint("TOPLEFT", 18, -92)
-    view:SetPoint("BOTTOMRIGHT", -38, 18)
+    view:SetPoint("TOPLEFT", SIDEBAR_WIDTH + CONTENT_PADDING, -HEADER_HEIGHT - CONTENT_PADDING)
+    view:SetPoint("BOTTOMRIGHT", -CONTENT_PADDING, CONTENT_PADDING)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    view.status:SetPoint("TOPLEFT", 2, 0)
-    view.status:SetPoint("TOPRIGHT", tabId == "mainsalts" and -104 or -94, 0)
-    view.status:SetJustifyH("LEFT")
+    local statusY = tabId == "bank" and -8 or -20
+    view.status:SetPoint("TOPLEFT", parent, "TOPLEFT", tabId == "mainsalts" and 192 or 280, statusY)
+    view.status:SetPoint("TOPRIGHT", parent, "TOPRIGHT", tabId == "mainsalts" and -56 or -148, statusY)
+    if tabId == "bank" then
+        view.status:SetHeight(40)
+        view.status:SetJustifyV("MIDDLE")
+    end
+    view.status:SetJustifyH("RIGHT")
     view.status:SetText(INITIAL_COPY[tabId])
+    setFont(view.status, FONT_REGULAR, 11)
+    setTextColor(view.status, PALETTE.secondary)
+    view.spinner = CreateFrame("Frame", nil, view)
+    view.spinner:SetSize(88, 16)
+    view.spinner:SetPoint(
+        "TOPLEFT",
+        parent,
+        "TOPLEFT",
+        tabId == "mainsalts" and 184 or 272,
+        -20
+    )
+    view.spinner.icon = view.spinner:CreateTexture(nil, "ARTWORK")
+    view.spinner.icon:SetSize(16, 16)
+    view.spinner.icon:SetPoint("LEFT", view.spinner, "LEFT", 0, 0)
+    view.spinner.icon:SetTexture("Interface\\AddOns\\RGMS\\assets\\icons\\loader-circle.png")
+    view.spinner.icon:SetVertexColor(unpackColor(PALETTE.pink))
+    view.spinner.label = view.spinner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    view.spinner.label:SetPoint("LEFT", view.spinner.icon, "RIGHT", 6, 0)
+    view.spinner.label:SetPoint("RIGHT", view.spinner, "RIGHT", 0, 0)
+    view.spinner.label:SetJustifyH("LEFT")
+    view.spinner.label:SetText("Scanning...")
+    setFont(view.spinner.label, FONT_REGULAR, 11)
+    setTextColor(view.spinner.label, PALETTE.secondary)
+    view.spinner.rotation = 0
+    view.spinner:SetScript("OnUpdate", function(spinner, elapsed)
+        spinner.rotation = (spinner.rotation + elapsed * 5) % (math.pi * 2)
+        if type(spinner.icon.SetRotation) == "function" then
+            spinner.icon:SetRotation(spinner.rotation)
+        end
+    end)
+    view.spinner:Hide()
+    view.statusHitbox = CreateFrame("Button", nil, view)
+    view.statusHitbox:SetAllPoints(view.status)
+    view.statusHitbox:SetScript("OnEnter", function(button)
+        if type(view.status.IsTruncated) == "function" and view.status:IsTruncated() then
+            showOwnedTooltip(button, "Status", view.status:GetText())
+        end
+    end)
+    view.statusHitbox:SetScript("OnLeave", function(button)
+        hideOwnedTooltip(button)
+    end)
 
     if tabId == "roster" or tabId == "bank" then
         view.refreshButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
-        view.refreshButton:SetSize(84, 22)
-        view.refreshButton:SetPoint("TOPRIGHT", 0, 4)
+        view.refreshButton:SetSize(84, 32)
+        view.refreshButton:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -56, -12)
         view.refreshButton:SetText("Refresh")
+        styleButton(view.refreshButton, "primary", 32)
         if tabId == "roster" then
             view.rosterAvailable = true
             view.rosterScanInProgress = false
@@ -1175,15 +1569,22 @@ local function createView(parent, tabId)
             view,
             "UIPanelScrollFrameTemplate"
         )
-        view.rankScrollFrame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, -24)
+        view.rankScrollFrame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
         view.rankScrollFrame:SetPoint("BOTTOMLEFT", view, "BOTTOMLEFT", 0, 0)
-        view.rankScrollFrame:SetWidth(RANK_TAB_WIDTH)
+        view.rankScrollFrame:SetWidth(1)
+        view.rankScrollFrame:Hide()
 
         view.rankScrollChild = CreateFrame("Frame", nil, view.rankScrollFrame)
         view.rankScrollChild:SetSize(RANK_TAB_WIDTH - 22, 1)
         view.rankScrollFrame:SetScrollChild(view.rankScrollChild)
         view.rankButtons = {}
         view.rosterLines = {}
+        view.rankDropdown = createDropdown(view, 200, "No ranks", function(index)
+            UI.SelectRosterRank(index)
+        end, function()
+            return view.rosterReport and view.rosterReport.ranks or {}
+        end)
+        view.rankDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 64, -12)
         view.rankScrollFrame:SetScript("OnSizeChanged", function()
             refreshRankScrollChild(view)
         end)
@@ -1194,9 +1595,10 @@ local function createView(parent, tabId)
         view.mainsAltsSelections = {}
         view.expandedMainsAlts = {}
         view.groupButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
-        view.groupButton:SetSize(94, 22)
-        view.groupButton:SetPoint("TOPRIGHT", 0, 4)
+        view.groupButton:SetSize(112, 32)
+        view.groupButton:SetPoint("TOPLEFT", parent, "TOPLEFT", 64, -12)
         view.groupButton:SetText("Group Toons")
+        styleButton(view.groupButton, "primary", 32)
         view.groupButton:SetEnabled(false)
         view.groupButton:SetScript("OnClick", function()
             if not mainsAltsControlsEnabled(view) then
@@ -1213,6 +1615,7 @@ local function createView(parent, tabId)
                 RGMS.Print("Could not group characters: " .. tostring(groupError) .. ".")
             end
         end)
+        createMainsAltsHeader(view)
     elseif tabId == "bank" then
         view.bankTabScrollFrame = CreateFrame(
             "ScrollFrame",
@@ -1220,40 +1623,30 @@ local function createView(parent, tabId)
             view,
             "UIPanelScrollFrameTemplate"
         )
-        view.bankTabScrollFrame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, -24)
+        view.bankTabScrollFrame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
         view.bankTabScrollFrame:SetPoint("BOTTOMLEFT", view, "BOTTOMLEFT", 0, 0)
-        view.bankTabScrollFrame:SetWidth(BANK_TAB_WIDTH)
+        view.bankTabScrollFrame:SetWidth(1)
+        view.bankTabScrollFrame:Hide()
 
         view.bankTabScrollChild = CreateFrame("Frame", nil, view.bankTabScrollFrame)
         view.bankTabScrollChild:SetSize(BANK_TAB_WIDTH - 22, 1)
         view.bankTabScrollFrame:SetScrollChild(view.bankTabScrollChild)
         view.bankTabButtons = {}
         view.bankRows = {}
+        view.bankDropdown = createDropdown(view, 200, "No bank tabs", function(index)
+            UI.SelectBankTab(index)
+        end, function()
+            return view.bankReport and view.bankReport.tabs or {}
+        end)
+        view.bankDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 64, -12)
         view.bankTabScrollFrame:SetScript("OnSizeChanged", function()
             refreshBankTabScrollChild(view)
         end)
     end
 
     view.scrollFrame = CreateFrame("ScrollFrame", nil, view, "UIPanelScrollFrameTemplate")
-    if tabId == "roster" then
-        view.scrollFrame:SetPoint(
-            "TOPLEFT",
-            view,
-            "TOPLEFT",
-            RANK_TAB_WIDTH + ROSTER_CONTENT_GAP,
-            -24
-        )
-    elseif tabId == "bank" then
-        view.scrollFrame:SetPoint(
-            "TOPLEFT",
-            view,
-            "TOPLEFT",
-            BANK_TAB_WIDTH + BANK_CONTENT_GAP,
-            -24
-        )
-    else
-        view.scrollFrame:SetPoint("TOPLEFT", 0, -24)
-    end
+    styleScrollFrame(view.scrollFrame)
+    view.scrollFrame:SetPoint("TOPLEFT", 0, -28)
     view.scrollFrame:SetPoint("BOTTOMRIGHT", 0, 0)
 
     view.scrollChild = CreateFrame("Frame", nil, view.scrollFrame)
@@ -1261,9 +1654,9 @@ local function createView(parent, tabId)
     view.scrollFrame:SetScrollChild(view.scrollChild)
 
     view.text = view.scrollChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    view.text:SetPoint("TOPLEFT", 4, -4)
-    view.text:SetJustifyH("LEFT")
-    view.text:SetJustifyV("TOP")
+    view.text:SetPoint("CENTER", view, "CENTER", 0, 0)
+    view.text:SetJustifyH("CENTER")
+    view.text:SetJustifyV("MIDDLE")
     view.text:SetText(INITIAL_COPY[tabId])
 
     if tabId == "bank" then
@@ -1328,30 +1721,44 @@ local function createNotesEditor()
     editor:EnableMouse(true)
     editor:SetClampedToScreen(true)
     editor:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true,
-        tileSize = 32,
-        edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+        bgFile = WHITE_TEXTURE,
+        edgeFile = BORDER_TEXTURE,
+        tile = false,
+        edgeSize = 8,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
-    editor:SetBackdropColor(0.05, 0.05, 0.08, 0.98)
+    editor:SetBackdropColor(unpackColor(PALETTE.surface))
+    if type(editor.SetBackdropBorderColor) == "function" then
+        editor:SetBackdropBorderColor(unpackColor(PALETTE.border))
+    end
 
     editor.title = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     editor.title:SetPoint("TOPLEFT", editor, "TOPLEFT", 18, -17)
     editor.title:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -46, -17)
     editor.title:SetJustifyH("LEFT")
     editor.title:SetText("Character Note")
+    setFont(editor.title, FONT_SEMIBOLD, 13)
+    setTextColor(editor.title, PALETTE.text)
 
     editor.character = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     editor.character:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -50)
     editor.character:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -20, -50)
     editor.character:SetJustifyH("LEFT")
 
-    editor.closeButton = CreateFrame("Button", nil, editor, "UIPanelCloseButton")
-    editor.closeButton:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -5, -5)
+    editor.closeButton = CreateFrame("Button", nil, editor)
+    editor.closeButton:SetSize(32, 32)
+    editor.closeButton:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -8, -8)
+    editor.closeButton.icon = editor.closeButton:CreateTexture(nil, "ARTWORK")
+    editor.closeButton.icon:SetAllPoints(editor.closeButton)
+    editor.closeButton.icon:SetTexture(CLOSE_TEXTURE)
     editor.closeButton:SetScript("OnClick", function()
         UI.CloseCharacterNoteEditor()
+    end)
+    editor.closeButton:SetScript("OnEnter", function(button)
+        showOwnedTooltip(button, "Close", "Close the note editor and discard unsaved changes.")
+    end)
+    editor.closeButton:SetScript("OnLeave", function(button)
+        hideOwnedTooltip(button)
     end)
 
     editor.scrollFrame = CreateFrame(
@@ -1414,6 +1821,7 @@ local function createNotesEditor()
     editor.deleteButton:SetSize(76, 22)
     editor.deleteButton:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 20, 18)
     editor.deleteButton:SetText("Delete")
+    styleButton(editor.deleteButton, "danger", 32)
     editor.deleteButton:SetScript("OnClick", function()
         local deleted, deleteError = RGMS.MainsAlts.DeleteCharacterNote(
             editor.characterIdentity
@@ -1435,6 +1843,7 @@ local function createNotesEditor()
     editor.cancelButton:SetSize(76, 22)
     editor.cancelButton:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -104, 18)
     editor.cancelButton:SetText("Cancel")
+    styleButton(editor.cancelButton, "secondary", 32)
     editor.cancelButton:SetScript("OnClick", function()
         UI.CloseCharacterNoteEditor()
     end)
@@ -1448,6 +1857,7 @@ local function createNotesEditor()
     editor.saveButton:SetSize(76, 22)
     editor.saveButton:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -20, 18)
     editor.saveButton:SetText("Save")
+    styleButton(editor.saveButton, "primary", 32)
     editor.saveButton:SetScript("OnClick", function()
         local saved, saveError = RGMS.MainsAlts.SaveCharacterNote(
             editor.characterIdentity,
@@ -1474,6 +1884,29 @@ local function createNotesEditor()
     return editor
 end
 
+local function createOwnedTooltip()
+    local tooltip = CreateFrame("Frame", "RGMSTooltip", UIParent, "BackdropTemplate")
+    tooltip:SetFrameStrata("TOOLTIP")
+    tooltip:SetToplevel(true)
+    tooltip:SetSize(280, 64)
+    flatBackdrop(tooltip, PALETTE.shell, PALETTE.border)
+    tooltip.title = tooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    tooltip.title:SetPoint("TOPLEFT", tooltip, "TOPLEFT", 10, -8)
+    tooltip.title:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", -10, -8)
+    tooltip.title:SetJustifyH("LEFT")
+    setFont(tooltip.title, FONT_SEMIBOLD, 12)
+    setTextColor(tooltip.title, PALETTE.text)
+    tooltip.body = tooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    tooltip.body:SetPoint("TOPLEFT", tooltip.title, "BOTTOMLEFT", 0, -5)
+    tooltip.body:SetPoint("TOPRIGHT", tooltip.title, "BOTTOMRIGHT", 0, -5)
+    tooltip.body:SetJustifyH("LEFT")
+    tooltip.body:SetJustifyV("TOP")
+    setFont(tooltip.body, FONT_REGULAR, 11)
+    setTextColor(tooltip.body, PALETTE.secondary)
+    tooltip:Hide()
+    return tooltip
+end
+
 local function createWindow()
     local frame = CreateFrame("Frame", "RGMSMainFrame", UIParent, "BackdropTemplate")
     frame:SetSize(RGMS.UILayout.WINDOW_WIDTH, RGMS.UILayout.WINDOW_HEIGHT)
@@ -1485,39 +1918,67 @@ local function createWindow()
     frame:SetClampedToScreen(true)
     frame:SetClampRectInsets(0, 0, 0, 0)
     frame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true,
-        tileSize = 32,
-        edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+        bgFile = WHITE_TEXTURE,
+        edgeFile = BORDER_TEXTURE,
+        tile = false,
+        edgeSize = 8,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
-    frame:SetBackdropColor(0.05, 0.05, 0.08, 0.96)
+    frame:SetBackdropColor(unpackColor(PALETTE.surface))
+    if type(frame.SetBackdropBorderColor) == "function" then
+        frame:SetBackdropBorderColor(unpackColor(PALETTE.border))
+    end
+    local shadow = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+    shadow:SetTexture(WHITE_TEXTURE)
+    shadow:SetPoint("TOPLEFT", frame, "TOPLEFT", -6, 6)
+    shadow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 6, -6)
+    shadow:SetVertexColor(0, 0, 0, 0.45)
+    frame.shadow = shadow
     frame:Hide()
 
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 18, -17)
-    title:SetPoint("TOPRIGHT", -46, -17)
-    title:SetJustifyH("LEFT")
-    title:SetText("Retail Guild Management System")
-    frame.title = title
+    local header = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    header:SetHeight(HEADER_HEIGHT)
+    flatBackdrop(header, PALETTE.shell, PALETTE.border)
+    frame.header = header
 
-    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    closeButton:SetPoint("TOPRIGHT", -5, -5)
+    local sidebar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    sidebar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -HEADER_HEIGHT)
+    sidebar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    sidebar:SetWidth(SIDEBAR_WIDTH)
+    flatBackdrop(sidebar, PALETTE.surface, PALETTE.border)
+    frame.sidebar = sidebar
+
+    local logo = header:CreateTexture(nil, "OVERLAY")
+    logo:SetSize(40, 40)
+    logo:SetPoint("TOPLEFT", header, "TOPLEFT", 8, -8)
+    logo:SetTexture(LOGO_TEXTURE)
+    frame.logo = logo
+
+    local closeButton = CreateFrame("Button", nil, frame)
+    closeButton:SetSize(32, 32)
+    closeButton:SetPoint("TOPRIGHT", -16, -12)
+    closeButton.icon = closeButton:CreateTexture(nil, "ARTWORK")
+    closeButton.icon:SetAllPoints(closeButton)
+    closeButton.icon:SetTexture(CLOSE_TEXTURE)
     closeButton:SetScript("OnClick", function()
         UI.Hide()
+    end)
+    closeButton:SetScript("OnEnter", function(button)
+        showOwnedTooltip(button, "Close", "Hide RGMS without canceling an active scan.")
+    end)
+    closeButton:SetScript("OnLeave", function(button)
+        hideOwnedTooltip(button)
     end)
     frame.closeButton = closeButton
 
     local dragHandle = CreateFrame("Button", nil, frame)
-    dragHandle:SetPoint("TOPLEFT", 12, -10)
-    dragHandle:SetPoint("TOPRIGHT", -42, -10)
+    dragHandle:SetPoint("TOPLEFT", 280, -12)
+    dragHandle:SetPoint("TOPRIGHT", -240, -12)
     dragHandle:SetHeight(32)
     dragHandle:RegisterForDrag("LeftButton")
-    dragHandle:SetScript("OnDragStart", function()
-        frame:StartMoving()
-    end)
-    dragHandle:SetScript("OnDragStop", function()
+    local function stopDragging()
         frame:StopMovingOrSizing()
         local left = frame:GetLeft()
         local bottom = frame:GetBottom()
@@ -1529,48 +1990,111 @@ local function createWindow()
                 y = bottom,
             }, true)
         end
+    end
+    dragHandle:SetScript("OnDragStart", function()
+        if UI.globalScanLocked == true then
+            return
+        end
+        if type(RGMS.PortalState) == "table"
+            and not RGMS.PortalState:canDrag("header", false) then
+            return
+        end
+        frame:StartMoving()
     end)
+    dragHandle:SetScript("OnDragStop", stopDragging)
     frame.dragHandle = dragHandle
+
+    local sidebarDragHandle = CreateFrame("Button", nil, sidebar)
+    sidebarDragHandle:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -136)
+    sidebarDragHandle:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -8, 8)
+    sidebarDragHandle:RegisterForDrag("LeftButton")
+    sidebarDragHandle:SetScript("OnDragStart", function()
+        if UI.globalScanLocked == true then
+            return
+        end
+        if type(RGMS.PortalState) == "table"
+            and not RGMS.PortalState:canDrag("sidebar", false) then
+            return
+        end
+        frame:StartMoving()
+    end)
+    sidebarDragHandle:SetScript("OnDragStop", stopDragging)
+    frame.sidebarDragHandle = sidebarDragHandle
 
     frame.tabs = {}
     frame.views = {}
     for index, tabId in ipairs(TAB_ORDER) do
-        local tab = CreateFrame(
-            "Button",
-            "RGMSMainFrameTab" .. index,
-            frame,
-            "PanelTabButtonTemplate"
-        )
+        local tab = CreateFrame("Button", "RGMSMainFrameTab" .. index, sidebar, "BackdropTemplate")
         tab:SetID(index)
-        tab:SetText(TAB_TITLES[tabId])
-        tab:SetWidth(100)
-        if index == 1 then
-            tab:SetPoint("TOPLEFT", 18, -51)
-        end
+        tab:SetSize(120, 40)
+        tab:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -8 - (index - 1) * 40)
+        flatBackdrop(tab, { 0, 0, 0, 0 }, { 0, 0, 0, 0 })
+        tab.indicator = tab:CreateTexture(nil, "ARTWORK")
+        tab.indicator:SetTexture(WHITE_TEXTURE)
+        tab.indicator:SetVertexColor(unpackColor(PALETTE.pink))
+        tab.indicator:SetPoint("TOPLEFT", tab, "TOPLEFT", 0, -4)
+        tab.indicator:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", 0, 4)
+        tab.indicator:SetWidth(3)
+        tab.indicator:Hide()
+        tab.label = tab:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        tab.label:SetPoint("LEFT", tab, "LEFT", 14, 0)
+        tab.label:SetPoint("RIGHT", tab, "RIGHT", -8, 0)
+        tab.label:SetJustifyH("LEFT")
+        tab.label:SetText(TAB_TITLES[tabId])
+        setFont(tab.label, FONT_SEMIBOLD, 13)
+        setTextColor(tab.label, PALETTE.secondary)
         tab:SetScript("OnClick", function()
             UI.SelectPrimaryTab(tabId)
+        end)
+        tab:SetScript("OnEnter", function(button)
+            if UI.selectedTab ~= tabId and type(button.SetBackdropColor) == "function" then
+                button:SetBackdropColor(unpackColor(PALETTE.control))
+            end
+        end)
+        tab:SetScript("OnLeave", function(button)
+            if UI.selectedTab ~= tabId and type(button.SetBackdropColor) == "function" then
+                button:SetBackdropColor(0, 0, 0, 0)
+            end
         end)
         frame.tabs[index] = tab
         frame.views[tabId] = createView(frame, tabId)
     end
 
-    PanelTemplates_SetNumTabs(frame, #TAB_ORDER)
+    frame.numTabs = #TAB_ORDER
+
+    frame.globalDimmer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    frame.globalDimmer:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -HEADER_HEIGHT)
+    frame.globalDimmer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    frame.globalDimmer:SetBackdrop({ bgFile = WHITE_TEXTURE })
+    frame.globalDimmer:SetBackdropColor(0, 0, 0, 0.5)
+    frame.globalDimmer:EnableMouse(true)
+    frame.globalDimmer:Hide()
+
+    frame.modalDimmer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    frame.modalDimmer:SetAllPoints(frame)
+    frame.modalDimmer:SetBackdrop({ bgFile = WHITE_TEXTURE })
+    frame.modalDimmer:SetBackdropColor(0, 0, 0, 0.5)
+    frame.modalDimmer:EnableMouse(true)
+    frame.modalDimmer:Hide()
     frame.notesEditor = createNotesEditor()
+    frame.ownedTooltip = createOwnedTooltip()
 
     frame:SetScript("OnShow", function()
         UI.ClampToScreen()
     end)
     frame:SetScript("OnHide", function()
-        if type(RGMS.Bank) == "table"
-            and type(RGMS.Bank.CancelScan) == "function" then
-            RGMS.Bank.CancelScan()
-        end
         local mainsAltsView = frame.views.mainsalts
         cancelMainsAltsScrollWork(mainsAltsView)
         if type(UI.CollapseMainsAltsGroups) == "function" then
             UI.CollapseMainsAltsGroups()
         end
         setMainsAltsScroll(mainsAltsView, 0)
+        frame.views.roster.scrollFrame:SetVerticalScroll(0)
+        frame.views.bank.scrollFrame:SetVerticalScroll(0)
+        UI.SelectPrimaryTab("roster")
+        if type(RGMS.PortalState) == "table" then
+            RGMS.PortalState:closeWindow()
+        end
         if frame.notesEditor:IsShown() then
             UI.CloseCharacterNoteEditor()
         end
@@ -1685,6 +2209,17 @@ function UI.SelectPrimaryTab(tabId)
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
     end
+    if UI.globalScanLocked == true and UI.frame:IsShown() then
+        return nil, "scan-locked"
+    end
+
+    if UI.selectedTab and UI.frame.views[UI.selectedTab]
+        and type(RGMS.PortalState) == "table" then
+        RGMS.PortalState.scroll[UI.selectedTab] = UI.frame.views[UI.selectedTab].scrollFrame:GetVerticalScroll()
+    end
+    if type(RGMS.PortalState) == "table" then
+        RGMS.PortalState.selectedView = tabId
+    end
 
     if UI.selectedTab == "mainsalts" and tabId ~= "mainsalts" then
         cancelMainsAltsScrollWork(UI.frame.views.mainsalts)
@@ -1697,11 +2232,25 @@ function UI.SelectPrimaryTab(tabId)
     for index, currentTabId in ipairs(TAB_ORDER) do
         if currentTabId == tabId then
             selectedIndex = index
-            break
         end
+        local selected = currentTabId == tabId
+        local tab = UI.frame.tabs[index]
+        tab.indicator:SetShown(selected)
+        if type(tab.SetBackdropColor) == "function" then
+            tab:SetBackdropColor(unpackColor(selected and PALETTE.control or { 0, 0, 0, 0 }))
+        end
+        if type(tab.GetFontString) == "function" then
+            setTextColor(tab:GetFontString(), selected and PALETTE.text or PALETTE.secondary)
+        end
+        setTextColor(tab.label, selected and PALETTE.text or PALETTE.secondary)
     end
-    PanelTemplates_SetTab(UI.frame, selectedIndex)
+    UI.frame.selectedTab = selectedIndex
     UI.selectedTab = tabId
+    local selectedView = UI.frame.views[tabId]
+    local savedScroll = type(RGMS.PortalState) == "table"
+        and RGMS.PortalState.scroll[tabId]
+        or selectedView.scrollFrame:GetVerticalScroll()
+    selectedView.scrollFrame:SetVerticalScroll(savedScroll or 0)
     return true
 end
 
@@ -1769,6 +2318,13 @@ function UI.SelectRosterRank(rankIndex)
         button:SetEnabled(buttonRank.index ~= rankIndex)
     end
     view.selectedRankIndex = rankIndex
+    if type(RGMS.DB) == "table" and type(RGMS.DB.ui) == "table" then
+        RGMS.DB.ui.selectedRosterRankIndex = rankIndex
+    end
+    updateDropdownLabel(view.rankDropdown, rank, "No ranks")
+    if type(RGMS.PortalState) == "table" then
+        RGMS.PortalState:selectionChanged("roster")
+    end
     renderRosterRank(view, rank)
     return true
 end
@@ -1782,7 +2338,10 @@ function UI.SetRosterReport(report)
     end
 
     local view = UI.frame.views.roster
-    local previousRankIndex = view.selectedRankIndex
+    local previousRankIndex = type(RGMS.DB) == "table"
+        and type(RGMS.DB.ui) == "table"
+        and RGMS.DB.ui.selectedRosterRankIndex
+        or view.selectedRankIndex
     view.rosterReport = report
 
     for index, rank in ipairs(report.ranks) do
@@ -1811,7 +2370,7 @@ function UI.SetRosterReport(report)
                 -RANK_TAB_GAP
             )
         end
-        button:SetText(rank.label)
+        button:SetText(rank.name)
         local rankIndex = rank.index
         button:SetScript("OnClick", function()
             UI.SelectRosterRank(rankIndex)
@@ -1825,13 +2384,19 @@ function UI.SetRosterReport(report)
     view.rankScrollFrame:SetVerticalScroll(0)
     refreshRankScrollChild(view)
 
-    local selectedRank = findRosterRank(view, previousRankIndex)
+    local selectedRank = type(RGMS.Portal) == "table"
+        and RGMS.Portal.resolveSelection(report.ranks, previousRankIndex, false)
+        or findRosterRank(view, previousRankIndex)
         or report.ranks[1]
     if selectedRank then
         return UI.SelectRosterRank(selectedRank.index)
     end
 
     view.selectedRankIndex = nil
+    if type(RGMS.DB) == "table" and type(RGMS.DB.ui) == "table" then
+        RGMS.DB.ui.selectedRosterRankIndex = nil
+    end
+    updateDropdownLabel(view.rankDropdown, nil, "No ranks")
     hideRosterLines(view)
     view.text:Show()
     view.text:SetText("No roster data yet")
@@ -1852,6 +2417,12 @@ function UI.OpenCharacterNote(identity, displayName, note, hasNote)
     if not mainsAltsControlsEnabled(view) then
         return nil, "character note controls are disabled"
     end
+    if type(RGMS.PortalState) == "table" then
+        local admitted = RGMS.PortalState:openNote(note)
+        if not admitted then
+            return nil, "character note controls are disabled"
+        end
+    end
 
     local editor = UI.frame.notesEditor
     editor.characterIdentity = identity
@@ -1868,6 +2439,7 @@ function UI.OpenCharacterNote(identity, displayName, note, hasNote)
         editor.editBox:Enable()
     end
     editor:Show()
+    UI.frame.modalDimmer:Show()
     editor.editBox:SetFocus()
     return true
 end
@@ -1877,6 +2449,10 @@ function UI.CloseCharacterNoteEditor()
         return nil, "the RGMS window has not been initialized"
     end
     UI.frame.notesEditor:Hide()
+    UI.frame.modalDimmer:Hide()
+    if type(RGMS.PortalState) == "table" then
+        RGMS.PortalState:closeNote()
+    end
     return true
 end
 
@@ -1995,8 +2571,15 @@ function UI.ToggleMainsAltsGroup(identity)
         return nil, "Mains/Alts group is unavailable"
     end
 
+    local line = findVisibleMainsAltsLine(view, identity, true)
+    local scrollOffset = view.scrollFrame:GetVerticalScroll()
+    local toggleAnchor = line and {
+        identity = identity,
+        relativeOffset = line.offset - scrollOffset,
+        numericOffset = scrollOffset,
+    } or nil
     view.expandedMainsAlts[identity] = not view.expandedMainsAlts[identity]
-    renderMainsAlts(view)
+    renderMainsAlts(view, false, toggleAnchor)
     return true
 end
 
@@ -2029,7 +2612,26 @@ function UI.SelectBankTab(tabIndex)
         button:SetEnabled(buttonTab.index ~= tabIndex)
     end
     view.selectedBankTabIndex = tabIndex
+    if type(RGMS.DB) == "table" and type(RGMS.DB.ui) == "table" then
+        RGMS.DB.ui.selectedBankTabIndex = tabIndex
+    end
+    updateDropdownLabel(view.bankDropdown, tab, "No bank tabs")
+    if type(RGMS.PortalState) == "table" then
+        RGMS.PortalState:selectionChanged("bank")
+    end
     renderBankTab(view, tab)
+    if view.bankOpen == true and view.bankScanInProgress ~= true
+        and type(view.bankReport.scannedAtText) == "string" then
+        UI.SetViewStatus(
+            "bank",
+            type(RGMS.Portal) == "table"
+                and RGMS.Portal.bankTimestamp(
+                    view.bankReport.scannedAtText,
+                    tab.lastAccessibleText
+                )
+                or ("Last successful scan: " .. view.bankReport.scannedAtText)
+        )
+    end
     return true
 end
 
@@ -2042,7 +2644,10 @@ function UI.SetBankReport(report)
     end
 
     local view = UI.frame.views.bank
-    local previousTabIndex = view.selectedBankTabIndex
+    local previousTabIndex = type(RGMS.DB) == "table"
+        and type(RGMS.DB.ui) == "table"
+        and RGMS.DB.ui.selectedBankTabIndex
+        or view.selectedBankTabIndex
     view.bankReport = report
 
     for index, tab in ipairs(report.tabs) do
@@ -2089,17 +2694,83 @@ function UI.SetBankReport(report)
     view.bankTabScrollFrame:SetVerticalScroll(0)
     refreshBankTabScrollChild(view)
 
-    local selectedTab = findBankTab(view, previousTabIndex) or report.tabs[1]
+    local selectedTab = type(RGMS.Portal) == "table"
+        and RGMS.Portal.resolveSelection(report.tabs, previousTabIndex, true)
+        or findBankTab(view, previousTabIndex)
+    if not selectedTab then
+        for _, candidate in ipairs(report.tabs) do
+            if selectedTab == nil or candidate.index < selectedTab.index then
+                selectedTab = candidate
+            end
+        end
+    end
     if selectedTab then
         return UI.SelectBankTab(selectedTab.index)
     end
 
     view.selectedBankTabIndex = nil
+    if type(RGMS.DB) == "table" and type(RGMS.DB.ui) == "table" then
+        RGMS.DB.ui.selectedBankTabIndex = nil
+    end
+    updateDropdownLabel(view.bankDropdown, nil, "No bank tabs")
     hideBankLines(view)
     view.text:Show()
     view.text:SetText("No bank tabs purchased")
     view.scrollFrame:SetVerticalScroll(0)
     refreshScrollChild(view)
+    return true
+end
+
+local updateBankRefreshButton
+local updateRosterRefreshButton
+
+function UI.SetGlobalScanLock(locked)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    UI.globalScanLocked = locked == true
+    UI.frame.globalDimmer:SetShown(UI.globalScanLocked)
+    if UI.globalScanLocked and UI.frame.notesEditor:IsShown() then
+        UI.CloseCharacterNoteEditor()
+    end
+    for _, tab in ipairs(UI.frame.tabs) do
+        tab:SetEnabled(not UI.globalScanLocked)
+    end
+    for _, tabId in ipairs(TAB_ORDER) do
+        local view = UI.frame.views[tabId]
+        view.spinner:SetShown(UI.globalScanLocked)
+        if type(view.scrollFrame.EnableMouse) == "function" then
+            view.scrollFrame:EnableMouse(not UI.globalScanLocked)
+        end
+        if type(view.scrollFrame.EnableMouseWheel) == "function" then
+            view.scrollFrame:EnableMouseWheel(not UI.globalScanLocked)
+        end
+        if view.rankDropdown then
+            view.rankDropdown:SetEnabled(
+                not UI.globalScanLocked and view.rankDropdown.selectedOption ~= nil
+            )
+            if type(view.rankDropdown.SetAlpha) == "function" then
+                view.rankDropdown:SetAlpha(UI.globalScanLocked and 0.5 or 1)
+            end
+        end
+        if view.bankDropdown then
+            view.bankDropdown:SetEnabled(
+                not UI.globalScanLocked and view.bankDropdown.selectedOption ~= nil
+            )
+            if type(view.bankDropdown.SetAlpha) == "function" then
+                view.bankDropdown:SetAlpha(UI.globalScanLocked and 0.5 or 1)
+            end
+        end
+        if view.refreshButton and type(view.refreshButton.SetAlpha) == "function" then
+            view.refreshButton:SetAlpha(UI.globalScanLocked and 0.5 or 1)
+        end
+        if view.groupButton and type(view.groupButton.SetAlpha) == "function" then
+            view.groupButton:SetAlpha(UI.globalScanLocked and 0.5 or 1)
+        end
+    end
+    updateRosterRefreshButton(UI.frame.views.roster)
+    updateBankRefreshButton(UI.frame.views.bank)
+    updateMainsAltsControlState(UI.frame.views.mainsalts)
     return true
 end
 
@@ -2121,20 +2792,26 @@ function UI.SetRosterScanInProgress(inProgress)
         cancelMainsAltsScrollWork(mainsAltsView)
     end
     updateMainsAltsControlState(mainsAltsView)
+    UI.SetGlobalScanLock(
+        view.rosterScanInProgress
+            or UI.frame.views.bank.bankScanInProgress == true
+    )
     return true
 end
 
-local function updateBankRefreshButton(view)
+updateBankRefreshButton = function(view)
     view.refreshButton:SetEnabled(
         UI.dataEnabled ~= false
+            and UI.globalScanLocked ~= true
             and view.bankOpen == true
             and view.bankScanInProgress ~= true
     )
 end
 
-local function updateRosterRefreshButton(view)
+updateRosterRefreshButton = function(view)
     view.refreshButton:SetEnabled(
         UI.dataEnabled ~= false
+            and UI.globalScanLocked ~= true
             and view.rosterAvailable ~= false
             and view.rosterScanInProgress ~= true
     )
@@ -2184,6 +2861,10 @@ function UI.SetBankScanInProgress(inProgress)
     local view = UI.frame.views.bank
     view.bankScanInProgress = inProgress == true
     updateBankRefreshButton(view)
+    UI.SetGlobalScanLock(
+        view.bankScanInProgress
+            or UI.frame.views.roster.rosterScanInProgress == true
+    )
     return true
 end
 
@@ -2220,6 +2901,33 @@ function UI.GetContentHost(tabId)
     return UI.frame.views[tabId].scrollChild
 end
 
+function UI.ShowTooltip(owner, title, body)
+    if not UI.frame or not UI.frame.ownedTooltip then
+        return false
+    end
+    local tooltip = UI.frame.ownedTooltip
+    tooltip.owner = owner
+    tooltip.title:SetText(tostring(title or ""))
+    tooltip.body:SetText(tostring(body or ""))
+    tooltip:SetHeight(math.max(44, tooltip.body:GetStringHeight() + 34))
+    tooltip:ClearAllPoints()
+    tooltip:SetPoint("BOTTOMLEFT", owner, "TOPRIGHT", 8, 8)
+    tooltip:Show()
+    return true
+end
+
+function UI.HideTooltip(owner)
+    if not UI.frame or not UI.frame.ownedTooltip then
+        return false
+    end
+    local tooltip = UI.frame.ownedTooltip
+    if owner == nil or tooltip.owner == owner then
+        tooltip.owner = nil
+        tooltip:Hide()
+    end
+    return true
+end
+
 function UI.Show(tabId)
     if not UI.frame then
         local initialized, initializeError = UI.Initialize()
@@ -2227,8 +2935,12 @@ function UI.Show(tabId)
             return nil, initializeError
         end
     end
-    if tabId then
-        local selected, selectError = UI.SelectPrimaryTab(tabId)
+    local wasShown = UI.frame:IsShown()
+    if not wasShown then
+        if type(RGMS.PortalState) == "table" then
+            RGMS.PortalState:openWindow()
+        end
+        local selected, selectError = UI.SelectPrimaryTab("roster")
         if not selected then
             return nil, selectError
         end
@@ -2241,6 +2953,8 @@ end
 function UI.Hide()
     if UI.frame then
         UI.frame:Hide()
+    elseif type(RGMS.PortalState) == "table" then
+        RGMS.PortalState:closeWindow()
     end
     return true
 end

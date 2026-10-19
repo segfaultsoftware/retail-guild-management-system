@@ -4,8 +4,8 @@ RGMS uses two World of Warcraft SavedVariables:
 
 - `RGMSAccountDB` is account-wide and contains one isolated partition for every
   guild encountered by the account.
-- `RGMSCharacterDB` remains per character. Its `ui.windowPosition` is the live
-  source for that character's window placement. Its roster and bank fields are
+- `RGMSCharacterDB` remains per character. Its `ui` subtree is the live source
+  for that character's window placement and numeric dropdown selections. Its roster and bank fields are
   deprecated snapshots. Each is retained until its corresponding successful
   account-wide scan.
 
@@ -68,20 +68,24 @@ removed, and editor-created notes are limited to 5,500 characters. Grouping,
 promotion, and removal update only `mainAltGroups`, so notes remain attached to
 their character identities.
 
-## Per-character schema: version 7
+## Per-character schema: version 8
 
 ```text
 {
-  schemaVersion = 7,
+  schemaVersion = 8,
   roster = DeprecatedRosterDataset,
   bank = DeprecatedBankDataset,
   ui = {
     windowPosition = WindowPosition | nil,
+    selectedRosterRankIndex = integer | nil,
+    selectedBankTabIndex = positive integer | nil,
   },
 }
 ```
 
-The version 0 through 7 migrations remain supported. When the current guild's
+The version 0 through 8 migrations remain supported. Version 8 adds per-character
+numeric rank and bank-tab selections, so renaming an option does not invalidate
+it. When the current guild's
 account-wide roster is uninitialized, only the logged-in character's matching
 deprecated roster can seed it. A missing or foreign-guild snapshot initializes
 an empty current-guild roster instead. An already initialized roster, including

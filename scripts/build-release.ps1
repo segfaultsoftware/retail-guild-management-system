@@ -25,7 +25,18 @@ $distributionFiles = @(
     "CHANGELOG.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
-    "assets/rgms-minimap-icon.png"
+    "assets/rgms-logo.png",
+    "assets/rgms-minimap-icon.png",
+    "assets/fonts/Inter-Regular.ttf",
+    "assets/fonts/Inter-SemiBold.ttf",
+    "assets/icons/check.png",
+    "assets/icons/chevron-down.png",
+    "assets/icons/chevron-right.png",
+    "assets/icons/loader-circle.png",
+    "assets/icons/notebook-pen.png",
+    "assets/icons/x.png",
+    "licenses/Inter-OFL.txt",
+    "licenses/Lucide-ISC.txt"
 )
 
 function Assert-ReleaseVersion {
@@ -368,15 +379,33 @@ function Invoke-LuaTests {
     }
 
     Write-Host "Running automated tests with $($lua.Source)..."
-    Push-Location $RepositoryPath
-    try {
-        & $lua.Source "Tests/run.lua"
-        if ($LASTEXITCODE -ne 0) {
-            throw "Automated tests failed with exit code $LASTEXITCODE. No release archive was produced."
+    if ($env:OS -eq "Windows_NT") {
+        $git = Get-Command git.exe -ErrorAction SilentlyContinue
+        if ($null -eq $git) {
+            throw "Git Bash is required to run the Lua suite safely on Windows."
+        }
+        $gitBash = [System.IO.Path]::GetFullPath((Join-Path (Split-Path $git.Source -Parent) "..\bin\bash.exe"))
+        if (-not (Test-Path -LiteralPath $gitBash -PathType Leaf)) {
+            throw "Git Bash was not found at the expected Git installation path: $gitBash"
+        }
+        $portableRepository = $RepositoryPath.Replace('\', '/')
+        if ($portableRepository -match '^([A-Za-z]):(.*)$') {
+            $portableRepository = "/$($Matches[1].ToLowerInvariant())$($Matches[2])"
+        }
+        $portableLua = $lua.Source.Replace('\', '/')
+        & $gitBash -lc "cd '$portableRepository' && '$portableLua' Tests/run.lua"
+    }
+    else {
+        Push-Location $RepositoryPath
+        try {
+            & $lua.Source "Tests/run.lua"
+        }
+        finally {
+            Pop-Location
         }
     }
-    finally {
-        Pop-Location
+    if ($LASTEXITCODE -ne 0) {
+        throw "Automated tests failed with exit code $LASTEXITCODE. No release archive was produced."
     }
 }
 

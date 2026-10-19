@@ -238,6 +238,7 @@ function Bank.RefreshStatus()
     local scannedAt = type(RGMS.DB) == "table"
         and type(RGMS.DB.bank) == "table"
         and RGMS.DB.bank.scannedAt
+    local builtReport
     if type(RGMS.UI.SetBankReport) == "function"
         and type(RGMS.BankReport) == "table"
         and type(RGMS.BankReport.build) == "function"
@@ -250,6 +251,7 @@ function Bank.RefreshStatus()
             RGMS.DateTime
         )
         if report then
+            builtReport = report
             RGMS.UI.SetBankReport(report)
         else
             RGMS.UI.SetViewStatus(
@@ -266,6 +268,16 @@ function Bank.RefreshStatus()
             scannedAt.unixSeconds
         )
     end
+    local lastAccessible
+    if builtReport and type(builtReport.tabs) == "table" then
+        local savedIndex = type(RGMS.DB.ui) == "table"
+            and RGMS.DB.ui.selectedBankTabIndex
+            or nil
+        local selected = type(RGMS.Portal) == "table"
+            and RGMS.Portal.resolveSelection(builtReport.tabs, savedIndex, true)
+            or builtReport.tabs[1]
+        lastAccessible = selected and selected.lastAccessibleText or nil
+    end
 
     if Bank.IsScanInProgress() then
         local status = "Scanning..."
@@ -280,7 +292,9 @@ function Bank.RefreshStatus()
 
     local status
     if lastSuccessful then
-        status = "Last successful scan: " .. lastSuccessful
+        status = type(RGMS.Portal) == "table"
+            and RGMS.Portal.bankTimestamp(lastSuccessful, lastAccessible)
+            or ("Last successful scan: " .. lastSuccessful)
     else
         status = "No bank scan yet"
     end
@@ -387,6 +401,14 @@ if type(Bank.Scanner) ~= "table"
             )
         end,
         canScan = Bank.CanScan,
+        isScanLocked = RGMS.IsScanLocked,
+        beginScan = function()
+            return RGMS.BeginScan("bank")
+        end,
+        endScan = function()
+            return RGMS.EndScan("bank")
+        end,
+        rejectConcurrentScan = RGMS.RejectConcurrentScan,
         prepareScan = Bank.PrepareScan,
         print = RGMS.Print,
         debug = RGMS.Debug,

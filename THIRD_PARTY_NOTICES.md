@@ -1,5 +1,41 @@
 # Third-party notices
 
+## Inter
+
+RGMS bundles these static fonts from the official Inter v4.1 release:
+
+- `assets/fonts/Inter-Regular.ttf`
+- `assets/fonts/Inter-SemiBold.ttf`
+
+Source: <https://github.com/rsms/inter/releases/tag/v4.1>
+
+Published: November 16, 2024
+
+Inter is Copyright (c) 2016 The Inter Project Authors and is distributed under
+the SIL Open Font License 1.1. The complete license is included at
+`licenses/Inter-OFL.txt`.
+
+## Lucide
+
+RGMS includes raster exports derived from Lucide 1.59.0, pinned to source
+revision `02eb9161b57917ccaa262f1bf070507cddde3b08`:
+
+- `check`
+- `chevron-down`
+- `chevron-right`
+- `loader-circle`
+- `notebook-pen`
+- `x`
+
+Source: <https://github.com/lucide-icons/lucide/tree/1.59.0/icons>
+
+Published: October 17, 2026
+
+Lucide is Copyright (c) 2022 Lucide Contributors and is distributed under the
+ISC License. The complete license is included at `licenses/Lucide-ISC.txt`.
+
+## LibDBIcon and embedded Ace libraries
+
 RGMS embeds the following files from the official LibDBIcon-1.0 v12.1.1
 release archive:
 
