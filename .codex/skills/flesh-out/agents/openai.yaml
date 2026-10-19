@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flesh Out GitHub Issue"
+  short_description: "Turn partial issues into airtight requirements"
+  default_prompt: "Use $flesh-out to clarify this GitHub issue with me."
