@@ -19,6 +19,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Tag previews no longer appear while a character's tag editor is open.
 - Dropdown menus now apply RGMS typography without calling a font API that is
   disallowed on Blizzard-managed menu elements.
 - Mains/Alts now recycles only the visible row controls while scrolling large

@@ -974,6 +974,10 @@ return {
         view.mainsAltsLines[2].tagButton.scripts.OnClick()
         test.assert_true(view.mainsAltsTagEditor:IsShown())
         test.assert_true(view.mainsAltsTagEditor.input:HasFocus())
+        report.rows[1].tags = { "me" }
+        view.mainsAltsLines[1].tagButton.scripts.OnEnter()
+        test.assert_false(view.mainsAltsTagPreview:IsShown())
+        report.rows[1].tags = {}
         test.assert_equal(view.mainsAltsTagEditor.pills[1].label.text, "me")
         test.assert_false(view.mainsAltsTagEditor.pills[1].selected)
         test.assert_true(view.mainsAltsTagEditor.pills[2].selected)
