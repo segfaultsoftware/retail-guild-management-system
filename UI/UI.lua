@@ -47,8 +47,8 @@ local MAINS_ALTS_PROMOTE_WIDTH = 76
 local MAINS_ALTS_REMOVE_WIDTH = 68
 local MAINS_ALTS_NOTE_SIZE = 16
 local MAINS_ALTS_NOTE_GAP = 4
-local MAINS_ALTS_TAG_WIDTH = 76
-local MAINS_ALTS_TAG_HEIGHT = 20
+local MAINS_ALTS_TAG_WIDTH = 24
+local MAINS_ALTS_TAG_SIZE = 16
 local MAINS_ALTS_SCROLL_DURATION = 0
 local MAINS_ALTS_WHEEL_ROWS = 3
 -- The legacy ScrollFrame is retained for exact pixel anchors and existing styling;
@@ -63,6 +63,7 @@ local TAG_PILL_GAP = 6
 local TAG_POPOVER_PADDING = 8
 local CHARACTER_NOTE_LIMIT = 5500
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
+local CHARACTER_TAG_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\tag.png"
 local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
@@ -590,7 +591,7 @@ local function layoutMainsAltsLines(view, availableWidth)
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
-            line.tagButton:SetPoint("RIGHT", line.frame, "RIGHT", -228, 0)
+            line.tagButton:SetPoint("CENTER", line.frame, "RIGHT", -236, 0)
             line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
             line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -4, 0)
             line.promoteButton:SetPoint(
@@ -634,7 +635,7 @@ local function layoutMainsAltsLines(view, availableWidth)
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
-            line.tagButton:SetPoint("RIGHT", line.frame, "RIGHT", -228, 0)
+            line.tagButton:SetPoint("CENTER", line.frame, "RIGHT", -236, 0)
             line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
         end
     end
@@ -657,7 +658,7 @@ local function createMainsAltsHeader(view)
         MAINS_ALTS_CHARACTER_LEFT,
         0
     )
-    characterText:SetPoint("RIGHT", frame, "RIGHT", -304, 0)
+    characterText:SetPoint("RIGHT", frame, "RIGHT", -252, 0)
     tagsText:SetPoint("RIGHT", frame, "RIGHT", -224, 0)
     tagsText:SetWidth(MAINS_ALTS_TAG_WIDTH)
     noteText:SetPoint("RIGHT", frame, "RIGHT", -168, 0)
@@ -665,7 +666,7 @@ local function createMainsAltsHeader(view)
     actionsText:SetPoint("RIGHT", frame, "RIGHT", -8, 0)
     actionsText:SetWidth(160)
     characterText:SetText("Character")
-    tagsText:SetText("Tags")
+    tagsText:SetText("")
     noteText:SetText("Note")
     actionsText:SetText("Actions")
     for _, label in ipairs({ characterText, tagsText, noteText, actionsText }) do
@@ -1120,14 +1121,12 @@ local function acquireMainsAltsLine(view, index)
     noteIcon:SetAllPoints(noteButton)
     noteIcon:SetTexture(CHARACTER_NOTE_TEXTURE)
     noteButton.icon = noteIcon
-    local tagButton = CreateFrame("Button", nil, frame, "BackdropTemplate")
-    tagButton:SetSize(MAINS_ALTS_TAG_WIDTH, MAINS_ALTS_TAG_HEIGHT)
-    styleTagCapsule(tagButton, PALETTE.control, PALETTE.border)
-    tagButton.label = tagButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    tagButton.label:SetAllPoints(tagButton)
-    tagButton.label:SetJustifyH("CENTER")
-    setFont(tagButton.label, FONT_SEMIBOLD, 11)
-    setTextColor(tagButton.label, PALETTE.text)
+    local tagButton = CreateFrame("Button", nil, frame)
+    tagButton:SetSize(MAINS_ALTS_TAG_SIZE, MAINS_ALTS_TAG_SIZE)
+    local tagIcon = tagButton:CreateTexture(nil, "ARTWORK")
+    tagIcon:SetAllPoints(tagButton)
+    tagIcon:SetTexture(CHARACTER_TAG_TEXTURE)
+    tagButton.icon = tagIcon
     line = {
         frame = frame,
         background = background,
@@ -1253,15 +1252,18 @@ local function bindMainsAltsLine(view, line, row, rowIndex)
         line.hasNote and 1 or 0.65
     )
     line.noteButton:Show()
-    line.tagButton.label:SetText(
-        #line.tags > 0 and ("Tags (" .. #line.tags .. ")") or "Tags"
+    line.tagButton.icon:SetVertexColor(
+        #line.tags > 0 and 1 or 0.55,
+        #line.tags > 0 and 0.82 or 0.55,
+        #line.tags > 0 and 0.2 or 0.55,
+        #line.tags > 0 and 1 or 0.65
     )
     line.tagButton:Show()
     if view.mainsAltsTagEditor
         and view.mainsAltsTagEditor:IsShown()
         and view.mainsAltsTagEditor.characterIdentity == character.identity then
         view.mainsAltsTagEditor:ClearAllPoints()
-        view.mainsAltsTagEditor:SetPoint("TOPLEFT", line.tagButton, "BOTTOMLEFT", 0, -4)
+        view.mainsAltsTagEditor:SetPoint("TOPRIGHT", line.tagButton, "BOTTOMRIGHT", 0, -4)
         view.mainsAltsTagEditor.anchor = line.tagButton
     end
 
@@ -2037,7 +2039,7 @@ function UI.OpenMainsAltsTagEditor(identity, anchor)
     editor.characterIdentity = identity
     editor.anchor = anchor
     editor:ClearAllPoints()
-    editor:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    editor:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
     refreshMainsAltsTagEditor(view)
     editor:Show()
     updateTagDismissLayer(view)
@@ -2080,7 +2082,7 @@ function UI.ShowMainsAltsTagPreview(names, anchor)
     local _, y = layoutTagPills(preview, names, selected, nil)
     preview:SetHeight(math.abs(y) + TAG_PILL_HEIGHT + TAG_POPOVER_PADDING)
     preview:ClearAllPoints()
-    preview:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    preview:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
     preview:Show()
     return true
 end
