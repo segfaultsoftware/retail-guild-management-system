@@ -1218,7 +1218,14 @@ local function acquireMainsAltsLine(view, index)
     end)
     tagButton:SetScript("OnClick", function()
         if line.character then
-            UI.OpenMainsAltsTagEditor(line.character.identity, tagButton)
+            local editor = view.mainsAltsTagEditor
+            if editor
+                and editor:IsShown()
+                and editor.characterIdentity == line.character.identity then
+                closeMainsAltsTagEditor(view)
+            else
+                UI.OpenMainsAltsTagEditor(line.character.identity, tagButton)
+            end
         end
     end)
     tagButton:SetScript("OnEnter", function()
@@ -1813,8 +1820,7 @@ local function updateTagDismissLayer(view)
     if not view.mainsAltsTagDismissLayer then
         return
     end
-    local shown = (view.mainsAltsTagEditor and view.mainsAltsTagEditor:IsShown())
-        or (view.mainsAltsTagFilter and view.mainsAltsTagFilter:IsShown())
+    local shown = view.mainsAltsTagFilter and view.mainsAltsTagFilter:IsShown()
     view.mainsAltsTagDismissLayer:SetShown(shown == true)
 end
 
@@ -1823,6 +1829,7 @@ closeMainsAltsTagEditor = function(view)
         view.mainsAltsTagEditor:Hide()
         view.mainsAltsTagEditor.characterIdentity = nil
         view.mainsAltsTagEditor.anchor = nil
+        view.mainsAltsTagEditor.input:SetText("")
         view.mainsAltsTagEditor.input:ClearFocus()
     end
     updateTagDismissLayer(view)
@@ -2011,6 +2018,18 @@ local function createMainsAltsTagPopovers(view)
     end
     editor:Hide()
     view.mainsAltsTagEditor = editor
+
+    local mouseListener = CreateFrame("Frame")
+    mouseListener:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    mouseListener:SetScript("OnEvent", function(_, event)
+        if event == "GLOBAL_MOUSE_DOWN"
+            and editor:IsShown()
+            and not editor:IsMouseOver()
+            and (not editor.anchor or not editor.anchor:IsMouseOver()) then
+            closeMainsAltsTagEditor(view)
+        end
+    end)
+    view.mainsAltsTagMouseListener = mouseListener
 
     local preview = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     preview:SetWidth(TAG_POPOVER_WIDTH)
