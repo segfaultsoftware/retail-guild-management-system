@@ -37,6 +37,10 @@ local ROSTER_ROW_HEIGHT = 24
 local ROSTER_GROUP_GAP = 0
 local MAINS_ALTS_ROW_HEIGHT = 24
 local MAINS_ALTS_CHECKBOX_SIZE = 16
+local MAINS_ALTS_CHECKBOX_LEFT = 8
+local MAINS_ALTS_CONTROL_GAP = 4
+local MAINS_ALTS_CHARACTER_LEFT = MAINS_ALTS_CHECKBOX_LEFT
+    + MAINS_ALTS_CHECKBOX_SIZE + MAINS_ALTS_CONTROL_GAP
 local MAINS_ALTS_ALT_INDENT = 64
 local MAINS_ALTS_EXPAND_WIDTH = 16
 local MAINS_ALTS_PROMOTE_WIDTH = 76
@@ -573,13 +577,14 @@ local function layoutMainsAltsLines(view, availableWidth)
                 "LEFT",
                 line.frame,
                 "LEFT",
-                56 + 16,
+                MAINS_ALTS_CHARACTER_LEFT + MAINS_ALTS_EXPAND_WIDTH,
                 0
             )
             local maximumNameWidth = math.max(
                 1,
                 availableWidth
-                    - 56 - 16 - MAINS_ALTS_TAG_WIDTH - 56 - 168 - 12
+                    - MAINS_ALTS_CHARACTER_LEFT - MAINS_ALTS_EXPAND_WIDTH
+                    - MAINS_ALTS_TAG_WIDTH - 56 - 168 - 12
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
                 and line.name:GetStringWidth() + 2
@@ -596,20 +601,33 @@ local function layoutMainsAltsLines(view, availableWidth)
                 0
             )
         else
-            line.checkbox:SetPoint("LEFT", line.frame, "LEFT", 0, 0)
-            line.checkbox:SetPoint("CENTER", line.frame, "LEFT", 28, 0)
-            line.expandButton:SetPoint("LEFT", line.frame, "LEFT", 56, 0)
+            line.checkbox:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                MAINS_ALTS_CHECKBOX_LEFT,
+                0
+            )
+            line.expandButton:SetPoint(
+                "LEFT",
+                line.frame,
+                "LEFT",
+                MAINS_ALTS_CHARACTER_LEFT,
+                0
+            )
             line.name:SetPoint(
                 "LEFT",
                 line.frame,
                 "LEFT",
-                56 + MAINS_ALTS_EXPAND_WIDTH + 4,
+                MAINS_ALTS_CHARACTER_LEFT + MAINS_ALTS_EXPAND_WIDTH
+                    + MAINS_ALTS_CONTROL_GAP,
                 0
             )
             local maximumNameWidth = math.max(
                 1,
                 availableWidth
-                    - 56 - MAINS_ALTS_EXPAND_WIDTH - 4
+                    - MAINS_ALTS_CHARACTER_LEFT - MAINS_ALTS_EXPAND_WIDTH
+                    - MAINS_ALTS_CONTROL_GAP
                     - MAINS_ALTS_TAG_WIDTH - 56 - 168 - 12
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
@@ -628,14 +646,17 @@ local function createMainsAltsHeader(view)
     frame:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
     frame:SetPoint("TOPRIGHT", view, "TOPRIGHT", -8, 0)
     frame:SetHeight(28)
-    local selectText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     local characterText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     local tagsText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     local noteText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     local actionsText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    selectText:SetPoint("LEFT", frame, "LEFT", 8, 0)
-    selectText:SetWidth(48)
-    characterText:SetPoint("LEFT", frame, "LEFT", 56, 0)
+    characterText:SetPoint(
+        "LEFT",
+        frame,
+        "LEFT",
+        MAINS_ALTS_CHARACTER_LEFT,
+        0
+    )
     characterText:SetPoint("RIGHT", frame, "RIGHT", -304, 0)
     tagsText:SetPoint("RIGHT", frame, "RIGHT", -224, 0)
     tagsText:SetWidth(MAINS_ALTS_TAG_WIDTH)
@@ -643,18 +664,18 @@ local function createMainsAltsHeader(view)
     noteText:SetWidth(56)
     actionsText:SetPoint("RIGHT", frame, "RIGHT", -8, 0)
     actionsText:SetWidth(160)
-    selectText:SetText("")
     characterText:SetText("Character")
     tagsText:SetText("Tags")
     noteText:SetText("Note")
     actionsText:SetText("Actions")
-    for _, label in ipairs({ selectText, characterText, tagsText, noteText, actionsText }) do
+    for _, label in ipairs({ characterText, tagsText, noteText, actionsText }) do
         label:SetJustifyH("LEFT")
         setFont(label, FONT_SEMIBOLD, 12)
         setTextColor(label, PALETTE.text)
     end
     noteText:SetJustifyH("CENTER")
     tagsText:SetJustifyH("CENTER")
+    frame.character = characterText
     frame.note = noteText
     frame.tags = tagsText
     view.mainsAltsHeader = frame
