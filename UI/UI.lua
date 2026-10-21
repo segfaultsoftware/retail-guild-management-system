@@ -1,6 +1,42 @@
 local _, RGMS = ...
 
 local UI = RGMS.UI or {}
+local createFrame = CreateFrame
+local windowDragRoot
+local startWindowDrag
+local stopWindowDrag
+
+local function isInsideMainWindow(parent)
+    local current = parent
+    while current do
+        if current == windowDragRoot then
+            return true
+        end
+        if type(current.GetParent) ~= "function" then
+            return false
+        end
+        current = current:GetParent()
+    end
+    return false
+end
+
+local function enableWindowDragging(surface)
+    if not surface or type(surface.RegisterForDrag) ~= "function"
+        or type(surface.HookScript) ~= "function" then
+        return
+    end
+    surface:RegisterForDrag("LeftButton")
+    surface:HookScript("OnDragStart", startWindowDrag)
+    surface:HookScript("OnDragStop", stopWindowDrag)
+end
+
+local function CreateFrame(frameType, name, parent, template)
+    local frame = createFrame(frameType, name, parent, template)
+    if windowDragRoot and isInsideMainWindow(parent) then
+        enableWindowDragging(frame)
+    end
+    return frame
+end
 
 local TAB_ORDER = { "roster", "mainsalts", "bank" }
 local TAB_TITLES = {
@@ -2845,6 +2881,36 @@ local function createWindow()
     if type(frame.SetBackdropBorderColor) == "function" then
         frame:SetBackdropBorderColor(unpackColor(PALETTE.border))
     end
+    startWindowDrag = function()
+        if UI.globalScanLocked == true then
+            return
+        end
+        if type(RGMS.PortalState) == "table"
+            and not RGMS.PortalState:canDrag() then
+            return
+        end
+        UI.windowDragActive = true
+        frame:StartMoving()
+    end
+    stopWindowDrag = function()
+        if UI.windowDragActive ~= true then
+            return
+        end
+        UI.windowDragActive = false
+        frame:StopMovingOrSizing()
+        local left = frame:GetLeft()
+        local bottom = frame:GetBottom()
+        if left and bottom then
+            applyClampedPosition({
+                point = "BOTTOMLEFT",
+                relativePoint = "BOTTOMLEFT",
+                x = left,
+                y = bottom,
+            }, true)
+        end
+    end
+    windowDragRoot = frame
+    enableWindowDragging(frame)
     local shadow = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
     shadow:SetTexture(WHITE_TEXTURE)
     shadow:SetPoint("TOPLEFT", frame, "TOPLEFT", -6, 6)
@@ -2889,54 +2955,6 @@ local function createWindow()
         hideOwnedTooltip(button)
     end)
     frame.closeButton = closeButton
-
-    local dragHandle = CreateFrame("Button", nil, frame)
-    dragHandle:SetPoint("TOPLEFT", 280, -12)
-    dragHandle:SetPoint("TOPRIGHT", -240, -12)
-    dragHandle:SetHeight(32)
-    dragHandle:RegisterForDrag("LeftButton")
-    local function stopDragging()
-        frame:StopMovingOrSizing()
-        local left = frame:GetLeft()
-        local bottom = frame:GetBottom()
-        if left and bottom then
-            applyClampedPosition({
-                point = "BOTTOMLEFT",
-                relativePoint = "BOTTOMLEFT",
-                x = left,
-                y = bottom,
-            }, true)
-        end
-    end
-    dragHandle:SetScript("OnDragStart", function()
-        if UI.globalScanLocked == true then
-            return
-        end
-        if type(RGMS.PortalState) == "table"
-            and not RGMS.PortalState:canDrag("header", false) then
-            return
-        end
-        frame:StartMoving()
-    end)
-    dragHandle:SetScript("OnDragStop", stopDragging)
-    frame.dragHandle = dragHandle
-
-    local sidebarDragHandle = CreateFrame("Button", nil, sidebar)
-    sidebarDragHandle:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -136)
-    sidebarDragHandle:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -8, 8)
-    sidebarDragHandle:RegisterForDrag("LeftButton")
-    sidebarDragHandle:SetScript("OnDragStart", function()
-        if UI.globalScanLocked == true then
-            return
-        end
-        if type(RGMS.PortalState) == "table"
-            and not RGMS.PortalState:canDrag("sidebar", false) then
-            return
-        end
-        frame:StartMoving()
-    end)
-    sidebarDragHandle:SetScript("OnDragStop", stopDragging)
-    frame.sidebarDragHandle = sidebarDragHandle
 
     frame.tabs = {}
     frame.views = {}

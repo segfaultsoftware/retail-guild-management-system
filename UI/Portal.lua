@@ -211,10 +211,8 @@ function Portal.create()
         return command == "" or command == "open" or command == "help" or command == "debug"
     end
 
-    function controller:canDrag(zone, occupied)
+    function controller:canDrag()
         return self.scanOwner == nil
-            and occupied ~= true
-            and (zone == "header" or zone == "sidebar")
     end
 
     return controller
