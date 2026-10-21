@@ -2423,6 +2423,22 @@ local function createDropdown(parent, width, emptyLabel, selected, options)
     return dropdown
 end
 
+local function refreshVisibleReport(view, tabId)
+    if tabId == "roster" then
+        local rank = findRosterRank(view, view.selectedRankIndex)
+        if rank then
+            updateDropdownLabel(view.rankDropdown, rank, "No ranks")
+            renderRosterRank(view, rank)
+        end
+    elseif tabId == "bank" then
+        local tab = findBankTab(view, view.selectedBankTabIndex)
+        if tab then
+            updateDropdownLabel(view.bankDropdown, tab, "No bank tabs")
+            renderBankTab(view, tab)
+        end
+    end
+end
+
 local function createView(parent, tabId)
     local view = CreateFrame("Frame", nil, parent)
     view:SetPoint("TOPLEFT", SIDEBAR_WIDTH + CONTENT_PADDING, -HEADER_HEIGHT - CONTENT_PADDING)
@@ -3016,6 +3032,7 @@ local function createWindow()
 
     frame:SetScript("OnShow", function()
         UI.ClampToScreen()
+        refreshVisibleReport(frame.views[UI.selectedTab], UI.selectedTab)
     end)
     frame:SetScript("OnHide", function()
         local mainsAltsView = frame.views.mainsalts
@@ -3184,6 +3201,9 @@ function UI.SelectPrimaryTab(tabId)
     UI.frame.selectedTab = selectedIndex
     UI.selectedTab = tabId
     local selectedView = UI.frame.views[tabId]
+    if UI.frame:IsShown() then
+        refreshVisibleReport(selectedView, tabId)
+    end
     local savedScroll = type(RGMS.PortalState) == "table"
         and RGMS.PortalState.scroll[tabId]
         or selectedView.scrollFrame:GetVerticalScroll()

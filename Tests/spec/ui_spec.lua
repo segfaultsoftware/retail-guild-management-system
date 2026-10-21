@@ -1975,6 +1975,38 @@ return {
         test.assert_false(harness.frame().views.bank.bankDropdown:IsEnabled())
     end),
 
+    test.case("prepared reports repaint their selections when views become visible", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local rosterRankReport = rosterRank(3, "Officer")
+        test.assert_true(harness.ui.SetRosterReport({ ranks = {
+            rosterRankReport,
+        } }))
+        test.assert_true(harness.ui.SetBankReport({ tabs = {
+            {
+                index = 2,
+                name = "Materials",
+                icon = 9001,
+                isViewable = true,
+                rows = {},
+            },
+        } }))
+
+        local frame = harness.frame()
+        frame.views.roster.rankDropdown.label:SetText("")
+        frame.views.roster.rosterLines[1].primary:SetText("")
+        frame.views.bank.bankDropdown.label:SetText("")
+
+        test.assert_true(harness.ui.Show())
+        test.assert_equal(frame.views.roster.rankDropdown.label.text, "Officer")
+        test.assert_equal(frame.views.roster.rosterLines[1].primary.text, "This Week")
+        test.assert_equal(harness.database.ui.selectedRosterRankIndex, 3)
+
+        test.assert_true(harness.ui.SelectPrimaryTab("bank"))
+        test.assert_equal(frame.views.bank.bankDropdown.label.text, "Materials")
+        test.assert_equal(harness.database.ui.selectedBankTabIndex, 2)
+    end),
+
     test.case("dropdown menu initializers use a compositor-safe font object", function()
         local harness = newHarness()
         harness.ui.Initialize()
