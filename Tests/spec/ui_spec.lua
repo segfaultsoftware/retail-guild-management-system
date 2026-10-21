@@ -151,6 +151,10 @@ local function newRegion(parent)
         return self.shown
     end
 
+    function region:IsMouseOver()
+        return self.mouseOver == true
+    end
+
     function region:SetShown(shown)
         self.shown = shown
     end
@@ -995,6 +999,7 @@ return {
         test.assert_equal(view.mainsAltsTagEditor.point, "TOPRIGHT")
         test.assert_equal(view.mainsAltsTagEditor.relativePoint, "BOTTOMRIGHT")
         test.assert_true(view.mainsAltsTagEditor.input:HasFocus())
+        test.assert_false(view.mainsAltsTagDismissLayer:IsShown())
         report.rows[1].tags = { "me" }
         view.mainsAltsLines[1].tagButton.scripts.OnEnter()
         test.assert_false(view.mainsAltsTagPreview:IsShown())
@@ -1026,6 +1031,70 @@ return {
         test.assert_false(view.mainsAltsTagEditor:IsShown())
         view.mainsAltsLines[2].tagButton.scripts.OnClick()
         test.assert_true(view.mainsAltsTagEditor:IsShown())
+        view.mainsAltsTagEditor.input:SetText("discard me")
+        view.mainsAltsTagEditor.mouseOver = true
+        view.mainsAltsTagMouseListener.scripts.OnEvent(
+            view.mainsAltsTagMouseListener,
+            "GLOBAL_MOUSE_DOWN",
+            "LeftButton"
+        )
+        test.assert_true(view.mainsAltsTagEditor:IsShown())
+        test.assert_equal(view.mainsAltsTagEditor.input:GetText(), "discard me")
+        view.mainsAltsTagEditor.mouseOver = false
+        view.mainsAltsTagMouseListener.scripts.OnEvent(
+            view.mainsAltsTagMouseListener,
+            "GLOBAL_MOUSE_DOWN",
+            "LeftButton"
+        )
+        test.assert_false(view.mainsAltsTagEditor:IsShown())
+        test.assert_equal(view.mainsAltsTagEditor.input:GetText(), "")
+        test.assert_equal(#harness.tagAssignments, 1)
+        view.mainsAltsLines[2].tagButton.scripts.OnClick()
+        test.assert_true(view.mainsAltsTagEditor:IsShown())
+        test.assert_equal(view.mainsAltsTagEditor.input:GetText(), "")
+        test.assert_false(view.mainsAltsTagDismissLayer:IsShown())
+        view.mainsAltsTagEditor.input:SetText("same character draft")
+        view.mainsAltsLines[2].tagButton.mouseOver = true
+        view.mainsAltsTagMouseListener.scripts.OnEvent(
+            view.mainsAltsTagMouseListener,
+            "GLOBAL_MOUSE_DOWN",
+            "LeftButton"
+        )
+        test.assert_true(view.mainsAltsTagEditor:IsShown())
+        view.mainsAltsLines[2].tagButton.scripts.OnClick()
+        test.assert_false(view.mainsAltsTagEditor:IsShown())
+        test.assert_equal(view.mainsAltsTagEditor.input:GetText(), "")
+        view.mainsAltsLines[2].tagButton.mouseOver = false
+
+        view.mainsAltsLines[2].tagButton.scripts.OnClick()
+        view.mainsAltsTagEditor.input:SetText("different character draft")
+        view.mainsAltsLines[1].tagButton.mouseOver = true
+        view.mainsAltsTagMouseListener.scripts.OnEvent(
+            view.mainsAltsTagMouseListener,
+            "GLOBAL_MOUSE_DOWN",
+            "LeftButton"
+        )
+        view.mainsAltsLines[1].tagButton.scripts.OnClick()
+        test.assert_true(view.mainsAltsTagEditor:IsShown())
+        test.assert_equal(
+            view.mainsAltsTagEditor.characterIdentity,
+            "main-area52"
+        )
+        test.assert_equal(view.mainsAltsTagEditor.input:GetText(), "")
+        view.mainsAltsLines[1].tagButton.mouseOver = false
+
+        view.mainsAltsLines[2].tagButton.mouseOver = true
+        view.mainsAltsTagMouseListener.scripts.OnEvent(
+            view.mainsAltsTagMouseListener,
+            "GLOBAL_MOUSE_DOWN",
+            "LeftButton"
+        )
+        view.mainsAltsLines[2].tagButton.scripts.OnClick()
+        view.mainsAltsLines[2].tagButton.mouseOver = false
+        test.assert_equal(
+            view.mainsAltsTagEditor.characterIdentity,
+            "raidalt-area52"
+        )
 
         report.rows[1].alts[1].tags = {}
         harness.ui.SetMainsAltsReport(report)
