@@ -178,6 +178,15 @@ local function newRegion(parent)
         self.texture = value
     end
 
+    function region:SetFont(path, size, flags)
+        self.font = { path, size, flags }
+        self.setFontCalls = (self.setFontCalls or 0) + 1
+    end
+
+    function region:SetFontObject(fontObject)
+        self.fontObject = fontObject
+    end
+
     function region:SetVertexColor(red, green, blue, alpha)
         self.vertexColor = { red, green, blue, alpha }
     end
@@ -294,7 +303,6 @@ local function newRegion(parent)
         "SetJustifyV",
         "SetAllPoints",
         "SetMultiLine",
-        "SetFontObject",
     }
     for _, methodName in ipairs(noOpMethods) do
         region[methodName] = function() end
@@ -309,6 +317,7 @@ end
 
 local function newHarness(savedPosition, screenWidth, screenHeight)
     local mainFrame
+    local fonts = {}
     local refreshRequests = 0
     local bankRefreshRequests = 0
     local bankCancellations = 0
@@ -351,9 +360,21 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     UIParent = uiParent
     GameTooltip = tooltip
     UISpecialFrames = {}
-    CreateFrame = function(_, name, parent)
+    MenuUtil = {}
+    CreateFont = function(name)
+        local font = newRegion()
+        font.name = name
+        fonts[name] = font
+        return font
+    end
+    CreateFrame = function(frameType, name, parent)
         local frame = newRegion(parent)
         frame.name = name
+        if frameType == "DropdownButton" then
+            function frame:SetupMenu(generator)
+                self.menuGenerator = generator
+            end
+        end
         if name == "RGMSMainFrame" then
             mainFrame = frame
         end
@@ -423,6 +444,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
 
     return {
         database = database,
+        fonts = fonts,
         frame = function()
             return mainFrame
         end,
@@ -1624,6 +1646,47 @@ return {
         test.assert_true(harness.ui.SetBankReport({ tabs = {} }))
         test.assert_equal(harness.frame().views.bank.bankDropdown.label.text, "No bank tabs")
         test.assert_false(harness.frame().views.bank.bankDropdown:IsEnabled())
+    end),
+
+    test.case("dropdown menu initializers use a compositor-safe font object", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        test.assert_true(harness.ui.SetRosterReport({ ranks = {
+            rosterRank(3, "Officer"),
+        } }))
+        local dropdown = harness.frame().views.roster.rankDropdown
+        local descriptions = {}
+        local rootDescription = {}
+        function rootDescription:SetScrollMode(height)
+            self.scrollMode = height
+        end
+        function rootDescription:SetMinimumWidth(width)
+            self.minimumWidth = width
+        end
+        function rootDescription:CreateRadio()
+            local description = {}
+            function description:AddInitializer(initializer)
+                self.initializer = initializer
+            end
+            descriptions[#descriptions + 1] = description
+            return description
+        end
+
+        dropdown.menuGenerator(dropdown, rootDescription)
+        local menuButton = newRegion()
+        menuButton.fontString = newRegion(menuButton)
+        function menuButton.fontString:SetFont()
+            error("SetFont is disallowed by the Blizzard menu compositor")
+        end
+        descriptions[1].initializer(menuButton)
+
+        test.assert_equal(menuButton:GetHeight(), 32)
+        test.assert_equal(menuButton.fontString.fontObject, harness.fonts.RGMSMenuFont)
+        test.assert_equal(harness.fonts.RGMSMenuFont.font, {
+            "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf",
+            12,
+            "",
+        })
     end),
 
     test.case("global scan lock blocks the portal discards note drafts and leaves close available", function()

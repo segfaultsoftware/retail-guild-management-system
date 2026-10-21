@@ -77,6 +77,12 @@ local function setFont(region, path, size)
     end
 end
 
+local MENU_FONT
+if type(CreateFont) == "function" then
+    MENU_FONT = CreateFont("RGMSMenuFont")
+    setFont(MENU_FONT, FONT_SEMIBOLD, 12)
+end
+
 local function setTextColor(region, color)
     if region and type(region.SetTextColor) == "function" then
         region:SetTextColor(unpackColor(color))
@@ -1647,8 +1653,9 @@ local function createDropdown(parent, width, emptyLabel, selected, options)
                 )
                 description:AddInitializer(function(button)
                     button:SetHeight(32)
-                    if button.fontString then
-                        setFont(button.fontString, FONT_SEMIBOLD, 12)
+                    if button.fontString and MENU_FONT
+                        and type(button.fontString.SetFontObject) == "function" then
+                        button.fontString:SetFontObject(MENU_FONT)
                     end
                     if menuOption.icon and type(button.AttachTexture) == "function" then
                         local icon = button:AttachTexture()

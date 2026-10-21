@@ -13,6 +13,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   preserving group order, full-group context, hidden selections, and search
   state across in-view report updates.
 
+### Fixed
+
+- Dropdown menus now apply RGMS typography without calling a font API that is
+  disallowed on Blizzard-managed menu elements.
+
 ## 0.4
 
 ### Added
