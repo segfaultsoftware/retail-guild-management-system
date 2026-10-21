@@ -671,7 +671,43 @@ return {
         harness.ui.Hide()
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
         test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
-        test.assert_false(view.mainsAltsLines[4].frame:IsShown())
+        test.assert_false(view.mainsAltsLinePool[4].frame:IsShown())
+    end),
+
+    test.case("Mains/Alts recycles a bounded row pool for very large guilds", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        harness.ui.SetMainsAltsReport(mainsAltsReport(300))
+
+        test.assert_equal(#view.mainsAltsRows, 300)
+        test.assert_equal(view.mainsAltsTableHeight, 7208)
+        test.assert_true(#view.mainsAltsLinePool <= 5)
+        test.assert_equal(view.mainsAltsLines[1].identity, "char01-area52")
+
+        local row150Offset = 4 + (149 * 24)
+        view.scrollFrame.scripts.OnVerticalScroll(view.scrollFrame, row150Offset)
+
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), row150Offset)
+        test.assert_true(#view.mainsAltsLinePool <= 5)
+        test.assert_nil(view.mainsAltsLines[1])
+        test.assert_equal(view.mainsAltsLines[150].identity, "char150-area52")
+
+        local poolSize = #view.mainsAltsLinePool
+        view.mainsAltsLines[150].checkbox:SetChecked(true)
+        view.mainsAltsLines[150].checkbox.scripts.OnClick(
+            view.mainsAltsLines[150].checkbox
+        )
+        test.assert_true(view.mainsAltsSelections["char150-area52"])
+        view.scrollFrame.scripts.OnVerticalScroll(view.scrollFrame, row150Offset + 24)
+        test.assert_equal(view.mainsAltsLines[151].identity, "char151-area52")
+        test.assert_equal(#view.mainsAltsLinePool, poolSize)
+        view.mainsAltsLines[151].checkbox:SetChecked(true)
+        view.mainsAltsLines[151].checkbox.scripts.OnClick(
+            view.mainsAltsLines[151].checkbox
+        )
+        test.assert_true(view.mainsAltsSelections["char151-area52"])
     end),
 
     test.case("Mains/Alts search filters full groups and preserves hidden selections", function()
@@ -808,7 +844,7 @@ return {
 
         view.mainsAltsSearchBox:SetText("zzz")
         test.assert_true(view.mainsAltsHeader:IsShown())
-        test.assert_false(view.mainsAltsLines[1].frame:IsShown())
+        test.assert_false(view.mainsAltsLinePool[1].frame:IsShown())
         test.assert_false(view.text:IsShown())
 
         view.mainsAltsSearchBox:SetFocus()

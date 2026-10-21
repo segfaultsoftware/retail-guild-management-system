@@ -45,6 +45,9 @@ local MAINS_ALTS_NOTE_SIZE = 16
 local MAINS_ALTS_NOTE_GAP = 4
 local MAINS_ALTS_SCROLL_DURATION = 0
 local MAINS_ALTS_WHEEL_ROWS = 3
+-- The legacy ScrollFrame is retained for exact pixel anchors and existing styling;
+-- only enough complex row controls for the viewport are kept live and recycled.
+local MAINS_ALTS_VIEWPORT_BUFFER_ROWS = 1
 local MAINS_ALTS_SEARCH_WIDTH = 384
 local MAINS_ALTS_SEARCH_HEIGHT = 32
 local CHARACTER_NOTE_LIMIT = 5500
@@ -450,11 +453,11 @@ local function layoutBankLines(view, availableWidth)
 end
 
 local function layoutMainsAltsLines(view, availableWidth)
-    if type(view.mainsAltsLines) ~= "table" then
+    if type(view.mainsAltsLinePool) ~= "table" then
         return
     end
 
-    for _, line in ipairs(view.mainsAltsLines) do
+    for _, line in ipairs(view.mainsAltsLinePool) do
         line.frame:SetWidth(availableWidth)
         line.checkbox:ClearAllPoints()
         line.name:ClearAllPoints()
@@ -827,9 +830,13 @@ local function mainsAltsControlsEnabled(view)
 end
 
 local function hideMainsAltsLines(view)
-    for _, line in ipairs(view.mainsAltsLines or {}) do
+    for _, line in ipairs(view.mainsAltsLinePool or {}) do
         line.frame:Hide()
     end
+    view.mainsAltsLines = {}
+    view.mainsAltsRows = {}
+    view.mainsAltsViewportFirst = nil
+    view.mainsAltsViewportLast = nil
     view.mainsAltsTableHeight = nil
 end
 
@@ -879,7 +886,7 @@ local function updateMainsAltsControlState(view)
             view.mainsAltsSearchBox:SetBackdropBorderColor(unpackColor(border))
         end
     end
-    for _, line in ipairs(view.mainsAltsLines or {}) do
+    for _, line in ipairs(view.mainsAltsLinePool or {}) do
         if line.frame:IsShown() then
             line.checkbox:SetEnabled(enabled and not line.isAlt)
             line.expandButton:SetEnabled(enabled and line.hasAlts)
@@ -905,7 +912,7 @@ local function updateMainsAltsControlState(view)
 end
 
 local function acquireMainsAltsLine(view, index)
-    local line = view.mainsAltsLines[index]
+    local line = view.mainsAltsLinePool[index]
     if line then
         return line
     end
@@ -988,8 +995,185 @@ local function acquireMainsAltsLine(view, index)
     expandButton:SetScript("OnLeave", function(button)
         hideOwnedTooltip(button)
     end)
-    view.mainsAltsLines[index] = line
+    expandButton:SetScript("OnClick", function()
+        if line.character then
+            UI.ToggleMainsAltsGroup(line.character.identity)
+        end
+    end)
+    checkbox:SetScript("OnClick", function(button)
+        if not line.character then
+            return
+        end
+        if not mainsAltsControlsEnabled(view) then
+            button:SetChecked(
+                view.mainsAltsSelections[line.character.identity] == true
+            )
+            return
+        end
+        view.mainsAltsSelections[line.character.identity] = button:GetChecked()
+            == true
+        updateMainsAltsControlState(view)
+    end)
+    promoteButton:SetScript("OnClick", function()
+        if not line.character then
+            return
+        end
+        local promoted, promoteError = RGMS.MainsAlts.PromoteAlt(
+            line.character.identity
+        )
+        if not promoted and type(RGMS.Print) == "function" then
+            RGMS.Print("Could not promote alt: " .. tostring(promoteError) .. ".")
+        end
+    end)
+    removeButton:SetScript("OnClick", function()
+        if not line.character then
+            return
+        end
+        local removed, removeError = RGMS.MainsAlts.RemoveAlt(
+            line.character.identity
+        )
+        if not removed and type(RGMS.Print) == "function" then
+            RGMS.Print("Could not remove alt: " .. tostring(removeError) .. ".")
+        end
+    end)
+    noteButton:SetScript("OnClick", function()
+        if not line.character then
+            return
+        end
+        local character = line.character
+        local opened, openError = UI.OpenCharacterNote(
+            character.identity,
+            character.displayName,
+            character.note,
+            character.hasNote
+        )
+        if not opened and type(RGMS.Print) == "function" then
+            RGMS.Print("Could not open character note: "
+                .. tostring(openError) .. ".")
+        end
+    end)
+    noteButton:SetScript("OnEnter", function(button)
+        if not line.character then
+            return
+        end
+        showOwnedTooltip(button,
+            (line.hasNote and "Edit saved note for " or "Add note for ")
+                .. line.character.displayName,
+            "Open the character note editor."
+        )
+    end)
+    noteButton:SetScript("OnLeave", function(button)
+        hideOwnedTooltip(button)
+    end)
+    view.mainsAltsLinePool[index] = line
     return line
+end
+
+local function bindMainsAltsLine(view, line, row, rowIndex)
+    local character = row.character
+    line.character = character
+    line.isAlt = row.isAlt
+    line.hasAlts = not line.isAlt and character.altCount > 0
+    line.identity = character.identity
+    line.offset = row.offset
+    line.hasNote = character.hasNote == true
+    line.frame:ClearAllPoints()
+    line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -row.offset)
+    line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)
+    line.noteButton.icon:SetVertexColor(
+        line.hasNote and 1 or 0.55,
+        line.hasNote and 0.82 or 0.55,
+        line.hasNote and 0.2 or 0.55,
+        line.hasNote and 1 or 0.65
+    )
+    line.noteButton:Show()
+
+    if line.isAlt then
+        line.checkbox:Hide()
+        line.expandButton:Hide()
+        line.name:SetText(character.displayName)
+        line.promoteButton:Show()
+        line.removeButton:Show()
+    else
+        line.promoteButton:Hide()
+        line.removeButton:Hide()
+        line.checkbox:SetChecked(
+            view.mainsAltsSelections[character.identity] == true
+        )
+        line.checkbox:Show()
+        if line.hasAlts then
+            line.name:SetText(string.format(
+                "%s (+%d)",
+                character.displayName,
+                character.altCount
+            ))
+            local expanded = view.expandedMainsAlts[character.identity] == true
+            line.expandTooltip = expanded and "Collapse alts" or "Expand alts"
+            line.expandButton:SetText("")
+            if line.expandButton.icon
+                and type(line.expandButton.icon.SetRotation) == "function" then
+                line.expandButton.icon:SetRotation(expanded and math.pi / 2 or 0)
+            end
+            line.expandButton:Show()
+        else
+            line.name:SetText(character.displayName)
+            line.expandButton:Hide()
+        end
+    end
+    line.baseColor = (rowIndex % 2 == 0) and PALETTE.zebra or PALETTE.surface
+    line.background:SetVertexColor(unpackColor(line.baseColor))
+    line.frame:Show()
+end
+
+local function renderMainsAltsViewport(view, explicitOffset, force)
+    local rows = view.mainsAltsRows or {}
+    local rowCount = #rows
+    if rowCount == 0 then
+        for _, line in ipairs(view.mainsAltsLinePool or {}) do
+            line.frame:Hide()
+        end
+        view.mainsAltsLines = {}
+        view.mainsAltsViewportFirst = nil
+        view.mainsAltsViewportLast = nil
+        return
+    end
+
+    local offset = explicitOffset or view.scrollFrame:GetVerticalScroll()
+    local viewportHeight = math.max(1, view.scrollFrame:GetHeight())
+    local firstVisible = math.max(
+        1,
+        math.floor((offset - 4) / MAINS_ALTS_ROW_HEIGHT) + 1
+    )
+    local lastVisible = math.min(
+        rowCount,
+        math.ceil((offset + viewportHeight - 4) / MAINS_ALTS_ROW_HEIGHT)
+    )
+    local first = math.max(1, firstVisible - MAINS_ALTS_VIEWPORT_BUFFER_ROWS)
+    local last = math.min(
+        rowCount,
+        lastVisible + MAINS_ALTS_VIEWPORT_BUFFER_ROWS
+    )
+    if not force
+        and first == view.mainsAltsViewportFirst
+        and last == view.mainsAltsViewportLast then
+        return
+    end
+
+    view.mainsAltsViewportFirst = first
+    view.mainsAltsViewportLast = last
+    view.mainsAltsLines = {}
+    local poolIndex = 0
+    for rowIndex = first, last do
+        poolIndex = poolIndex + 1
+        local line = acquireMainsAltsLine(view, poolIndex)
+        bindMainsAltsLine(view, line, rows[rowIndex], rowIndex)
+        view.mainsAltsLines[rowIndex] = line
+    end
+    for index = poolIndex + 1, #view.mainsAltsLinePool do
+        view.mainsAltsLinePool[index].frame:Hide()
+    end
+    layoutMainsAltsLines(view, math.max(1, view.scrollFrame:GetWidth() - 8))
+    updateMainsAltsControlState(view)
 end
 
 local function mainsAltsMaximumScroll(view)
@@ -1005,8 +1189,10 @@ end
 
 local function setMainsAltsScroll(view, offset)
     view.settingMainsAltsScroll = true
-    view.scrollFrame:SetVerticalScroll(clampMainsAltsScroll(view, offset))
+    local clampedOffset = clampMainsAltsScroll(view, offset)
+    view.scrollFrame:SetVerticalScroll(clampedOffset)
     view.settingMainsAltsScroll = false
+    renderMainsAltsViewport(view, clampedOffset)
 end
 
 local function cancelMainsAltsScrollAnimation(view)
@@ -1020,13 +1206,11 @@ end
 
 local function captureMainsAltsScrollAnchor(view)
     local offset = view.scrollFrame:GetVerticalScroll()
-    for _, line in ipairs(view.mainsAltsLines or {}) do
-        if line.frame:IsShown()
-            and type(line.offset) == "number"
-            and line.offset + MAINS_ALTS_ROW_HEIGHT > offset then
+    for _, row in ipairs(view.mainsAltsRows or {}) do
+        if row.offset + MAINS_ALTS_ROW_HEIGHT > offset then
             return {
-                identity = line.identity,
-                relativeOffset = line.offset - offset,
+                identity = row.identity,
+                relativeOffset = row.offset - offset,
                 numericOffset = offset,
             }
         end
@@ -1034,12 +1218,11 @@ local function captureMainsAltsScrollAnchor(view)
     return { numericOffset = offset }
 end
 
-local function findVisibleMainsAltsLine(view, identity, topLevelOnly)
-    for _, line in ipairs(view.mainsAltsLines or {}) do
-        if line.frame:IsShown()
-            and line.identity == identity
-            and (not topLevelOnly or not line.isAlt) then
-            return line
+local function findMainsAltsRow(view, identity, topLevelOnly)
+    for _, row in ipairs(view.mainsAltsRows or {}) do
+        if row.identity == identity
+            and (not topLevelOnly or not row.isAlt) then
+            return row
         end
     end
     return nil
@@ -1050,7 +1233,7 @@ local function restoreMainsAltsScrollAnchor(view, anchor)
         return
     end
     local line = anchor.identity
-        and findVisibleMainsAltsLine(view, anchor.identity, false)
+        and findMainsAltsRow(view, anchor.identity, false)
         or nil
     if line then
         setMainsAltsScroll(view, line.offset - anchor.relativeOffset)
@@ -1078,114 +1261,12 @@ local function renderMainsAlts(view, resolvePendingTarget, preferredAnchor)
 
     local function addLine(character, isAlt)
         lineIndex = lineIndex + 1
-        local line = acquireMainsAltsLine(view, lineIndex)
-        line.isAlt = isAlt == true
-        line.hasAlts = not line.isAlt and character.altCount > 0
-        line.identity = character.identity
-        line.offset = offset
-        line.hasNote = character.hasNote == true
-        line.frame:ClearAllPoints()
-        line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -offset)
-        line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)
-        line.noteButton.icon:SetVertexColor(
-            line.hasNote and 1 or 0.55,
-            line.hasNote and 0.82 or 0.55,
-            line.hasNote and 0.2 or 0.55,
-            line.hasNote and 1 or 0.65
-        )
-        line.noteButton:SetScript("OnClick", function()
-            local opened, openError = UI.OpenCharacterNote(
-                character.identity,
-                character.displayName,
-                character.note,
-                character.hasNote
-            )
-            if not opened and type(RGMS.Print) == "function" then
-                RGMS.Print("Could not open character note: "
-                    .. tostring(openError) .. ".")
-            end
-        end)
-        line.noteButton:SetScript("OnEnter", function(button)
-            showOwnedTooltip(button,
-                (line.hasNote and "Edit saved note for " or "Add note for ")
-                    .. character.displayName,
-                "Open the character note editor."
-            )
-        end)
-        line.noteButton:SetScript("OnLeave", function(button)
-            hideOwnedTooltip(button)
-        end)
-        line.noteButton:Show()
-
-        if line.isAlt then
-            line.checkbox:Hide()
-            line.expandButton:Hide()
-            line.name:SetText(character.displayName)
-            line.promoteButton:SetScript("OnClick", function()
-                local promoted, promoteError = RGMS.MainsAlts.PromoteAlt(
-                    character.identity
-                )
-                if not promoted and type(RGMS.Print) == "function" then
-                    RGMS.Print(
-                        "Could not promote alt: " .. tostring(promoteError) .. "."
-                    )
-                end
-            end)
-            line.removeButton:SetScript("OnClick", function()
-                local removed, removeError = RGMS.MainsAlts.RemoveAlt(
-                    character.identity
-                )
-                if not removed and type(RGMS.Print) == "function" then
-                    RGMS.Print(
-                        "Could not remove alt: " .. tostring(removeError) .. "."
-                    )
-                end
-            end)
-            line.promoteButton:Show()
-            line.removeButton:Show()
-        else
-            line.promoteButton:Hide()
-            line.removeButton:Hide()
-            line.checkbox:SetChecked(
-                view.mainsAltsSelections[character.identity] == true
-            )
-            line.checkbox:SetScript("OnClick", function(button)
-                if not mainsAltsControlsEnabled(view) then
-                    button:SetChecked(
-                        view.mainsAltsSelections[character.identity] == true
-                    )
-                    return
-                end
-                view.mainsAltsSelections[character.identity] = button:GetChecked()
-                    == true
-                updateMainsAltsControlState(view)
-            end)
-            line.checkbox:Show()
-            if line.hasAlts then
-                line.name:SetText(string.format(
-                    "%s (+%d)",
-                    character.displayName,
-                    character.altCount
-                ))
-                local expanded = view.expandedMainsAlts[character.identity] == true
-                line.expandTooltip = expanded and "Collapse alts" or "Expand alts"
-                line.expandButton:SetText("")
-                if line.expandButton.icon
-                    and type(line.expandButton.icon.SetRotation) == "function" then
-                    line.expandButton.icon:SetRotation(expanded and math.pi / 2 or 0)
-                end
-                line.expandButton:SetScript("OnClick", function()
-                    UI.ToggleMainsAltsGroup(character.identity)
-                end)
-                line.expandButton:Show()
-            else
-                line.name:SetText(character.displayName)
-                line.expandButton:Hide()
-            end
-        end
-        line.baseColor = (lineIndex % 2 == 0) and PALETTE.zebra or PALETTE.surface
-        line.background:SetVertexColor(unpackColor(line.baseColor))
-        line.frame:Show()
+        view.mainsAltsRows[lineIndex] = {
+            character = character,
+            identity = character.identity,
+            isAlt = isAlt == true,
+            offset = offset,
+        }
         offset = offset + MAINS_ALTS_ROW_HEIGHT
     end
 
@@ -1198,12 +1279,9 @@ local function renderMainsAlts(view, resolvePendingTarget, preferredAnchor)
         end
     end
 
-    for index = lineIndex + 1, #view.mainsAltsLines do
-        view.mainsAltsLines[index].frame:Hide()
-    end
     view.mainsAltsTableHeight = offset + 4
     if preferredAnchor and preferredAnchor.identity then
-        local anchoredLine = findVisibleMainsAltsLine(
+        local anchoredLine = findMainsAltsRow(
             view,
             preferredAnchor.identity,
             true
@@ -1219,7 +1297,6 @@ local function renderMainsAlts(view, resolvePendingTarget, preferredAnchor)
             )
         end
     end
-    updateMainsAltsControlState(view)
     refreshScrollChild(view)
 
     if lineIndex == 0 then
@@ -1231,7 +1308,7 @@ local function renderMainsAlts(view, resolvePendingTarget, preferredAnchor)
     if resolvePendingTarget and view.pendingMainsAltsScrollTarget then
         local targetIdentity = view.pendingMainsAltsScrollTarget
         view.pendingMainsAltsScrollTarget = nil
-        local targetLine = findVisibleMainsAltsLine(view, targetIdentity, true)
+        local targetLine = findMainsAltsRow(view, targetIdentity, true)
         if targetLine
             and UI.selectedTab == "mainsalts"
             and UI.frame:IsShown()
@@ -1780,6 +1857,8 @@ local function createView(parent, tabId)
         view.mainsAltsAvailable = true
         view.mainsAltsScanInProgress = false
         view.mainsAltsLines = {}
+        view.mainsAltsLinePool = {}
+        view.mainsAltsRows = {}
         view.mainsAltsSelections = {}
         view.expandedMainsAlts = {}
         view.groupButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
@@ -1869,6 +1948,9 @@ local function createView(parent, tabId)
 
     view.scrollFrame:SetScript("OnSizeChanged", function()
         refreshScrollChild(view)
+        if tabId == "mainsalts" then
+            renderMainsAltsViewport(view, nil, true)
+        end
     end)
     if tabId == "mainsalts" then
         view:SetScript("OnHide", function()
@@ -1888,7 +1970,11 @@ local function createView(parent, tabId)
                 return
             end
             cancelMainsAltsScrollAnimation(view)
-            setMainsAltsScroll(view, offset)
+            if view.scrollFrame:GetVerticalScroll() ~= offset then
+                setMainsAltsScroll(view, offset)
+            else
+                renderMainsAltsViewport(view, offset)
+            end
         end)
         view.scrollFrame:SetScript("OnUpdate", function(_, elapsed)
             updateMainsAltsScrollAnimation(view, elapsed)
@@ -2443,7 +2529,11 @@ function UI.SelectPrimaryTab(tabId)
     local savedScroll = type(RGMS.PortalState) == "table"
         and RGMS.PortalState.scroll[tabId]
         or selectedView.scrollFrame:GetVerticalScroll()
-    selectedView.scrollFrame:SetVerticalScroll(savedScroll or 0)
+    if tabId == "mainsalts" then
+        setMainsAltsScroll(selectedView, savedScroll or 0)
+    else
+        selectedView.scrollFrame:SetVerticalScroll(savedScroll or 0)
+    end
     return true
 end
 
@@ -2764,7 +2854,7 @@ function UI.ToggleMainsAltsGroup(identity)
         return nil, "Mains/Alts group is unavailable"
     end
 
-    local line = findVisibleMainsAltsLine(view, identity, true)
+    local line = findMainsAltsRow(view, identity, true)
     local scrollOffset = view.scrollFrame:GetVerticalScroll()
     local toggleAnchor = line and {
         identity = identity,
