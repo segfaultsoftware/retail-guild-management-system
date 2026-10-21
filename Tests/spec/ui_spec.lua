@@ -178,6 +178,15 @@ local function newRegion(parent)
         self.texture = value
     end
 
+    function region:SetFont(path, size, flags)
+        self.font = { path, size, flags }
+        self.setFontCalls = (self.setFontCalls or 0) + 1
+    end
+
+    function region:SetFontObject(fontObject)
+        self.fontObject = fontObject
+    end
+
     function region:SetVertexColor(red, green, blue, alpha)
         self.vertexColor = { red, green, blue, alpha }
     end
@@ -294,7 +303,6 @@ local function newRegion(parent)
         "SetJustifyV",
         "SetAllPoints",
         "SetMultiLine",
-        "SetFontObject",
     }
     for _, methodName in ipairs(noOpMethods) do
         region[methodName] = function() end
@@ -309,6 +317,7 @@ end
 
 local function newHarness(savedPosition, screenWidth, screenHeight)
     local mainFrame
+    local fonts = {}
     local refreshRequests = 0
     local bankRefreshRequests = 0
     local bankCancellations = 0
@@ -351,9 +360,21 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     UIParent = uiParent
     GameTooltip = tooltip
     UISpecialFrames = {}
-    CreateFrame = function(_, name, parent)
+    MenuUtil = {}
+    CreateFont = function(name)
+        local font = newRegion()
+        font.name = name
+        fonts[name] = font
+        return font
+    end
+    CreateFrame = function(frameType, name, parent)
         local frame = newRegion(parent)
         frame.name = name
+        if frameType == "DropdownButton" then
+            function frame:SetupMenu(generator)
+                self.menuGenerator = generator
+            end
+        end
         if name == "RGMSMainFrame" then
             mainFrame = frame
         end
@@ -423,6 +444,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
 
     return {
         database = database,
+        fonts = fonts,
         frame = function()
             return mainFrame
         end,
@@ -649,7 +671,43 @@ return {
         harness.ui.Hide()
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
         test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
-        test.assert_false(view.mainsAltsLines[4].frame:IsShown())
+        test.assert_false(view.mainsAltsLinePool[4].frame:IsShown())
+    end),
+
+    test.case("Mains/Alts recycles a bounded row pool for very large guilds", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(72)
+        harness.ui.SetMainsAltsReport(mainsAltsReport(300))
+
+        test.assert_equal(#view.mainsAltsRows, 300)
+        test.assert_equal(view.mainsAltsTableHeight, 7208)
+        test.assert_true(#view.mainsAltsLinePool <= 5)
+        test.assert_equal(view.mainsAltsLines[1].identity, "char01-area52")
+
+        local row150Offset = 4 + (149 * 24)
+        view.scrollFrame.scripts.OnVerticalScroll(view.scrollFrame, row150Offset)
+
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), row150Offset)
+        test.assert_true(#view.mainsAltsLinePool <= 5)
+        test.assert_nil(view.mainsAltsLines[1])
+        test.assert_equal(view.mainsAltsLines[150].identity, "char150-area52")
+
+        local poolSize = #view.mainsAltsLinePool
+        view.mainsAltsLines[150].checkbox:SetChecked(true)
+        view.mainsAltsLines[150].checkbox.scripts.OnClick(
+            view.mainsAltsLines[150].checkbox
+        )
+        test.assert_true(view.mainsAltsSelections["char150-area52"])
+        view.scrollFrame.scripts.OnVerticalScroll(view.scrollFrame, row150Offset + 24)
+        test.assert_equal(view.mainsAltsLines[151].identity, "char151-area52")
+        test.assert_equal(#view.mainsAltsLinePool, poolSize)
+        view.mainsAltsLines[151].checkbox:SetChecked(true)
+        view.mainsAltsLines[151].checkbox.scripts.OnClick(
+            view.mainsAltsLines[151].checkbox
+        )
+        test.assert_true(view.mainsAltsSelections["char151-area52"])
     end),
 
     test.case("Mains/Alts search filters full groups and preserves hidden selections", function()
@@ -786,7 +844,7 @@ return {
 
         view.mainsAltsSearchBox:SetText("zzz")
         test.assert_true(view.mainsAltsHeader:IsShown())
-        test.assert_false(view.mainsAltsLines[1].frame:IsShown())
+        test.assert_false(view.mainsAltsLinePool[1].frame:IsShown())
         test.assert_false(view.text:IsShown())
 
         view.mainsAltsSearchBox:SetFocus()
@@ -1624,6 +1682,47 @@ return {
         test.assert_true(harness.ui.SetBankReport({ tabs = {} }))
         test.assert_equal(harness.frame().views.bank.bankDropdown.label.text, "No bank tabs")
         test.assert_false(harness.frame().views.bank.bankDropdown:IsEnabled())
+    end),
+
+    test.case("dropdown menu initializers use a compositor-safe font object", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        test.assert_true(harness.ui.SetRosterReport({ ranks = {
+            rosterRank(3, "Officer"),
+        } }))
+        local dropdown = harness.frame().views.roster.rankDropdown
+        local descriptions = {}
+        local rootDescription = {}
+        function rootDescription:SetScrollMode(height)
+            self.scrollMode = height
+        end
+        function rootDescription:SetMinimumWidth(width)
+            self.minimumWidth = width
+        end
+        function rootDescription:CreateRadio()
+            local description = {}
+            function description:AddInitializer(initializer)
+                self.initializer = initializer
+            end
+            descriptions[#descriptions + 1] = description
+            return description
+        end
+
+        dropdown.menuGenerator(dropdown, rootDescription)
+        local menuButton = newRegion()
+        menuButton.fontString = newRegion(menuButton)
+        function menuButton.fontString:SetFont()
+            error("SetFont is disallowed by the Blizzard menu compositor")
+        end
+        descriptions[1].initializer(menuButton)
+
+        test.assert_equal(menuButton:GetHeight(), 32)
+        test.assert_equal(menuButton.fontString.fontObject, harness.fonts.RGMSMenuFont)
+        test.assert_equal(harness.fonts.RGMSMenuFont.font, {
+            "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf",
+            12,
+            "",
+        })
     end),
 
     test.case("global scan lock blocks the portal discards note drafts and leaves close available", function()
