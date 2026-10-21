@@ -2047,7 +2047,11 @@ function UI.ShowMainsAltsTagPreview(names, anchor)
     if not UI.frame or type(names) ~= "table" or #names == 0 then
         return false
     end
-    local preview = UI.frame.views.mainsalts.mainsAltsTagPreview
+    local view = UI.frame.views.mainsalts
+    if view.mainsAltsTagEditor and view.mainsAltsTagEditor:IsShown() then
+        return false
+    end
+    local preview = view.mainsAltsTagPreview
     local selected = {}
     for _, name in ipairs(names) do
         selected[name] = true
