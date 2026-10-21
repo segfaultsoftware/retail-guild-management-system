@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Added click-and-drag window movement from anywhere inside the main RGMS
+  window while preserving scan-lock behavior and saved placement.
 - Added persistent per-character tags and combined tag/name filtering to
   Mains/Alts, including inline creation, assignment previews, AND filtering,
   rounded capsule styling, full-group context, migration, reset, and

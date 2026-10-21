@@ -72,14 +72,13 @@ return {
         test.assert_false(state:isLocked())
     end),
 
-    test.case("dragging is limited to empty header and sidebar space", function()
+    test.case("dragging is allowed throughout the window while unlocked", function()
         local state = portal.create()
-        test.assert_true(state:canDrag("header", false))
-        test.assert_true(state:canDrag("sidebar", false))
-        test.assert_false(state:canDrag("header", true))
-        test.assert_false(state:canDrag("table", false))
+        test.assert_true(state:canDrag())
+        test.assert_true(state:canDrag("header", true))
+        test.assert_true(state:canDrag("table", false))
         state:beginScan("bank")
-        test.assert_false(state:canDrag("sidebar", false))
+        test.assert_false(state:canDrag())
     end),
 
     test.case("operational status takes priority and bank timestamps combine", function()

@@ -132,6 +132,22 @@ local function newRegion(parent)
         self.scripts[scriptName] = callback
     end
 
+    function region:HookScript(scriptName, callback)
+        local previous = self.scripts[scriptName]
+        if previous then
+            self.scripts[scriptName] = function(...)
+                previous(...)
+                callback(...)
+            end
+        else
+            self.scripts[scriptName] = callback
+        end
+    end
+
+    function region:GetParent()
+        return self.parent
+    end
+
     function region:Show()
         self.shown = true
         if self.scripts.OnShow then
@@ -1816,15 +1832,33 @@ return {
         test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
     end),
 
-    test.case("dragging saves a canonical per-character position", function()
+    test.case("dragging anywhere saves a canonical per-character position", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local frame = harness.frame()
+        test.assert_true(harness.ui.SetMainsAltsReport(mainsAltsReport(1)))
+        local dynamicLine = frame.views.mainsalts.mainsAltsLinePool[1]
+
+        local dragSurfaces = {
+            frame,
+            frame.header,
+            frame.tabs[1],
+            frame.views.roster.scrollFrame,
+            frame.views.roster.refreshButton,
+            dynamicLine.frame,
+            dynamicLine.noteButton,
+        }
+
+        for _, surface in ipairs(dragSurfaces) do
+            test.assert_equal(surface.dragButton, "LeftButton")
+            test.assert_not_nil(surface.scripts.OnDragStart)
+            test.assert_not_nil(surface.scripts.OnDragStop)
+        end
 
         frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 125, 90)
-        frame.dragHandle.scripts.OnDragStart()
+        frame.views.roster.refreshButton.scripts.OnDragStart()
         test.assert_true(frame.moving)
-        frame.dragHandle.scripts.OnDragStop()
+        frame.views.roster.refreshButton.scripts.OnDragStop()
 
         test.assert_false(frame.moving)
         test.assert_equal(harness.database.ui.windowPosition, {
@@ -2005,7 +2039,7 @@ return {
         local selected, reason = harness.ui.SelectPrimaryTab("bank")
         test.assert_nil(selected)
         test.assert_equal(reason, "scan-locked")
-        harness.frame().dragHandle.scripts.OnDragStart()
+        harness.frame().views.roster.scrollFrame.scripts.OnDragStart()
         test.assert_false(harness.frame().moving == true)
         harness.frame().closeButton.scripts.OnClick()
         test.assert_false(harness.ui.IsShown())
