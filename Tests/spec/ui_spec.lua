@@ -180,6 +180,7 @@ local function newRegion(parent)
         if self.maxLetters and #value > self.maxLetters then
             value = string.sub(value, 1, self.maxLetters)
         end
+        self.setTextCalls = (self.setTextCalls or 0) + 1
         self.text = value
         if self.scripts.OnTextChanged then
             self.scripts.OnTextChanged(self)
@@ -1948,13 +1949,22 @@ return {
         local harness = newHarness()
         harness.ui.Initialize()
         local ranks = {
-            rosterRank(3, "Officer"),
-            rosterRank(7, "Officer"),
+            rosterRank(3, "Officer", "Officer (Rank 3)"),
+            rosterRank(7, "Officer", "Officer (Rank 7)"),
         }
         test.assert_true(harness.ui.SetRosterReport({ ranks = ranks }))
+        test.assert_equal(
+            harness.frame().views.roster.rankDropdown.label.text,
+            "Officer (Rank 3)"
+        )
         test.assert_true(harness.ui.SelectRosterRank(7))
         test.assert_equal(harness.database.ui.selectedRosterRankIndex, 7)
+        test.assert_equal(
+            harness.frame().views.roster.rankDropdown.label.text,
+            "Officer (Rank 7)"
+        )
         ranks[2].name = "Renamed"
+        ranks[2].label = "Renamed"
         test.assert_true(harness.ui.SetRosterReport({ ranks = ranks }))
         test.assert_equal(harness.frame().views.roster.selectedRankIndex, 7)
         test.assert_equal(harness.frame().views.roster.rankDropdown.label.text, "Renamed")
@@ -1993,17 +2003,29 @@ return {
         } }))
 
         local frame = harness.frame()
-        frame.views.roster.rankDropdown.label:SetText("")
-        frame.views.roster.rosterLines[1].primary:SetText("")
-        frame.views.bank.bankDropdown.label:SetText("")
+        local rosterLabelCalls = frame.views.roster.rankDropdown.label.setTextCalls
+        local rosterHeadingCalls = frame.views.roster.rosterLines[1].primary.setTextCalls
+        local bankLabelCalls = frame.views.bank.bankDropdown.label.setTextCalls
 
         test.assert_true(harness.ui.Show())
         test.assert_equal(frame.views.roster.rankDropdown.label.text, "Officer")
         test.assert_equal(frame.views.roster.rosterLines[1].primary.text, "This Week")
+        test.assert_equal(
+            frame.views.roster.rankDropdown.label.setTextCalls,
+            rosterLabelCalls + 2
+        )
+        test.assert_equal(
+            frame.views.roster.rosterLines[1].primary.setTextCalls,
+            rosterHeadingCalls + 2
+        )
         test.assert_equal(harness.database.ui.selectedRosterRankIndex, 3)
 
         test.assert_true(harness.ui.SelectPrimaryTab("bank"))
         test.assert_equal(frame.views.bank.bankDropdown.label.text, "Materials")
+        test.assert_equal(
+            frame.views.bank.bankDropdown.label.setTextCalls,
+            bankLabelCalls + 2
+        )
         test.assert_equal(harness.database.ui.selectedBankTabIndex, 2)
     end),
 
@@ -2011,7 +2033,8 @@ return {
         local harness = newHarness()
         harness.ui.Initialize()
         test.assert_true(harness.ui.SetRosterReport({ ranks = {
-            rosterRank(3, "Officer"),
+            rosterRank(3, "Officer", "Officer (Rank 3)"),
+            rosterRank(7, "Officer", "Officer (Rank 7)"),
         } }))
         local dropdown = harness.frame().views.roster.rankDropdown
         local descriptions = {}
@@ -2022,8 +2045,8 @@ return {
         function rootDescription:SetMinimumWidth(width)
             self.minimumWidth = width
         end
-        function rootDescription:CreateRadio()
-            local description = {}
+        function rootDescription:CreateRadio(label)
+            local description = { label = label }
             function description:AddInitializer(initializer)
                 self.initializer = initializer
             end
@@ -2039,6 +2062,8 @@ return {
         end
         descriptions[1].initializer(menuButton)
 
+        test.assert_equal(descriptions[1].label, "Officer (Rank 3)")
+        test.assert_equal(descriptions[2].label, "Officer (Rank 7)")
         test.assert_equal(menuButton:GetHeight(), 32)
         test.assert_equal(menuButton.fontString.fontObject, harness.fonts.RGMSMenuFont)
         test.assert_equal(harness.fonts.RGMSMenuFont.font, {
