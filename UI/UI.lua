@@ -43,13 +43,20 @@ local MAINS_ALTS_PROMOTE_WIDTH = 76
 local MAINS_ALTS_REMOVE_WIDTH = 68
 local MAINS_ALTS_NOTE_SIZE = 16
 local MAINS_ALTS_NOTE_GAP = 4
+local MAINS_ALTS_TAG_WIDTH = 76
+local MAINS_ALTS_TAG_HEIGHT = 20
 local MAINS_ALTS_SCROLL_DURATION = 0
 local MAINS_ALTS_WHEEL_ROWS = 3
 -- The legacy ScrollFrame is retained for exact pixel anchors and existing styling;
 -- only enough complex row controls for the viewport are kept live and recycled.
 local MAINS_ALTS_VIEWPORT_BUFFER_ROWS = 1
-local MAINS_ALTS_SEARCH_WIDTH = 384
+local MAINS_ALTS_SEARCH_WIDTH = 252
 local MAINS_ALTS_SEARCH_HEIGHT = 32
+local MAINS_ALTS_FILTER_WIDTH = 124
+local TAG_POPOVER_WIDTH = 340
+local TAG_PILL_HEIGHT = 20
+local TAG_PILL_GAP = 6
+local TAG_POPOVER_PADDING = 8
 local CHARACTER_NOTE_LIMIT = 5500
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
 local MISSING_WARNING_SIZE = 16
@@ -172,6 +179,11 @@ end
 
 local showOwnedTooltip
 local hideOwnedTooltip
+local closeMainsAltsTagEditor
+local closeMainsAltsTagFilter
+local refreshMainsAltsTagEditor
+local refreshMainsAltsTagFilter
+local updateMainsAltsTagFilterAppearance
 
 local function attachTruncationTooltip(parent, textRegion)
     local hitbox = CreateFrame("Button", nil, parent)
@@ -206,6 +218,19 @@ local function characterCount(value)
     end
     local withoutContinuationBytes = string.gsub(value, "[\128-\191]", "")
     return #withoutContinuationBytes
+end
+
+local function truncateCharacters(value, maximum)
+    local parts = {}
+    local count = 0
+    for character in string.gmatch(value or "", "[^\128-\191][\128-\191]*") do
+        count = count + 1
+        if count > maximum then
+            break
+        end
+        parts[#parts + 1] = character
+    end
+    return table.concat(parts)
 end
 
 local function normalizeTabId(tabId)
@@ -465,6 +490,7 @@ local function layoutMainsAltsLines(view, availableWidth)
         line.promoteButton:ClearAllPoints()
         line.removeButton:ClearAllPoints()
         line.noteButton:ClearAllPoints()
+        line.tagButton:ClearAllPoints()
         if line.isAlt then
             line.name:SetPoint(
                 "LEFT",
@@ -476,12 +502,13 @@ local function layoutMainsAltsLines(view, availableWidth)
             local maximumNameWidth = math.max(
                 1,
                 availableWidth
-                    - 56 - 16 - 56 - 168
+                    - 56 - 16 - MAINS_ALTS_TAG_WIDTH - 56 - 168 - 12
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.tagButton:SetPoint("RIGHT", line.frame, "RIGHT", -228, 0)
             line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
             line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -4, 0)
             line.promoteButton:SetPoint(
@@ -505,12 +532,14 @@ local function layoutMainsAltsLines(view, availableWidth)
             local maximumNameWidth = math.max(
                 1,
                 availableWidth
-                    - 56 - MAINS_ALTS_EXPAND_WIDTH - 4 - 56 - 168
+                    - 56 - MAINS_ALTS_EXPAND_WIDTH - 4
+                    - MAINS_ALTS_TAG_WIDTH - 56 - 168 - 12
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.tagButton:SetPoint("RIGHT", line.frame, "RIGHT", -228, 0)
             line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
         end
     end
@@ -524,27 +553,33 @@ local function createMainsAltsHeader(view)
     frame:SetHeight(28)
     local selectText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     local characterText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    local tagsText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     local noteText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     local actionsText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     selectText:SetPoint("LEFT", frame, "LEFT", 8, 0)
     selectText:SetWidth(48)
     characterText:SetPoint("LEFT", frame, "LEFT", 56, 0)
-    characterText:SetPoint("RIGHT", frame, "RIGHT", -224, 0)
+    characterText:SetPoint("RIGHT", frame, "RIGHT", -304, 0)
+    tagsText:SetPoint("RIGHT", frame, "RIGHT", -224, 0)
+    tagsText:SetWidth(MAINS_ALTS_TAG_WIDTH)
     noteText:SetPoint("RIGHT", frame, "RIGHT", -168, 0)
     noteText:SetWidth(56)
     actionsText:SetPoint("RIGHT", frame, "RIGHT", -8, 0)
     actionsText:SetWidth(160)
-    selectText:SetText("Select")
+    selectText:SetText("")
     characterText:SetText("Character")
+    tagsText:SetText("Tags")
     noteText:SetText("Note")
     actionsText:SetText("Actions")
-    for _, label in ipairs({ selectText, characterText, noteText, actionsText }) do
+    for _, label in ipairs({ selectText, characterText, tagsText, noteText, actionsText }) do
         label:SetJustifyH("LEFT")
         setFont(label, FONT_SEMIBOLD, 12)
         setTextColor(label, PALETTE.text)
     end
     noteText:SetJustifyH("CENTER")
+    tagsText:SetJustifyH("CENTER")
     frame.note = noteText
+    frame.tags = tagsText
     view.mainsAltsHeader = frame
 end
 
@@ -886,6 +921,12 @@ local function updateMainsAltsControlState(view)
             view.mainsAltsSearchBox:SetBackdropBorderColor(unpackColor(border))
         end
     end
+    if view.mainsAltsTagFilterButton then
+        view.mainsAltsTagFilterButton:SetEnabled(enabled)
+        if type(view.mainsAltsTagFilterButton.SetAlpha) == "function" then
+            view.mainsAltsTagFilterButton:SetAlpha(enabled and 1 or 0.5)
+        end
+    end
     for _, line in ipairs(view.mainsAltsLinePool or {}) do
         if line.frame:IsShown() then
             line.checkbox:SetEnabled(enabled and not line.isAlt)
@@ -893,6 +934,10 @@ local function updateMainsAltsControlState(view)
             line.promoteButton:SetEnabled(enabled and line.isAlt)
             line.removeButton:SetEnabled(enabled and line.isAlt)
             line.noteButton:SetEnabled(enabled)
+            line.tagButton:SetEnabled(enabled)
+            if type(line.tagButton.SetAlpha) == "function" then
+                line.tagButton:SetAlpha(enabled and 1 or 0.5)
+            end
         end
     end
     if UI.frame and UI.frame.notesEditor then
@@ -977,6 +1022,14 @@ local function acquireMainsAltsLine(view, index)
     noteIcon:SetAllPoints(noteButton)
     noteIcon:SetTexture(CHARACTER_NOTE_TEXTURE)
     noteButton.icon = noteIcon
+    local tagButton = CreateFrame("Button", nil, frame, "BackdropTemplate")
+    tagButton:SetSize(MAINS_ALTS_TAG_WIDTH, MAINS_ALTS_TAG_HEIGHT)
+    flatBackdrop(tagButton, PALETTE.control, PALETTE.border)
+    tagButton.label = tagButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    tagButton.label:SetAllPoints(tagButton)
+    tagButton.label:SetJustifyH("CENTER")
+    setFont(tagButton.label, FONT_SEMIBOLD, 11)
+    setTextColor(tagButton.label, PALETTE.text)
     line = {
         frame = frame,
         background = background,
@@ -986,6 +1039,7 @@ local function acquireMainsAltsLine(view, index)
         promoteButton = promoteButton,
         removeButton = removeButton,
         noteButton = noteButton,
+        tagButton = tagButton,
     }
     line.nameHitbox = attachTruncationTooltip(frame, name)
     enableRowHover(line)
@@ -1065,6 +1119,19 @@ local function acquireMainsAltsLine(view, index)
     noteButton:SetScript("OnLeave", function(button)
         hideOwnedTooltip(button)
     end)
+    tagButton:SetScript("OnClick", function()
+        if line.character then
+            UI.OpenMainsAltsTagEditor(line.character.identity, tagButton)
+        end
+    end)
+    tagButton:SetScript("OnEnter", function()
+        if line.character and #(line.character.tags or {}) > 0 then
+            UI.ShowMainsAltsTagPreview(line.character.tags, tagButton)
+        end
+    end)
+    tagButton:SetScript("OnLeave", function()
+        UI.HideMainsAltsTagPreview()
+    end)
     view.mainsAltsLinePool[index] = line
     return line
 end
@@ -1077,6 +1144,7 @@ local function bindMainsAltsLine(view, line, row, rowIndex)
     line.identity = character.identity
     line.offset = row.offset
     line.hasNote = character.hasNote == true
+    line.tags = character.tags or {}
     line.frame:ClearAllPoints()
     line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -row.offset)
     line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)
@@ -1087,6 +1155,17 @@ local function bindMainsAltsLine(view, line, row, rowIndex)
         line.hasNote and 1 or 0.65
     )
     line.noteButton:Show()
+    line.tagButton.label:SetText(
+        #line.tags > 0 and ("Tags (" .. #line.tags .. ")") or "Tags"
+    )
+    line.tagButton:Show()
+    if view.mainsAltsTagEditor
+        and view.mainsAltsTagEditor:IsShown()
+        and view.mainsAltsTagEditor.characterIdentity == character.identity then
+        view.mainsAltsTagEditor:ClearAllPoints()
+        view.mainsAltsTagEditor:SetPoint("TOPLEFT", line.tagButton, "BOTTOMLEFT", 0, -4)
+        view.mainsAltsTagEditor.anchor = line.tagButton
+    end
 
     if line.isAlt then
         line.checkbox:Hide()
@@ -1335,6 +1414,9 @@ local function updateMainsAltsSearchAppearance(view)
         end
         view.mainsAltsSearchBox:SetBackdropBorderColor(unpackColor(color))
     end
+    if updateMainsAltsTagFilterAppearance then
+        updateMainsAltsTagFilterAppearance(view)
+    end
 end
 
 local function applyMainsAltsSearch(view, resetScroll, resolvePendingTarget)
@@ -1342,10 +1424,20 @@ local function applyMainsAltsSearch(view, resetScroll, resolvePendingTarget)
     if type(source) ~= "table" or type(source.rows) ~= "table" then
         return
     end
+    local availableTags = {}
+    for _, name in ipairs(source.tagCatalog or {}) do
+        availableTags[name] = true
+    end
+    for name in pairs(view.mainsAltsTagFilters or {}) do
+        if not availableTags[name] then
+            view.mainsAltsTagFilters[name] = nil
+        end
+    end
 
     local filtered, matchingGroups, normalized = RGMS.MainsAltsSearch.filter(
         source,
-        view.mainsAltsSearchQuery
+        view.mainsAltsSearchQuery,
+        view.mainsAltsTagFilters
     )
     if not filtered then
         filtered = source
@@ -1354,7 +1446,9 @@ local function applyMainsAltsSearch(view, resetScroll, resolvePendingTarget)
     end
     view.mainsAltsReport = filtered
     view.mainsAltsNormalizedSearch = normalized
-    if normalized ~= "" then
+    local hasTagFilters = type(view.mainsAltsTagFilters) == "table"
+        and next(view.mainsAltsTagFilters) ~= nil
+    if normalized ~= "" or hasTagFilters then
         view.expandedMainsAlts = matchingGroups
     elseif resetScroll then
         view.expandedMainsAlts = {}
@@ -1366,6 +1460,33 @@ local function applyMainsAltsSearch(view, resetScroll, resolvePendingTarget)
         setMainsAltsScroll(view, 0)
     end
     updateMainsAltsSearchAppearance(view)
+    if refreshMainsAltsTagFilter then
+        refreshMainsAltsTagFilter(view)
+    end
+    if view.mainsAltsTagEditor and view.mainsAltsTagEditor:IsShown() then
+        local identity = view.mainsAltsTagEditor.characterIdentity
+        local visible = false
+        for _, row in ipairs(filtered.rows or {}) do
+            if row.identity == identity then
+                visible = true
+                break
+            end
+            for _, alt in ipairs(row.alts or {}) do
+                if alt.identity == identity then
+                    visible = true
+                    break
+                end
+            end
+            if visible then
+                break
+            end
+        end
+        if not visible and closeMainsAltsTagEditor then
+            closeMainsAltsTagEditor(view)
+        elseif refreshMainsAltsTagEditor then
+            refreshMainsAltsTagEditor(view)
+        end
+    end
 end
 
 local function clearMainsAltsSearch(view, keepFocus)
@@ -1379,6 +1500,20 @@ local function clearMainsAltsSearch(view, keepFocus)
     else
         view.mainsAltsSearchBox:ClearFocus()
     end
+end
+
+local function clearMainsAltsFilters(view, keepSearchFocus)
+    view.mainsAltsTagFilters = {}
+    if view.mainsAltsTagPreview then
+        view.mainsAltsTagPreview:Hide()
+    end
+    if closeMainsAltsTagEditor then
+        closeMainsAltsTagEditor(view)
+    end
+    if closeMainsAltsTagFilter then
+        closeMainsAltsTagFilter(view)
+    end
+    clearMainsAltsSearch(view, keepSearchFocus == true)
 end
 
 local function createMainsAltsSearch(view)
@@ -1440,6 +1575,27 @@ local function createMainsAltsSearch(view)
     view.mainsAltsSearchClear = clearButton
     view.mainsAltsSearchQuery = ""
     view.mainsAltsNormalizedSearch = ""
+    view.mainsAltsTagFilters = view.mainsAltsTagFilters or {}
+
+    local filterButton = CreateFrame("Button", nil, view, "BackdropTemplate")
+    filterButton:SetSize(MAINS_ALTS_FILTER_WIDTH, MAINS_ALTS_SEARCH_HEIGHT)
+    filterButton:SetPoint("LEFT", editBox, "RIGHT", CONTROL_GAP, 0)
+    flatBackdrop(filterButton, PALETTE.control, PALETTE.border)
+    filterButton.label = filterButton:CreateFontString(
+        nil,
+        "ARTWORK",
+        "GameFontHighlightSmall"
+    )
+    filterButton.label:SetAllPoints(filterButton)
+    filterButton.label:SetJustifyH("CENTER")
+    setFont(filterButton.label, FONT_SEMIBOLD, 11)
+    setTextColor(filterButton.label, PALETTE.text)
+    filterButton:SetScript("OnClick", function()
+        if mainsAltsControlsEnabled(view) then
+            UI.ToggleMainsAltsTagFilter()
+        end
+    end)
+    view.mainsAltsTagFilterButton = filterButton
 
     editBox:SetScript("OnTextChanged", function(box)
         if view.settingMainsAltsSearchText then
@@ -1471,6 +1627,357 @@ local function createMainsAltsSearch(view)
         updateMainsAltsSearchAppearance(view)
     end)
     updateMainsAltsSearchAppearance(view)
+end
+
+-- AceGUI supplies generic buttons and edit boxes but no wrapping tag-pill
+-- selector anchored to virtualized rows; LibQTip is a tabular tooltip library.
+-- These small portal-native frames avoid bundling either framework while
+-- preserving RGMS styling, immediate persistence, and unrestricted wrapping.
+local function setTagPillAppearance(button, selected)
+    button.selected = selected == true
+    local background = selected and PALETTE.pink or { 0, 0, 0, 0 }
+    flatBackdrop(button, background, selected and PALETTE.pink or PALETTE.border)
+    if button.label then
+        setTextColor(button.label, PALETTE.text)
+    end
+end
+
+local function acquireTagPill(container, index)
+    container.pills = container.pills or {}
+    local pill = container.pills[index]
+    if pill then
+        return pill
+    end
+    pill = CreateFrame("Button", nil, container, "BackdropTemplate")
+    pill.label = pill:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    pill.label:SetAllPoints(pill)
+    pill.label:SetJustifyH("CENTER")
+    setFont(pill.label, FONT_SEMIBOLD, 11)
+    pill:SetScript("OnClick", function(button)
+        if container.onPillClick and button.tagName then
+            container.onPillClick(button.tagName)
+        end
+    end)
+    container.pills[index] = pill
+    return pill
+end
+
+local function layoutTagPills(container, names, selected, onClick, startX, startY)
+    container.onPillClick = onClick
+    local maximumWidth = (container.contentWidth or TAG_POPOVER_WIDTH)
+        - TAG_POPOVER_PADDING * 2
+    local x = startX or TAG_POPOVER_PADDING
+    local y = startY or -TAG_POPOVER_PADDING
+    for index, name in ipairs(names or {}) do
+        local pill = acquireTagPill(container, index)
+        local width = math.min(maximumWidth, math.max(38, #name * 7 + 18))
+        if x > TAG_POPOVER_PADDING and x + width > maximumWidth + TAG_POPOVER_PADDING then
+            x = TAG_POPOVER_PADDING
+            y = y - TAG_PILL_HEIGHT - TAG_PILL_GAP
+        end
+        pill:ClearAllPoints()
+        pill:SetPoint("TOPLEFT", container, "TOPLEFT", x, y)
+        pill:SetSize(width, TAG_PILL_HEIGHT)
+        pill.label:SetText(name)
+        pill.tagName = name
+        pill:SetEnabled(onClick ~= nil and mainsAltsControlsEnabled(container.view))
+        setTagPillAppearance(pill, selected and selected[name] == true)
+        pill:Show()
+        x = x + width + TAG_PILL_GAP
+    end
+    for index = #(names or {}) + 1, #(container.pills or {}) do
+        container.pills[index]:Hide()
+    end
+    return x, y
+end
+
+local function findMainsAltsCharacter(report, identity)
+    for _, row in ipairs(type(report) == "table" and report.rows or {}) do
+        if row.identity == identity then
+            return row
+        end
+        for _, alt in ipairs(row.alts or {}) do
+            if alt.identity == identity then
+                return alt
+            end
+        end
+    end
+    return nil
+end
+
+local function updateTagDismissLayer(view)
+    if not view.mainsAltsTagDismissLayer then
+        return
+    end
+    local shown = (view.mainsAltsTagEditor and view.mainsAltsTagEditor:IsShown())
+        or (view.mainsAltsTagFilter and view.mainsAltsTagFilter:IsShown())
+    view.mainsAltsTagDismissLayer:SetShown(shown == true)
+end
+
+closeMainsAltsTagEditor = function(view)
+    if view and view.mainsAltsTagEditor then
+        view.mainsAltsTagEditor:Hide()
+        view.mainsAltsTagEditor.characterIdentity = nil
+        view.mainsAltsTagEditor.anchor = nil
+        view.mainsAltsTagEditor.input:ClearFocus()
+    end
+    updateTagDismissLayer(view)
+end
+
+closeMainsAltsTagFilter = function(view)
+    if view and view.mainsAltsTagFilter then
+        view.mainsAltsTagFilter:Hide()
+    end
+    updateTagDismissLayer(view)
+end
+
+updateMainsAltsTagFilterAppearance = function(view)
+    if not view.mainsAltsTagFilterButton then
+        return
+    end
+    local count = 0
+    for _, selected in pairs(view.mainsAltsTagFilters or {}) do
+        if selected == true then
+            count = count + 1
+        end
+    end
+    view.mainsAltsTagFilterButton.label:SetText(
+        count > 0 and ("Filter tags... (" .. count .. ")") or "Filter tags..."
+    )
+end
+
+refreshMainsAltsTagFilter = function(view)
+    local popup = view and view.mainsAltsTagFilter
+    if not popup then
+        return
+    end
+    local catalog = type(view.mainsAltsSourceReport) == "table"
+        and view.mainsAltsSourceReport.tagCatalog
+        or {}
+    local available = {}
+    for _, name in ipairs(catalog or {}) do
+        available[name] = true
+    end
+    for name in pairs(view.mainsAltsTagFilters or {}) do
+        if not available[name] then
+            view.mainsAltsTagFilters[name] = nil
+        end
+    end
+    local _, y = layoutTagPills(
+        popup,
+        catalog,
+        view.mainsAltsTagFilters,
+        function(name)
+            if view.mainsAltsTagFilters[name] then
+                view.mainsAltsTagFilters[name] = nil
+            else
+                view.mainsAltsTagFilters[name] = true
+            end
+            applyMainsAltsSearch(view, true, false)
+        end
+    )
+    popup:SetHeight(math.abs(y) + TAG_PILL_HEIGHT + TAG_POPOVER_PADDING)
+    updateMainsAltsTagFilterAppearance(view)
+end
+
+refreshMainsAltsTagEditor = function(view)
+    local editor = view and view.mainsAltsTagEditor
+    if not editor or not editor.characterIdentity then
+        return
+    end
+    local character = findMainsAltsCharacter(
+        view.mainsAltsSourceReport,
+        editor.characterIdentity
+    )
+    if not character then
+        closeMainsAltsTagEditor(view)
+        return
+    end
+    local selected = {}
+    for _, name in ipairs(character.tags or {}) do
+        selected[name] = true
+    end
+    local catalog = view.mainsAltsSourceReport.tagCatalog or {}
+    local x, y = layoutTagPills(editor, catalog, selected, function(name)
+        local changed, changeError = RGMS.MainsAlts.ToggleCharacterTag(
+            editor.characterIdentity,
+            name
+        )
+        if not changed and type(RGMS.Print) == "function" then
+            RGMS.Print("Could not change character tag: " .. tostring(changeError) .. ".")
+        end
+    end)
+    local inputWidth = 104
+    local maximumX = TAG_POPOVER_WIDTH - TAG_POPOVER_PADDING
+    if x > TAG_POPOVER_PADDING and x + inputWidth > maximumX then
+        x = TAG_POPOVER_PADDING
+        y = y - TAG_PILL_HEIGHT - TAG_PILL_GAP
+    end
+    editor.input:ClearAllPoints()
+    editor.input:SetPoint("TOPLEFT", editor, "TOPLEFT", x, y)
+    editor.input:SetSize(math.max(72, maximumX - x), TAG_PILL_HEIGHT)
+    editor:SetHeight(math.abs(y) + TAG_PILL_HEIGHT + TAG_POPOVER_PADDING)
+end
+
+local function createMainsAltsTagPopovers(view)
+    local dismiss = CreateFrame("Button", nil, UIParent)
+    dismiss:SetAllPoints(UIParent)
+    dismiss:SetFrameStrata("DIALOG")
+    dismiss:SetScript("OnClick", function()
+        closeMainsAltsTagEditor(view)
+        closeMainsAltsTagFilter(view)
+    end)
+    dismiss:Hide()
+    view.mainsAltsTagDismissLayer = dismiss
+
+    local filter = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    filter:SetWidth(TAG_POPOVER_WIDTH)
+    filter.contentWidth = TAG_POPOVER_WIDTH
+    filter.view = view
+    filter:SetFrameStrata("FULLSCREEN_DIALOG")
+    flatBackdrop(filter, PALETTE.surface, PALETTE.border)
+    filter:SetPoint(
+        "TOPRIGHT",
+        view.mainsAltsTagFilterButton,
+        "BOTTOMRIGHT",
+        0,
+        -4
+    )
+    filter:Hide()
+    view.mainsAltsTagFilter = filter
+
+    local editor = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    editor:SetWidth(TAG_POPOVER_WIDTH)
+    editor.contentWidth = TAG_POPOVER_WIDTH
+    editor.view = view
+    editor:SetFrameStrata("FULLSCREEN_DIALOG")
+    flatBackdrop(editor, PALETTE.surface, PALETTE.border)
+    editor.input = CreateFrame("EditBox", nil, editor, "BackdropTemplate")
+    editor.input:SetAutoFocus(false)
+    editor.input:SetJustifyH("LEFT")
+    editor.input:SetTextInsets(6, 6, 0, 0)
+    setFont(editor.input, FONT_REGULAR, 11)
+    flatBackdrop(editor.input, PALETTE.control, PALETTE.border)
+    editor.input:SetScript("OnTextChanged", function(box)
+        if editor.settingInputText then
+            return
+        end
+        local value = box:GetText()
+        if characterCount(value) > 32 then
+            editor.settingInputText = true
+            box:SetText(truncateCharacters(value, 32))
+            editor.settingInputText = false
+        end
+    end)
+    editor.input:SetScript("OnEnterPressed", function(box)
+        local changed, changeError = RGMS.MainsAlts.CreateOrAssignTag(
+            editor.characterIdentity,
+            box:GetText()
+        )
+        if not changed then
+            if type(RGMS.Print) == "function" then
+                RGMS.Print("Could not assign character tag: "
+                    .. tostring(changeError) .. ".")
+            end
+            return
+        end
+        box:SetText("")
+        box:SetFocus()
+    end)
+    editor.input:SetScript("OnEscapePressed", function()
+        closeMainsAltsTagEditor(view)
+    end)
+    if type(editor.EnableKeyboard) == "function" then
+        editor:EnableKeyboard(true)
+        editor:SetScript("OnKeyDown", function(frame, key)
+            if key == "ESCAPE" then
+                closeMainsAltsTagEditor(view)
+                if type(frame.SetPropagateKeyboardInput) == "function" then
+                    frame:SetPropagateKeyboardInput(false)
+                end
+            elseif type(frame.SetPropagateKeyboardInput) == "function" then
+                frame:SetPropagateKeyboardInput(true)
+            end
+        end)
+    end
+    editor:Hide()
+    view.mainsAltsTagEditor = editor
+
+    local preview = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    preview:SetWidth(TAG_POPOVER_WIDTH)
+    preview.contentWidth = TAG_POPOVER_WIDTH
+    preview.view = view
+    preview:SetFrameStrata("TOOLTIP")
+    flatBackdrop(preview, PALETTE.shell, PALETTE.border)
+    preview:Hide()
+    view.mainsAltsTagPreview = preview
+end
+
+function UI.OpenMainsAltsTagEditor(identity, anchor)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    local view = UI.frame.views.mainsalts
+    if not mainsAltsControlsEnabled(view) then
+        return nil, "character tag controls are disabled"
+    end
+    if not findMainsAltsCharacter(view.mainsAltsSourceReport, identity) then
+        return nil, "roster character is unavailable"
+    end
+    UI.HideMainsAltsTagPreview()
+    closeMainsAltsTagFilter(view)
+    local editor = view.mainsAltsTagEditor
+    editor.characterIdentity = identity
+    editor.anchor = anchor
+    editor:ClearAllPoints()
+    editor:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    refreshMainsAltsTagEditor(view)
+    editor:Show()
+    updateTagDismissLayer(view)
+    editor.input:SetFocus()
+    return true
+end
+
+function UI.ToggleMainsAltsTagFilter()
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    local view = UI.frame.views.mainsalts
+    if not mainsAltsControlsEnabled(view) then
+        return nil, "tag filter controls are disabled"
+    end
+    closeMainsAltsTagEditor(view)
+    if view.mainsAltsTagFilter:IsShown() then
+        closeMainsAltsTagFilter(view)
+    else
+        refreshMainsAltsTagFilter(view)
+        view.mainsAltsTagFilter:Show()
+        updateTagDismissLayer(view)
+    end
+    return true
+end
+
+function UI.ShowMainsAltsTagPreview(names, anchor)
+    if not UI.frame or type(names) ~= "table" or #names == 0 then
+        return false
+    end
+    local preview = UI.frame.views.mainsalts.mainsAltsTagPreview
+    local selected = {}
+    for _, name in ipairs(names) do
+        selected[name] = true
+    end
+    local _, y = layoutTagPills(preview, names, selected, nil)
+    preview:SetHeight(math.abs(y) + TAG_PILL_HEIGHT + TAG_POPOVER_PADDING)
+    preview:ClearAllPoints()
+    preview:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    preview:Show()
+    return true
+end
+
+function UI.HideMainsAltsTagPreview()
+    if UI.frame and UI.frame.views.mainsalts.mainsAltsTagPreview then
+        UI.frame.views.mainsalts.mainsAltsTagPreview:Hide()
+    end
 end
 
 local function hideBankLines(view)
@@ -1979,6 +2486,7 @@ local function createView(parent, tabId)
         view.scrollFrame:SetScript("OnUpdate", function(_, elapsed)
             updateMainsAltsScrollAnimation(view, elapsed)
         end)
+        createMainsAltsTagPopovers(view)
     end
 
     return view
@@ -2500,7 +3008,7 @@ function UI.SelectPrimaryTab(tabId)
 
     if UI.selectedTab == "mainsalts" and tabId ~= "mainsalts" then
         local mainsAltsView = UI.frame.views.mainsalts
-        clearMainsAltsSearch(mainsAltsView, false)
+        clearMainsAltsFilters(mainsAltsView, false)
         cancelMainsAltsScrollWork(mainsAltsView)
     end
     for _, currentTabId in ipairs(TAB_ORDER) do
@@ -2556,6 +3064,8 @@ function UI.SetViewContent(tabId, content)
         view.text:Show()
     elseif tabId == "mainsalts" then
         cancelMainsAltsScrollWork(view)
+        closeMainsAltsTagEditor(view)
+        closeMainsAltsTagFilter(view)
         hideMainsAltsLines(view)
         view.text:Show()
     elseif tabId == "bank" then
@@ -3016,6 +3526,12 @@ function UI.SetGlobalScanLock(locked)
     if UI.globalScanLocked and UI.frame.notesEditor:IsShown() then
         UI.CloseCharacterNoteEditor()
     end
+    if UI.globalScanLocked then
+        local mainsAltsView = UI.frame.views.mainsalts
+        UI.HideMainsAltsTagPreview()
+        closeMainsAltsTagEditor(mainsAltsView)
+        closeMainsAltsTagFilter(mainsAltsView)
+    end
     for _, tab in ipairs(UI.frame.tabs) do
         tab:SetEnabled(not UI.globalScanLocked)
     end
@@ -3120,6 +3636,8 @@ function UI.SetMainsAltsAvailable(isAvailable)
     view.mainsAltsAvailable = isAvailable == true
     if not view.mainsAltsAvailable then
         cancelMainsAltsScrollWork(view)
+        closeMainsAltsTagEditor(view)
+        closeMainsAltsTagFilter(view)
     end
     updateMainsAltsControlState(view)
     return true

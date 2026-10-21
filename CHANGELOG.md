@@ -9,6 +9,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Added persistent per-character tags and combined tag/name filtering to
+  Mains/Alts, including inline creation, assignment previews, AND filtering,
+  full-group context, migration, reset, and roster-reconciliation support.
 - Added live ordered-subsequence character-name search to Mains/Alts while
   preserving group order, full-group context, hidden selections, and search
   state across in-view report updates.

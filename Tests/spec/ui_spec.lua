@@ -326,6 +326,8 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local removalRequests = {}
     local noteSaves = {}
     local noteDeletes = {}
+    local tagAssignments = {}
+    local tagToggles = {}
     local tooltip = {
         lines = {},
         shown = false,
@@ -437,6 +439,20 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 noteDeletes[#noteDeletes + 1] = identity
                 return true
             end,
+            CreateOrAssignTag = function(identity, value)
+                tagAssignments[#tagAssignments + 1] = {
+                    identity = identity,
+                    value = value,
+                }
+                return true, value
+            end,
+            ToggleCharacterTag = function(identity, name)
+                tagToggles[#tagToggles + 1] = {
+                    identity = identity,
+                    name = name,
+                }
+                return true
+            end,
         },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
@@ -462,6 +478,8 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         removalRequests = removalRequests,
         noteSaves = noteSaves,
         noteDeletes = noteDeletes,
+        tagAssignments = tagAssignments,
+        tagToggles = tagToggles,
         tooltip = tooltip,
         modifiedItemClicks = modifiedItemClicks,
         ui = ui,
@@ -498,7 +516,7 @@ return {
         test.assert_equal(frame.views.mainsalts.text.text, "No roster data yet")
         test.assert_equal(frame.views.mainsalts.status.text, "No roster data yet")
         local searchBox = frame.views.mainsalts.mainsAltsSearchBox
-        test.assert_equal(searchBox:GetWidth(), 384)
+        test.assert_equal(searchBox:GetWidth(), 252)
         test.assert_equal(searchBox.relativeTo, frame.views.mainsalts.groupButton)
         test.assert_equal(searchBox.x, 8)
         test.assert_false(searchBox.autoFocus)
@@ -506,6 +524,10 @@ return {
         test.assert_equal(
             frame.views.mainsalts.mainsAltsSearchPlaceholder.text,
             "Search characters…"
+        )
+        test.assert_equal(
+            frame.views.mainsalts.mainsAltsTagFilterButton.label.text,
+            "Filter tags..."
         )
         test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
         test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
@@ -863,6 +885,135 @@ return {
         test.assert_nil(harness.database.ui.mainsAltsSearchQuery)
         harness.ui.Hide()
         test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
+    end),
+
+    test.case("Mains/Alts tag pills edit filter intersect and follow transient lifecycle", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show()
+        harness.ui.SelectPrimaryTab("mainsalts")
+        local view = harness.frame().views.mainsalts
+        local report = {
+            tagCatalog = { "me", "raid", "tank" },
+            rows = {
+                {
+                    name = "Main",
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    tags = {},
+                    altCount = 1,
+                    alts = {
+                        {
+                            name = "RaidAlt",
+                            identity = "raidalt-area52",
+                            displayName = "RaidAlt-Area52",
+                            tags = { "raid" },
+                        },
+                    },
+                },
+                {
+                    name = "Solo",
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    tags = { "me" },
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        }
+        harness.ui.SetMainsAltsReport(report)
+
+        test.assert_equal(view.mainsAltsHeader.tags.text, "Tags")
+        test.assert_equal(view.mainsAltsLines[1].tagButton.label.text, "Tags")
+        test.assert_equal(view.mainsAltsLines[2].tagButton.label.text, "Tags (1)")
+        view.mainsAltsLines[1].tagButton.scripts.OnEnter()
+        test.assert_false(view.mainsAltsTagPreview:IsShown())
+        view.mainsAltsLines[2].tagButton.scripts.OnEnter()
+        test.assert_true(view.mainsAltsTagPreview:IsShown())
+        test.assert_equal(view.mainsAltsTagPreview.pills[1].label.text, "me")
+        view.mainsAltsLines[2].tagButton.scripts.OnLeave()
+        test.assert_false(view.mainsAltsTagPreview:IsShown())
+
+        view.mainsAltsLines[2].checkbox:SetChecked(true)
+        view.mainsAltsLines[2].checkbox.scripts.OnClick(view.mainsAltsLines[2].checkbox)
+        view.mainsAltsTagFilterButton.scripts.OnClick()
+        test.assert_true(view.mainsAltsTagFilter:IsShown())
+        test.assert_equal(view.mainsAltsTagFilter.pills[2].label.text, "raid")
+        view.mainsAltsTagFilter.pills[2].scripts.OnClick(
+            view.mainsAltsTagFilter.pills[2]
+        )
+        test.assert_equal(view.mainsAltsTagFilterButton.label.text, "Filter tags... (1)")
+        test.assert_equal(view.mainsAltsLines[1].identity, "main-area52")
+        test.assert_equal(view.mainsAltsLines[2].identity, "raidalt-area52")
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+        test.assert_true(view.mainsAltsSelections["solo-area52"])
+
+        view.mainsAltsLines[1].checkbox:SetChecked(true)
+        view.mainsAltsLines[1].checkbox.scripts.OnClick(view.mainsAltsLines[1].checkbox)
+        test.assert_true(view.groupButton:IsEnabled())
+        view.mainsAltsLines[1].expandButton.scripts.OnClick()
+        test.assert_false(view.expandedMainsAlts["main-area52"] == true)
+        view.mainsAltsSearchBox:SetText("")
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+
+        view.mainsAltsSearchBox:SetText("main")
+        test.assert_false(view.mainsAltsLinePool[1].frame:IsShown())
+        view.mainsAltsSearchBox:SetText("")
+        test.assert_equal(view.mainsAltsLines[2].identity, "raidalt-area52")
+
+        view.mainsAltsLines[2].tagButton.scripts.OnClick()
+        test.assert_true(view.mainsAltsTagEditor:IsShown())
+        test.assert_true(view.mainsAltsTagEditor.input:HasFocus())
+        test.assert_equal(view.mainsAltsTagEditor.pills[1].label.text, "me")
+        test.assert_false(view.mainsAltsTagEditor.pills[1].selected)
+        test.assert_true(view.mainsAltsTagEditor.pills[2].selected)
+        view.mainsAltsTagEditor.pills[3].scripts.OnClick(
+            view.mainsAltsTagEditor.pills[3]
+        )
+        test.assert_equal(harness.tagToggles[1], {
+            identity = "raidalt-area52",
+            name = "tank",
+        })
+        view.mainsAltsTagEditor.input:SetText(string.rep("x", 33))
+        test.assert_equal(#view.mainsAltsTagEditor.input:GetText(), 32)
+        view.mainsAltsTagEditor.input.scripts.OnEnterPressed(
+            view.mainsAltsTagEditor.input
+        )
+        test.assert_equal(harness.tagAssignments[1], {
+            identity = "raidalt-area52",
+            value = string.rep("x", 32),
+        })
+        test.assert_equal(view.mainsAltsTagEditor.input:GetText(), "")
+        test.assert_true(view.mainsAltsTagEditor.input:HasFocus())
+        view.mainsAltsTagEditor.input.scripts.OnEscapePressed()
+        test.assert_false(view.mainsAltsTagEditor:IsShown())
+        view.mainsAltsLines[2].tagButton.scripts.OnClick()
+        test.assert_true(view.mainsAltsTagEditor:IsShown())
+
+        report.rows[1].alts[1].tags = {}
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_false(view.mainsAltsTagEditor:IsShown())
+        test.assert_false(view.mainsAltsLinePool[1].frame:IsShown())
+        report.rows[1].alts[1].tags = { "raid" }
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+
+        view.mainsAltsTagFilterButton.scripts.OnClick()
+        test.assert_true(view.mainsAltsTagFilter:IsShown())
+        harness.ui.SetGlobalScanLock(true)
+        test.assert_false(view.mainsAltsTagFilter:IsShown())
+        test.assert_true(view.mainsAltsTagFilters.raid)
+        test.assert_false(view.mainsAltsTagFilterButton:IsEnabled())
+        harness.ui.SetGlobalScanLock(false)
+        test.assert_true(view.mainsAltsTagFilterButton:IsEnabled())
+
+        view.mainsAltsTagFilterButton.scripts.OnClick()
+        test.assert_true(view.mainsAltsTagFilter:IsShown())
+        view.mainsAltsTagDismissLayer.scripts.OnClick()
+        test.assert_false(view.mainsAltsTagFilter:IsShown())
+        harness.ui.SelectPrimaryTab("roster")
+        test.assert_nil(next(view.mainsAltsTagFilters))
+        test.assert_equal(view.mainsAltsTagFilterButton.label.text, "Filter tags...")
     end),
 
     test.case("Mains/Alts mutation scrolling waits for the final report and jumps to a clamped row", function()

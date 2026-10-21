@@ -8,6 +8,9 @@ local Report = {}
 local Names = type(RGMS) == "table"
     and RGMS.RosterNames
     or require("Roster.Names")
+local Tags = type(RGMS) == "table"
+    and RGMS.MainsAltsTags
+    or require("MainsAlts.Tags")
 
 local function characterComesBefore(left, right)
     local leftName = string.lower(left.name)
@@ -24,7 +27,7 @@ local function characterComesBefore(left, right)
     return left.displayName < right.displayName
 end
 
-local function projectCharacter(member, savedNotes)
+local function projectCharacter(member, savedNotes, savedTags)
     local displayName = Names.displayName(member.name, member.realm)
     local identity = Names.identity(member.name, member.realm)
     local note = savedNotes[identity]
@@ -36,10 +39,11 @@ local function projectCharacter(member, savedNotes)
         isMissing = member.isMissing == true,
         note = type(note) == "string" and note or "",
         hasNote = type(note) == "string" and string.find(note, "%S") ~= nil,
+        tags = Tags.assignedTo(savedTags, identity),
     }
 end
 
-function Report.build(dataset, savedGroups, savedNotes)
+function Report.build(dataset, savedGroups, savedNotes, savedTags)
     if type(dataset) ~= "table" or type(dataset.members) ~= "table" then
         return nil, "Mains/Alts roster dataset is invalid"
     end
@@ -50,6 +54,11 @@ function Report.build(dataset, savedGroups, savedNotes)
         return nil, "Mains/Alts character notes must be a table"
     end
     savedNotes = savedNotes or {}
+    savedTags = savedTags or Tags.newState()
+    local validTags, tagsError = Tags.validate(savedTags)
+    if not validTags then
+        return nil, tagsError
+    end
 
     local characters = {}
     local charactersByIdentity = {}
@@ -62,7 +71,7 @@ function Report.build(dataset, savedGroups, savedNotes)
             return nil, "Mains/Alts roster member is invalid"
         end
 
-        local character = projectCharacter(member, savedNotes)
+        local character = projectCharacter(member, savedNotes, savedTags)
         if charactersByIdentity[character.identity] then
             return nil, "Mains/Alts roster contains a duplicate character"
         end
@@ -124,6 +133,7 @@ function Report.build(dataset, savedGroups, savedNotes)
                     isMissing = definition.main.isMissing,
                     note = definition.main.note,
                     hasNote = definition.main.hasNote,
+                    tags = definition.main.tags,
                     altCount = #alts,
                     alts = alts,
                 }
@@ -145,6 +155,7 @@ function Report.build(dataset, savedGroups, savedNotes)
                 isMissing = character.isMissing,
                 note = character.note,
                 hasNote = character.hasNote,
+                tags = character.tags,
                 altCount = 0,
                 alts = {},
             }
@@ -152,7 +163,10 @@ function Report.build(dataset, savedGroups, savedNotes)
     end
     table.sort(rows, characterComesBefore)
 
-    return { rows = rows }
+    return {
+        rows = rows,
+        tagCatalog = Tags.sortedDefinitions(savedTags),
+    }
 end
 
 if type(RGMS) == "table" then

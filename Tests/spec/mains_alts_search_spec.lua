@@ -10,6 +10,7 @@ local function character(name, realm, options)
         identity = string.lower(name .. "-" .. (realm or "Area52")),
         isMissing = options.isMissing == true,
         note = options.note or "",
+        tags = options.tags or {},
         altCount = options.altCount or 0,
         alts = options.alts or {},
     }
@@ -63,5 +64,40 @@ return {
         test.assert_equal(search.filter(report, "search").rows, {})
         test.assert_equal(search.filter(report, "zzz").rows, {})
         test.assert_equal(search.filter(report, "").rows, report.rows)
+    end),
+
+    test.case("tag filters use same-character AND semantics with name search", function()
+        local group = character("Main", "Area52", {
+            altCount = 2,
+            tags = { "tank" },
+            alts = {
+                character("NamedAlt", "Area52", { tags = { "healer" } }),
+                character("OtherAlt", "Area52", { tags = { "healer", "raid" } }),
+            },
+        })
+        local solo = character("NamedSolo", "Area52", {
+            tags = { "healer", "raid" },
+        })
+        local report = { rows = { group, solo } }
+
+        test.assert_equal(search.filter(report, "", {
+            healer = true,
+            raid = true,
+        }).rows, { group, solo })
+        test.assert_equal(search.filter(report, "named", {
+            healer = true,
+            raid = true,
+        }).rows, { solo })
+        test.assert_equal(search.filter(report, "other", {
+            healer = true,
+            raid = true,
+        }).rows, { group })
+
+        local filtered, expanded = search.filter(report, "other", {
+            healer = true,
+            raid = true,
+        })
+        test.assert_equal(filtered.rows[1].alts, group.alts)
+        test.assert_true(expanded[group.identity])
     end),
 }

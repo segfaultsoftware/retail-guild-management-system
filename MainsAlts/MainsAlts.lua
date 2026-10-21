@@ -87,6 +87,34 @@ local function publishNote(identity, note)
     return true
 end
 
+local function publishTags(tags)
+    if type(RGMS.AccountData) ~= "table"
+        or type(RGMS.AccountData.replaceCharacterTags) ~= "function"
+        or type(RGMS.AccountDataState) ~= "table"
+        or type(RGMS.ActiveGuildIdentity) ~= "table" then
+        return nil, "character tag account storage is unavailable"
+    end
+
+    local replacement, guildOrError = RGMS.AccountData.replaceCharacterTags(
+        RGMS.AccountDataState.model,
+        RGMS.ActiveGuildIdentity,
+        tags
+    )
+    if not replacement then
+        return nil, guildOrError
+    end
+
+    RGMSAccountDB = replacement
+    RGMS.AccountDataState.model = replacement
+    if type(RGMS.ActivateCurrentGuild) == "function" then
+        RGMS.ActivateCurrentGuild()
+    else
+        RGMS.DB.tags = guildOrError.tags
+    end
+    MainsAlts.RefreshStatus()
+    return true
+end
+
 function MainsAlts.SaveCharacterNote(identity, value)
     if scanInProgress() then
         return nil, "character notes are disabled during a roster scan"
@@ -116,6 +144,74 @@ function MainsAlts.DeleteCharacterNote(identity)
         return nil, "roster character is unavailable"
     end
     return publishNote(identity, nil)
+end
+
+function MainsAlts.CreateOrAssignTag(identity, value)
+    if scanInProgress() then
+        return nil, "character tags are disabled during a roster scan"
+    end
+    if not characterExists(identity) then
+        return nil, "roster character is unavailable"
+    end
+    if type(RGMS.MainsAltsTags) ~= "table"
+        or type(RGMS.MainsAltsTags.resolveAndAssign) ~= "function"
+        or type(RGMS.DB) ~= "table" then
+        return nil, "character tags are unavailable"
+    end
+    if type(value) ~= "string" then
+        return nil, "tag name must be text"
+    end
+
+    local normalized = RGMS.MainsAltsTags.normalize(value)
+    if normalized == "" then
+        return true, nil
+    end
+    local maximum = RGMS.MainsAltsTags.MAX_NAME_LENGTH or 32
+    if characterCount(normalized) > maximum then
+        return nil, "tag name must not exceed " .. maximum .. " characters"
+    end
+
+    local tags, resolvedOrError, resolved = RGMS.MainsAltsTags.resolveAndAssign(
+        RGMS.DB.tags,
+        identity,
+        normalized
+    )
+    if not tags then
+        return nil, resolvedOrError
+    end
+    local published, publishError = publishTags(tags)
+    if not published then
+        return nil, publishError
+    end
+    return true, resolved
+end
+
+function MainsAlts.ToggleCharacterTag(identity, name)
+    if scanInProgress() then
+        return nil, "character tags are disabled during a roster scan"
+    end
+    if not characterExists(identity) then
+        return nil, "roster character is unavailable"
+    end
+    if type(RGMS.MainsAltsTags) ~= "table"
+        or type(RGMS.MainsAltsTags.toggle) ~= "function"
+        or type(RGMS.DB) ~= "table" then
+        return nil, "character tags are unavailable"
+    end
+
+    local tags, assignedOrError = RGMS.MainsAltsTags.toggle(
+        RGMS.DB.tags,
+        identity,
+        name
+    )
+    if not tags then
+        return nil, assignedOrError
+    end
+    local published, publishError = publishTags(tags)
+    if not published then
+        return nil, publishError
+    end
+    return true, assignedOrError
 end
 
 function MainsAlts.GroupSelected(selectedIdentities)
@@ -221,7 +317,8 @@ function MainsAlts.RefreshStatus()
     local report, reportError = RGMS.MainsAltsReport.build(
         RGMS.DB.roster,
         RGMS.DB.mainAltGroups,
-        RGMS.DB.characterNotes
+        RGMS.DB.characterNotes,
+        RGMS.DB.tags
     )
     if not report then
         if type(RGMS.UI.SetMainsAltsAvailable) == "function" then

@@ -1,4 +1,5 @@
 local test = require("Tests.lib.runner")
+local tags = require("MainsAlts.Tags")
 
 local function newHarness(options)
     options = options or {}
@@ -8,6 +9,7 @@ local function newHarness(options)
             roster = { members = options.members or {} },
             mainAltGroups = options.groups or {},
             characterNotes = options.notes or {},
+            tags = options.tags or tags.newState(),
         },
         RosterNames = {
             identity = function(name, realm)
@@ -64,6 +66,7 @@ local function newHarness(options)
                     groupRemains
             end,
         },
+        MainsAltsTags = tags,
         AccountDataState = { model = { original = true } },
         ActiveGuildIdentity = { name = "Guild" },
         AccountData = {
@@ -83,6 +86,15 @@ local function newHarness(options)
                 return { publishedNote = true }, {
                     characterNotes = note and { [characterIdentity] = note } or {},
                 }
+            end,
+            replaceCharacterTags = function(model, identity, replacementTags)
+                calls.tagReplaces = calls.tagReplaces or {}
+                calls.tagReplaces[#calls.tagReplaces + 1] = {
+                    model = model,
+                    identity = identity,
+                    tags = replacementTags,
+                }
+                return { publishedTags = true }, { tags = replacementTags }
             end,
         },
         ActivateCurrentGuild = function()
@@ -374,5 +386,72 @@ return {
         test.assert_nil(oversized)
         test.assert_matches(oversizedError, "5500")
         test.assert_nil(calls.noteReplaces)
+    end),
+
+    test.case("character tags normalize deduplicate toggle and refresh immediately", function()
+        local controller, calls, rgms = newHarness({
+            members = { { name = "Main", realm = "Area52" } },
+        })
+
+        local assigned, resolved = controller.CreateOrAssignTag(
+            "main-area52",
+            "  Raid  Lead  "
+        )
+        test.assert_true(assigned)
+        test.assert_equal(resolved, "raid  lead")
+        test.assert_true(calls.tagReplaces[1].tags.definitions["raid  lead"])
+        test.assert_true(
+            calls.tagReplaces[1].tags.assignments["main-area52"]["raid  lead"]
+        )
+        test.assert_equal(rgms.AccountDataState.model, { publishedTags = true })
+        test.assert_not_nil(calls.report)
+
+        rgms.DB.tags = calls.tagReplaces[1].tags
+        test.assert_true(controller.CreateOrAssignTag("main-area52", "RAID  LEAD"))
+        test.assert_equal(
+            tags.sortedDefinitions(calls.tagReplaces[2].tags),
+            { "me", "raid  lead" }
+        )
+
+        rgms.DB.tags = calls.tagReplaces[2].tags
+        local toggled, nowAssigned = controller.ToggleCharacterTag(
+            "main-area52",
+            "raid  lead"
+        )
+        test.assert_true(toggled)
+        test.assert_false(nowAssigned)
+        test.assert_nil(calls.tagReplaces[3].tags.assignments["main-area52"])
+        test.assert_true(calls.tagReplaces[3].tags.definitions["raid  lead"])
+    end),
+
+    test.case("character tag mutations reject scans unknown characters and long names", function()
+        local scanning, scanningCalls = newHarness({
+            scanning = true,
+            members = { { name = "Main", realm = "Area52" } },
+        })
+        local changed, scanError = scanning.CreateOrAssignTag(
+            "main-area52",
+            "raid"
+        )
+        test.assert_nil(changed)
+        test.assert_matches(scanError, "disabled")
+        test.assert_nil(scanningCalls.tagReplaces)
+
+        local controller, calls = newHarness({
+            members = { { name = "Main", realm = "Area52" } },
+        })
+        local unknown, unknownError = controller.ToggleCharacterTag(
+            "other-area52",
+            "me"
+        )
+        test.assert_nil(unknown)
+        test.assert_matches(unknownError, "unavailable")
+        local long, longError = controller.CreateOrAssignTag(
+            "main-area52",
+            string.rep("x", 33)
+        )
+        test.assert_nil(long)
+        test.assert_matches(longError, "32")
+        test.assert_nil(calls.tagReplaces)
     end),
 }
