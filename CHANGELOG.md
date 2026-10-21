@@ -19,6 +19,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Reduced the empty Mains/Alts selection column so its checkbox and expand
+  chevron are separated by only four pixels.
 - Tag previews no longer appear while a character's tag editor is open.
 - Dropdown menus now apply RGMS typography without calling a font API that is
   disallowed on Blizzard-managed menu elements.
