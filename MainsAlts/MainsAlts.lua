@@ -211,6 +211,9 @@ function MainsAlts.RefreshStatus()
     if type(RGMS.MainsAltsReport) ~= "table"
         or type(RGMS.MainsAltsReport.build) ~= "function"
         or type(RGMS.DB) ~= "table" then
+        if type(RGMS.UI.SetMainsAltsAvailable) == "function" then
+            RGMS.UI.SetMainsAltsAvailable(false)
+        end
         RGMS.UI.SetViewStatus("mainsalts", "Mains/Alts report unavailable")
         return
     end
@@ -221,6 +224,9 @@ function MainsAlts.RefreshStatus()
         RGMS.DB.characterNotes
     )
     if not report then
+        if type(RGMS.UI.SetMainsAltsAvailable) == "function" then
+            RGMS.UI.SetMainsAltsAvailable(false)
+        end
         RGMS.UI.SetViewStatus(
             "mainsalts",
             "Mains/Alts report unavailable: " .. tostring(reportError)

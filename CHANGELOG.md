@@ -5,6 +5,14 @@ All notable user-visible changes to RGMS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Added live ordered-subsequence character-name search to Mains/Alts while
+  preserving group order, full-group context, hidden selections, and search
+  state across in-view report updates.
+
 ## 0.4
 
 ### Added

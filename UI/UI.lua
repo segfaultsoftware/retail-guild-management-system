@@ -45,6 +45,8 @@ local MAINS_ALTS_NOTE_SIZE = 16
 local MAINS_ALTS_NOTE_GAP = 4
 local MAINS_ALTS_SCROLL_DURATION = 0
 local MAINS_ALTS_WHEEL_ROWS = 3
+local MAINS_ALTS_SEARCH_WIDTH = 384
+local MAINS_ALTS_SEARCH_HEIGHT = 32
 local CHARACTER_NOTE_LIMIT = 5500
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
 local MISSING_WARNING_SIZE = 16
@@ -830,7 +832,9 @@ local function updateMainsAltsControlState(view)
     local selectionCount = 0
     local selectedGroupCount = 0
     for _, row in ipairs(
-        type(view.mainsAltsReport) == "table" and view.mainsAltsReport.rows or {}
+        type(view.mainsAltsSourceReport) == "table"
+            and view.mainsAltsSourceReport.rows
+            or {}
     ) do
         if view.mainsAltsSelections[row.identity] == true then
             selectionCount = selectionCount + 1
@@ -843,6 +847,31 @@ local function updateMainsAltsControlState(view)
         view.groupButton:SetEnabled(
             enabled and selectionCount >= 2 and selectedGroupCount <= 1
         )
+    end
+    if view.mainsAltsSearchBox then
+        view.mainsAltsSearchBox:SetEnabled(enabled)
+        view.mainsAltsSearchClear:SetEnabled(
+            enabled and view.mainsAltsSearchQuery ~= ""
+        )
+        if type(view.mainsAltsSearchBox.SetAlpha) == "function" then
+            view.mainsAltsSearchBox:SetAlpha(enabled and 1 or 0.5)
+        end
+        if type(view.mainsAltsSearchClear.SetAlpha) == "function" then
+            view.mainsAltsSearchClear:SetAlpha(enabled and 1 or 0.5)
+        end
+        if view.mainsAltsSearchClear.icon then
+            view.mainsAltsSearchClear.icon:SetVertexColor(
+                unpackColor(enabled and PALETTE.secondary or PALETTE.disabled)
+            )
+        end
+        if type(view.mainsAltsSearchBox.SetBackdropBorderColor) == "function" then
+            local border = enabled
+                and (view.mainsAltsSearchFocused and PALETTE.pink
+                    or view.mainsAltsSearchHovered and PALETTE.pinkHover
+                    or PALETTE.border)
+                or PALETTE.disabled
+            view.mainsAltsSearchBox:SetBackdropBorderColor(unpackColor(border))
+        end
     end
     for _, line in ipairs(view.mainsAltsLines or {}) do
         if line.frame:IsShown() then
@@ -1209,6 +1238,158 @@ local function renderMainsAlts(view, resolvePendingTarget, preferredAnchor)
     restoreMainsAltsScrollAnchor(view, anchor)
 end
 
+local function updateMainsAltsSearchAppearance(view)
+    local query = view.mainsAltsSearchQuery or ""
+    view.mainsAltsSearchPlaceholder:SetShown(query == "")
+    view.mainsAltsSearchClear:SetShown(query ~= "")
+
+    if type(view.mainsAltsSearchBox.SetBackdropBorderColor) == "function" then
+        local color = view.mainsAltsSearchFocused and PALETTE.pink
+            or view.mainsAltsSearchHovered and PALETTE.pinkHover
+            or PALETTE.border
+        if not mainsAltsControlsEnabled(view) then
+            color = PALETTE.disabled
+        end
+        view.mainsAltsSearchBox:SetBackdropBorderColor(unpackColor(color))
+    end
+end
+
+local function applyMainsAltsSearch(view, resetScroll, resolvePendingTarget)
+    local source = view.mainsAltsSourceReport
+    if type(source) ~= "table" or type(source.rows) ~= "table" then
+        return
+    end
+
+    local filtered, matchingGroups, normalized = RGMS.MainsAltsSearch.filter(
+        source,
+        view.mainsAltsSearchQuery
+    )
+    if not filtered then
+        filtered = source
+        matchingGroups = {}
+        normalized = ""
+    end
+    view.mainsAltsReport = filtered
+    view.mainsAltsNormalizedSearch = normalized
+    if normalized ~= "" then
+        view.expandedMainsAlts = matchingGroups
+    elseif resetScroll then
+        view.expandedMainsAlts = {}
+    end
+
+    renderMainsAlts(view, resolvePendingTarget == true)
+    if resetScroll then
+        cancelMainsAltsScrollWork(view)
+        setMainsAltsScroll(view, 0)
+    end
+    updateMainsAltsSearchAppearance(view)
+end
+
+local function clearMainsAltsSearch(view, keepFocus)
+    view.settingMainsAltsSearchText = true
+    view.mainsAltsSearchBox:SetText("")
+    view.settingMainsAltsSearchText = false
+    view.mainsAltsSearchQuery = ""
+    applyMainsAltsSearch(view, true, false)
+    if keepFocus then
+        view.mainsAltsSearchBox:SetFocus()
+    else
+        view.mainsAltsSearchBox:ClearFocus()
+    end
+end
+
+local function createMainsAltsSearch(view)
+    local editBox = CreateFrame("EditBox", nil, view, "BackdropTemplate")
+    editBox:SetSize(MAINS_ALTS_SEARCH_WIDTH, MAINS_ALTS_SEARCH_HEIGHT)
+    editBox:SetPoint("TOPLEFT", view.groupButton, "TOPRIGHT", CONTROL_GAP, 0)
+    editBox:SetAutoFocus(false)
+    editBox:SetJustifyH("LEFT")
+    if type(editBox.SetTextInsets) == "function" then
+        editBox:SetTextInsets(10, 32, 0, 0)
+    end
+    setFont(editBox, FONT_REGULAR, 12)
+    flatBackdrop(editBox, PALETTE.control, PALETTE.border)
+
+    local placeholder = editBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    placeholder:SetPoint("LEFT", editBox, "LEFT", 10, 0)
+    placeholder:SetPoint("RIGHT", editBox, "RIGHT", -32, 0)
+    placeholder:SetJustifyH("LEFT")
+    placeholder:SetText("Search characters…")
+    setFont(placeholder, FONT_REGULAR, 12)
+    setTextColor(placeholder, PALETTE.secondary)
+
+    local clearButton = CreateFrame("Button", nil, editBox)
+    clearButton:SetSize(24, 24)
+    clearButton:SetPoint("RIGHT", editBox, "RIGHT", -4, 0)
+    clearButton.icon = clearButton:CreateTexture(nil, "ARTWORK")
+    clearButton.icon:SetSize(16, 16)
+    clearButton.icon:SetPoint("CENTER", clearButton, "CENTER", 0, 0)
+    clearButton.icon:SetTexture(CLOSE_TEXTURE)
+    clearButton.icon:SetVertexColor(unpackColor(PALETTE.secondary))
+    clearButton:SetScript("OnClick", function()
+        if mainsAltsControlsEnabled(view) then
+            clearMainsAltsSearch(view, true)
+        end
+    end)
+    clearButton:SetScript("OnEnter", function(button)
+        button.icon:SetVertexColor(unpackColor(PALETTE.pinkHover))
+        showOwnedTooltip(button, "Clear search", "Show every Mains/Alts character.")
+    end)
+    clearButton:SetScript("OnLeave", function(button)
+        button.icon:SetVertexColor(unpackColor(
+            mainsAltsControlsEnabled(view) and PALETTE.secondary or PALETTE.disabled
+        ))
+        hideOwnedTooltip(button)
+    end)
+    clearButton:SetScript("OnMouseDown", function(button)
+        if button:IsEnabled() then
+            button.icon:SetVertexColor(unpackColor(PALETTE.pink))
+        end
+    end)
+    clearButton:SetScript("OnMouseUp", function(button)
+        if button:IsEnabled() then
+            button.icon:SetVertexColor(unpackColor(PALETTE.pinkHover))
+        end
+    end)
+
+    view.mainsAltsSearchBox = editBox
+    view.mainsAltsSearchPlaceholder = placeholder
+    view.mainsAltsSearchClear = clearButton
+    view.mainsAltsSearchQuery = ""
+    view.mainsAltsNormalizedSearch = ""
+
+    editBox:SetScript("OnTextChanged", function(box)
+        if view.settingMainsAltsSearchText then
+            return
+        end
+        view.mainsAltsSearchQuery = box:GetText()
+        applyMainsAltsSearch(view, true, false)
+    end)
+    editBox:SetScript("OnEscapePressed", function()
+        clearMainsAltsSearch(view, false)
+    end)
+    editBox:SetScript("OnEnterPressed", function(box)
+        box:ClearFocus()
+    end)
+    editBox:SetScript("OnEditFocusGained", function()
+        view.mainsAltsSearchFocused = true
+        updateMainsAltsSearchAppearance(view)
+    end)
+    editBox:SetScript("OnEditFocusLost", function()
+        view.mainsAltsSearchFocused = false
+        updateMainsAltsSearchAppearance(view)
+    end)
+    editBox:SetScript("OnEnter", function()
+        view.mainsAltsSearchHovered = true
+        updateMainsAltsSearchAppearance(view)
+    end)
+    editBox:SetScript("OnLeave", function()
+        view.mainsAltsSearchHovered = false
+        updateMainsAltsSearchAppearance(view)
+    end)
+    updateMainsAltsSearchAppearance(view)
+end
+
 local function hideBankLines(view)
     if view.bankHeader then
         view.bankHeader.frame:Hide()
@@ -1490,7 +1671,7 @@ local function createView(parent, tabId)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     local statusY = tabId == "bank" and -8 or -20
-    view.status:SetPoint("TOPLEFT", parent, "TOPLEFT", tabId == "mainsalts" and 192 or 280, statusY)
+    view.status:SetPoint("TOPLEFT", parent, "TOPLEFT", tabId == "mainsalts" and 576 or 280, statusY)
     view.status:SetPoint("TOPRIGHT", parent, "TOPRIGHT", tabId == "mainsalts" and -56 or -148, statusY)
     if tabId == "bank" then
         view.status:SetHeight(40)
@@ -1506,7 +1687,7 @@ local function createView(parent, tabId)
         "TOPLEFT",
         parent,
         "TOPLEFT",
-        tabId == "mainsalts" and 184 or 272,
+        tabId == "mainsalts" and 576 or 272,
         -20
     )
     view.spinner.icon = view.spinner:CreateTexture(nil, "ARTWORK")
@@ -1605,7 +1786,9 @@ local function createView(parent, tabId)
                 return
             end
             local selectedIdentities = {}
-            for _, row in ipairs(view.mainsAltsReport and view.mainsAltsReport.rows or {}) do
+            for _, row in ipairs(
+                view.mainsAltsSourceReport and view.mainsAltsSourceReport.rows or {}
+            ) do
                 if view.mainsAltsSelections[row.identity] == true then
                     selectedIdentities[#selectedIdentities + 1] = row.identity
                 end
@@ -1615,6 +1798,7 @@ local function createView(parent, tabId)
                 RGMS.Print("Could not group characters: " .. tostring(groupError) .. ".")
             end
         end)
+        createMainsAltsSearch(view)
         createMainsAltsHeader(view)
     elseif tabId == "bank" then
         view.bankTabScrollFrame = CreateFrame(
@@ -2222,7 +2406,9 @@ function UI.SelectPrimaryTab(tabId)
     end
 
     if UI.selectedTab == "mainsalts" and tabId ~= "mainsalts" then
-        cancelMainsAltsScrollWork(UI.frame.views.mainsalts)
+        local mainsAltsView = UI.frame.views.mainsalts
+        clearMainsAltsSearch(mainsAltsView, false)
+        cancelMainsAltsScrollWork(mainsAltsView)
     end
     for _, currentTabId in ipairs(TAB_ORDER) do
         local selected = currentTabId == tabId
@@ -2465,7 +2651,7 @@ function UI.SetMainsAltsReport(report)
     end
 
     local view = UI.frame.views.mainsalts
-    view.mainsAltsReport = report
+    view.mainsAltsSourceReport = report
     local availableSelections = {}
     local availableMains = {}
     local availableCharacters = {}
@@ -2492,7 +2678,7 @@ function UI.SetMainsAltsReport(report)
         and not availableCharacters[editor.characterIdentity] then
         editor:Hide()
     end
-    renderMainsAlts(view, true)
+    applyMainsAltsSearch(view, false, true)
     return true
 end
 

@@ -23,6 +23,7 @@ Core\Bootstrap.lua
 Core\Reset.lua
 Core\DatasetOwnership.lua
 Core\Commands.lua
+MainsAlts\Search.lua
 UI\UI.lua
 Roster\Names.lua
 Roster\Report.lua
