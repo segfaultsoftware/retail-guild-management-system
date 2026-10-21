@@ -926,11 +926,20 @@ return {
         test.assert_equal(view.mainsAltsHeader.tags.text, "Tags")
         test.assert_equal(view.mainsAltsLines[1].tagButton.label.text, "Tags")
         test.assert_equal(view.mainsAltsLines[2].tagButton.label.text, "Tags (1)")
+        test.assert_true(view.mainsAltsLines[1].tagButton.tagCapsule ~= nil)
+        test.assert_true(view.mainsAltsTagFilterButton.tagCapsule ~= nil)
         view.mainsAltsLines[1].tagButton.scripts.OnEnter()
         test.assert_false(view.mainsAltsTagPreview:IsShown())
         view.mainsAltsLines[2].tagButton.scripts.OnEnter()
         test.assert_true(view.mainsAltsTagPreview:IsShown())
         test.assert_equal(view.mainsAltsTagPreview.pills[1].label.text, "me")
+        test.assert_true(
+            view.mainsAltsTagPreview.pills[1].tagCapsule ~= nil
+        )
+        test.assert_equal(
+            view.mainsAltsTagPreview.pills[1].tagCapsule.border.left.texture,
+            "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+        )
         view.mainsAltsLines[2].tagButton.scripts.OnLeave()
         test.assert_false(view.mainsAltsTagPreview:IsShown())
 
@@ -939,6 +948,7 @@ return {
         view.mainsAltsTagFilterButton.scripts.OnClick()
         test.assert_true(view.mainsAltsTagFilter:IsShown())
         test.assert_equal(view.mainsAltsTagFilter.pills[2].label.text, "raid")
+        test.assert_true(view.mainsAltsTagFilter.pills[2].tagCapsule ~= nil)
         view.mainsAltsTagFilter.pills[2].scripts.OnClick(
             view.mainsAltsTagFilter.pills[2]
         )
@@ -967,6 +977,8 @@ return {
         test.assert_equal(view.mainsAltsTagEditor.pills[1].label.text, "me")
         test.assert_false(view.mainsAltsTagEditor.pills[1].selected)
         test.assert_true(view.mainsAltsTagEditor.pills[2].selected)
+        test.assert_true(view.mainsAltsTagEditor.pills[1].tagCapsule ~= nil)
+        test.assert_true(view.mainsAltsTagEditor.input.tagCapsule ~= nil)
         view.mainsAltsTagEditor.pills[3].scripts.OnClick(
             view.mainsAltsTagEditor.pills[3]
         )

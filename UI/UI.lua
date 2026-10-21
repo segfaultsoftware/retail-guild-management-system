@@ -63,6 +63,7 @@ local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
 local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8"
+local CIRCLE_TEXTURE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local BORDER_TEXTURE = "Interface\\Tooltips\\UI-Tooltip-Border"
 local LOGO_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\rgms-logo.png"
 local CLOSE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\x.png"
@@ -113,6 +114,82 @@ local function flatBackdrop(frame, color, borderColor)
     frame:SetBackdropColor(unpackColor(color))
     if type(frame.SetBackdropBorderColor) == "function" then
         frame:SetBackdropBorderColor(unpackColor(borderColor or PALETTE.border))
+    end
+end
+
+local function setTextureColor(texture, color)
+    if texture and type(texture.SetVertexColor) == "function" then
+        texture:SetVertexColor(unpackColor(color))
+    end
+end
+
+local function styleTagCapsule(control, background, borderColor)
+    if not control then
+        return
+    end
+    if type(control.SetBackdrop) == "function" then
+        control:SetBackdrop(nil)
+    end
+    if not control.tagCapsule then
+        local capsule = {}
+        for _, layer in ipairs({ "border", "fill" }) do
+            capsule[layer] = {
+                left = control:CreateTexture(nil, "BACKGROUND"),
+                center = control:CreateTexture(nil, "BACKGROUND"),
+                right = control:CreateTexture(nil, "BACKGROUND"),
+            }
+            capsule[layer].left:SetTexture(
+                CIRCLE_TEXTURE,
+                "CLAMPTOBLACKADDITIVE",
+                "CLAMPTOBLACKADDITIVE"
+            )
+            capsule[layer].center:SetTexture(WHITE_TEXTURE)
+            capsule[layer].right:SetTexture(
+                CIRCLE_TEXTURE,
+                "CLAMPTOBLACKADDITIVE",
+                "CLAMPTOBLACKADDITIVE"
+            )
+        end
+        control.tagCapsule = capsule
+    end
+
+    local capsule = control.tagCapsule
+    local height = math.max(2, control:GetHeight() or TAG_PILL_HEIGHT)
+    local radius = height / 2
+    local inset = 1
+    local innerHeight = math.max(1, height - inset * 2)
+
+    capsule.border.left:ClearAllPoints()
+    capsule.border.left:SetSize(height, height)
+    capsule.border.left:SetPoint("LEFT", control, "LEFT", 0, 0)
+    capsule.border.center:ClearAllPoints()
+    capsule.border.center:SetPoint("TOPLEFT", control, "TOPLEFT", radius, 0)
+    capsule.border.center:SetPoint("BOTTOMRIGHT", control, "BOTTOMRIGHT", -radius, 0)
+    capsule.border.right:ClearAllPoints()
+    capsule.border.right:SetSize(height, height)
+    capsule.border.right:SetPoint("RIGHT", control, "RIGHT", 0, 0)
+
+    capsule.fill.left:ClearAllPoints()
+    capsule.fill.left:SetSize(innerHeight, innerHeight)
+    capsule.fill.left:SetPoint("LEFT", control, "LEFT", inset, 0)
+    capsule.fill.center:ClearAllPoints()
+    capsule.fill.center:SetPoint("TOPLEFT", control, "TOPLEFT", radius, -inset)
+    capsule.fill.center:SetPoint(
+        "BOTTOMRIGHT",
+        control,
+        "BOTTOMRIGHT",
+        -radius,
+        inset
+    )
+    capsule.fill.right:ClearAllPoints()
+    capsule.fill.right:SetSize(innerHeight, innerHeight)
+    capsule.fill.right:SetPoint("RIGHT", control, "RIGHT", -inset, 0)
+
+    for _, texture in pairs(capsule.border) do
+        setTextureColor(texture, borderColor or PALETTE.border)
+    end
+    for _, texture in pairs(capsule.fill) do
+        setTextureColor(texture, background or PALETTE.control)
     end
 end
 
@@ -1024,7 +1101,7 @@ local function acquireMainsAltsLine(view, index)
     noteButton.icon = noteIcon
     local tagButton = CreateFrame("Button", nil, frame, "BackdropTemplate")
     tagButton:SetSize(MAINS_ALTS_TAG_WIDTH, MAINS_ALTS_TAG_HEIGHT)
-    flatBackdrop(tagButton, PALETTE.control, PALETTE.border)
+    styleTagCapsule(tagButton, PALETTE.control, PALETTE.border)
     tagButton.label = tagButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     tagButton.label:SetAllPoints(tagButton)
     tagButton.label:SetJustifyH("CENTER")
@@ -1580,7 +1657,7 @@ local function createMainsAltsSearch(view)
     local filterButton = CreateFrame("Button", nil, view, "BackdropTemplate")
     filterButton:SetSize(MAINS_ALTS_FILTER_WIDTH, MAINS_ALTS_SEARCH_HEIGHT)
     filterButton:SetPoint("LEFT", editBox, "RIGHT", CONTROL_GAP, 0)
-    flatBackdrop(filterButton, PALETTE.control, PALETTE.border)
+    styleTagCapsule(filterButton, PALETTE.control, PALETTE.border)
     filterButton.label = filterButton:CreateFontString(
         nil,
         "ARTWORK",
@@ -1635,8 +1712,12 @@ end
 -- preserving RGMS styling, immediate persistence, and unrestricted wrapping.
 local function setTagPillAppearance(button, selected)
     button.selected = selected == true
-    local background = selected and PALETTE.pink or { 0, 0, 0, 0 }
-    flatBackdrop(button, background, selected and PALETTE.pink or PALETTE.border)
+    local background = selected and PALETTE.pink or PALETTE.control
+    styleTagCapsule(
+        button,
+        background,
+        selected and PALETTE.pink or PALETTE.border
+    )
     if button.label then
         setTextColor(button.label, PALETTE.text)
     end
@@ -1744,6 +1825,11 @@ updateMainsAltsTagFilterAppearance = function(view)
     view.mainsAltsTagFilterButton.label:SetText(
         count > 0 and ("Filter tags... (" .. count .. ")") or "Filter tags..."
     )
+    styleTagCapsule(
+        view.mainsAltsTagFilterButton,
+        count > 0 and PALETTE.pink or PALETTE.control,
+        count > 0 and PALETTE.pink or PALETTE.border
+    )
 end
 
 refreshMainsAltsTagFilter = function(view)
@@ -1816,6 +1902,7 @@ refreshMainsAltsTagEditor = function(view)
     editor.input:ClearAllPoints()
     editor.input:SetPoint("TOPLEFT", editor, "TOPLEFT", x, y)
     editor.input:SetSize(math.max(72, maximumX - x), TAG_PILL_HEIGHT)
+    styleTagCapsule(editor.input, PALETTE.control, PALETTE.border)
     editor:SetHeight(math.abs(y) + TAG_PILL_HEIGHT + TAG_POPOVER_PADDING)
 end
 
@@ -1857,7 +1944,6 @@ local function createMainsAltsTagPopovers(view)
     editor.input:SetJustifyH("LEFT")
     editor.input:SetTextInsets(6, 6, 0, 0)
     setFont(editor.input, FONT_REGULAR, 11)
-    flatBackdrop(editor.input, PALETTE.control, PALETTE.border)
     editor.input:SetScript("OnTextChanged", function(box)
         if editor.settingInputText then
             return
