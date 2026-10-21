@@ -21,8 +21,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
-- Dropdown selections and Roster group headings now render immediately when
-  their views first become visible after a clean installation.
+- Dropdown selections and Roster group headings now force their prepared text
+  to render when first shown, and duplicate rank names remain distinguishable.
 - Clicking anywhere outside a Mains/Alts tag editor now closes it without
   blocking controls inside RGMS, discards unsubmitted tag text, and treats the
   active character's tag icon as a close toggle instead of reopening it.

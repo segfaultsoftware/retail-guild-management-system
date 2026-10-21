@@ -897,7 +897,7 @@ local function createRosterHeader(view)
     return header
 end
 
-local function renderRosterRank(view, rank)
+local function renderRosterRank(view, rank, forceTextRefresh)
     view.text:Hide()
     createRosterHeader(view).frame:Show()
     local lineIndex = 0
@@ -930,6 +930,11 @@ local function renderRosterRank(view, rank)
             or PALETTE.control
         line.baseColor = rowColor
         line.background:SetVertexColor(unpackColor(rowColor))
+        if forceTextRefresh then
+            line.primary:SetText("")
+            line.secondary:SetText("")
+            line.tertiary:SetText("")
+        end
         line.primary:SetText(primary or "")
         line.secondary:SetText(secondary or "")
         line.tertiary:SetText(tertiary or "")
@@ -2342,7 +2347,7 @@ local function findBankTab(view, tabIndex)
     return nil
 end
 
-local function updateDropdownLabel(dropdown, option, emptyLabel)
+local function updateDropdownLabel(dropdown, option, emptyLabel, forceTextRefresh)
     if not dropdown then
         return
     end
@@ -2350,7 +2355,11 @@ local function updateDropdownLabel(dropdown, option, emptyLabel)
     dropdown.label:ClearAllPoints()
     dropdown.label:SetPoint("LEFT", dropdown, "LEFT", option and option.icon and 34 or 12, 0)
     dropdown.label:SetPoint("RIGHT", dropdown, "RIGHT", -28, 0)
-    dropdown.label:SetText(option and option.name or emptyLabel)
+    local label = option and (option.label or option.name) or emptyLabel
+    if forceTextRefresh then
+        dropdown.label:SetText("")
+    end
+    dropdown.label:SetText(label)
     dropdown:SetEnabled(option ~= nil and UI.globalScanLocked ~= true)
     if dropdown.icon then
         dropdown.icon:SetShown(option ~= nil and option.icon ~= nil)
@@ -2393,7 +2402,7 @@ local function createDropdown(parent, width, emptyLabel, selected, options)
             for _, option in ipairs(dropdown.options() or {}) do
                 local menuOption = option
                 local description = rootDescription:CreateRadio(
-                    menuOption.name,
+                    menuOption.label or menuOption.name,
                     function(value)
                         return dropdown.selectedOption
                             and dropdown.selectedOption.index == value
@@ -2427,13 +2436,13 @@ local function refreshVisibleReport(view, tabId)
     if tabId == "roster" then
         local rank = findRosterRank(view, view.selectedRankIndex)
         if rank then
-            updateDropdownLabel(view.rankDropdown, rank, "No ranks")
-            renderRosterRank(view, rank)
+            updateDropdownLabel(view.rankDropdown, rank, "No ranks", true)
+            renderRosterRank(view, rank, true)
         end
     elseif tabId == "bank" then
         local tab = findBankTab(view, view.selectedBankTabIndex)
         if tab then
-            updateDropdownLabel(view.bankDropdown, tab, "No bank tabs")
+            updateDropdownLabel(view.bankDropdown, tab, "No bank tabs", true)
             renderBankTab(view, tab)
         end
     end
