@@ -893,7 +893,7 @@ return {
         test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
     end),
 
-    test.case("Mains/Alts tag pills edit filter intersect and follow transient lifecycle", function()
+    test.case("Mains/Alts tag icons edit filter intersect and follow transient lifecycle", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show()
@@ -929,15 +929,28 @@ return {
         }
         harness.ui.SetMainsAltsReport(report)
 
-        test.assert_equal(view.mainsAltsHeader.tags.text, "Tags")
-        test.assert_equal(view.mainsAltsLines[1].tagButton.label.text, "Tags")
-        test.assert_equal(view.mainsAltsLines[2].tagButton.label.text, "Tags (1)")
-        test.assert_true(view.mainsAltsLines[1].tagButton.tagCapsule ~= nil)
+        test.assert_equal(view.mainsAltsHeader.tags.text, "")
+        test.assert_equal(
+            view.mainsAltsLines[1].tagButton.icon.texture,
+            "Interface\\AddOns\\RGMS\\assets\\icons\\tag.png"
+        )
+        test.assert_equal(
+            view.mainsAltsLines[1].tagButton.icon.vertexColor,
+            { 0.55, 0.55, 0.55, 0.65 }
+        )
+        test.assert_equal(
+            view.mainsAltsLines[2].tagButton.icon.vertexColor,
+            { 1, 0.82, 0.2, 1 }
+        )
+        test.assert_equal(view.mainsAltsLines[1].tagButton.width, 16)
+        test.assert_equal(view.mainsAltsLines[1].tagButton.x, -236)
         test.assert_true(view.mainsAltsTagFilterButton.tagCapsule ~= nil)
         view.mainsAltsLines[1].tagButton.scripts.OnEnter()
         test.assert_false(view.mainsAltsTagPreview:IsShown())
         view.mainsAltsLines[2].tagButton.scripts.OnEnter()
         test.assert_true(view.mainsAltsTagPreview:IsShown())
+        test.assert_equal(view.mainsAltsTagPreview.point, "TOPRIGHT")
+        test.assert_equal(view.mainsAltsTagPreview.relativePoint, "BOTTOMRIGHT")
         test.assert_equal(view.mainsAltsTagPreview.pills[1].label.text, "me")
         test.assert_true(
             view.mainsAltsTagPreview.pills[1].tagCapsule ~= nil
@@ -979,6 +992,8 @@ return {
 
         view.mainsAltsLines[2].tagButton.scripts.OnClick()
         test.assert_true(view.mainsAltsTagEditor:IsShown())
+        test.assert_equal(view.mainsAltsTagEditor.point, "TOPRIGHT")
+        test.assert_equal(view.mainsAltsTagEditor.relativePoint, "BOTTOMRIGHT")
         test.assert_true(view.mainsAltsTagEditor.input:HasFocus())
         report.rows[1].tags = { "me" }
         view.mainsAltsLines[1].tagButton.scripts.OnEnter()

@@ -19,6 +19,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Replaced the Mains/Alts Tags pills with compact tag icons that mirror the
+  Note column's empty and populated states and leave the header unlabeled.
 - Reduced the empty Mains/Alts selection column so its checkbox and expand
   chevron are separated by only four pixels.
 - Tag previews no longer appear while a character's tag editor is open.

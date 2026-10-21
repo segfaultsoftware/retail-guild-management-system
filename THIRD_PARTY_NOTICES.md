@@ -25,6 +25,7 @@ revision `02eb9161b57917ccaa262f1bf070507cddde3b08`:
 - `chevron-right`
 - `loader-circle`
 - `notebook-pen`
+- `tag`
 - `x`
 
 Source: <https://github.com/lucide-icons/lucide/tree/1.59.0/icons>
