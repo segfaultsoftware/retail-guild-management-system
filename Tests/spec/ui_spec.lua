@@ -1,4 +1,5 @@
 local layout = require("UI.Layout")
+local mainsAltsSearch = require("MainsAlts.Search")
 local test = require("Tests.lib.runner")
 
 local EMPTY_TEXT = "<no members in this bracket>"
@@ -203,10 +204,28 @@ local function newRegion(parent)
 
     function region:SetFocus()
         self.focused = true
+        if self.scripts.OnEditFocusGained then
+            self.scripts.OnEditFocusGained(self)
+        end
     end
 
     function region:ClearFocus()
         self.focused = false
+        if self.scripts.OnEditFocusLost then
+            self.scripts.OnEditFocusLost(self)
+        end
+    end
+
+    function region:HasFocus()
+        return self.focused == true
+    end
+
+    function region:SetAutoFocus(autoFocus)
+        self.autoFocus = autoFocus == true
+    end
+
+    function region:SetTextInsets(left, right, top, bottom)
+        self.textInsets = { left, right, top, bottom }
     end
 
     function region:SetCursorPosition(position)
@@ -275,7 +294,6 @@ local function newRegion(parent)
         "SetJustifyV",
         "SetAllPoints",
         "SetMultiLine",
-        "SetAutoFocus",
         "SetFontObject",
     }
     for _, methodName in ipairs(noOpMethods) do
@@ -363,6 +381,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local rgms = {
         DB = database,
         UILayout = layout,
+        MainsAltsSearch = mainsAltsSearch,
         Roster = {
             RequestManualScan = function()
                 refreshRequests = refreshRequests + 1
@@ -456,6 +475,16 @@ return {
         test.assert_equal(frame.views.roster.status.text, "No roster data yet")
         test.assert_equal(frame.views.mainsalts.text.text, "No roster data yet")
         test.assert_equal(frame.views.mainsalts.status.text, "No roster data yet")
+        local searchBox = frame.views.mainsalts.mainsAltsSearchBox
+        test.assert_equal(searchBox:GetWidth(), 384)
+        test.assert_equal(searchBox.relativeTo, frame.views.mainsalts.groupButton)
+        test.assert_equal(searchBox.x, 8)
+        test.assert_false(searchBox.autoFocus)
+        test.assert_nil(searchBox.maxLetters)
+        test.assert_equal(
+            frame.views.mainsalts.mainsAltsSearchPlaceholder.text,
+            "Search characters…"
+        )
         test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
         test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
     end),
@@ -621,6 +650,161 @@ return {
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
         test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
         test.assert_false(view.mainsAltsLines[4].frame:IsShown())
+    end),
+
+    test.case("Mains/Alts search filters full groups and preserves hidden selections", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show()
+        harness.ui.SelectPrimaryTab("mainsalts")
+        local view = harness.frame().views.mainsalts
+        local report = {
+            rows = {
+                {
+                    name = "Main",
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    altCount = 2,
+                    alts = {
+                        {
+                            name = "OtherAlt",
+                            identity = "otheralt-area52",
+                            displayName = "OtherAlt-Area52",
+                        },
+                        {
+                            name = "Mountvesuvius",
+                            identity = "mountvesuvius-area52",
+                            displayName = "Mountvesuvius-Area52",
+                        },
+                    },
+                },
+                {
+                    name = "Solo",
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        }
+        harness.ui.SetMainsAltsReport(report)
+
+        view.mainsAltsLines[2].checkbox:SetChecked(true)
+        view.mainsAltsLines[2].checkbox.scripts.OnClick(
+            view.mainsAltsLines[2].checkbox
+        )
+        view.scrollFrame:SetVerticalScroll(25)
+        view.mainsAltsSearchBox:SetText("m t v s")
+
+        test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
+        test.assert_equal(view.mainsAltsLines[2].name.text, "OtherAlt-Area52")
+        test.assert_equal(view.mainsAltsLines[3].name.text, "Mountvesuvius-Area52")
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+        test.assert_equal(view.scrollFrame:GetVerticalScroll(), 0)
+
+        view.mainsAltsLines[1].expandButton.scripts.OnClick()
+        test.assert_false(view.expandedMainsAlts["main-area52"] == true)
+        view.mainsAltsSearchBox:SetText("MTVS")
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+
+        view.mainsAltsLines[1].checkbox:SetChecked(true)
+        view.mainsAltsLines[1].checkbox.scripts.OnClick(
+            view.mainsAltsLines[1].checkbox
+        )
+        test.assert_true(view.groupButton:IsEnabled())
+        view.groupButton.scripts.OnClick()
+        test.assert_equal(harness.groupingRequests[1], {
+            "main-area52",
+            "solo-area52",
+        })
+
+        view.mainsAltsSearchClear.scripts.OnClick()
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
+        test.assert_true(view.mainsAltsSearchBox:HasFocus())
+        test.assert_nil(next(view.expandedMainsAlts))
+        test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
+        test.assert_true(view.mainsAltsLines[1].checkbox:GetChecked())
+        test.assert_true(view.mainsAltsLines[2].checkbox:GetChecked())
+    end),
+
+    test.case("Mains/Alts search follows keyboard lifecycle report and lock rules", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show()
+        harness.ui.SelectPrimaryTab("mainsalts")
+        local view = harness.frame().views.mainsalts
+        local report = {
+            rows = {
+                {
+                    name = "Main",
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    altCount = 1,
+                    alts = {
+                        {
+                            name = "Mountvesuvius",
+                            identity = "mountvesuvius-area52",
+                            displayName = "Mountvesuvius-Area52",
+                        },
+                    },
+                },
+                {
+                    name = "Solo",
+                    identity = "solo-area52",
+                    displayName = "Solo-Area52",
+                    altCount = 0,
+                    alts = {},
+                },
+            },
+        }
+        harness.ui.SetMainsAltsReport(report)
+
+        view.mainsAltsSearchBox:SetText("mtvs")
+        view.mainsAltsLines[1].expandButton.scripts.OnClick()
+        test.assert_false(view.expandedMainsAlts["main-area52"] == true)
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+
+        test.assert_true(harness.ui.SetGlobalScanLock(true))
+        test.assert_false(view.mainsAltsSearchBox:IsEnabled())
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "mtvs")
+        harness.ui.SetMainsAltsReport(report)
+        test.assert_true(view.expandedMainsAlts["main-area52"])
+        test.assert_true(harness.ui.SetGlobalScanLock(false))
+        test.assert_true(view.mainsAltsSearchBox:IsEnabled())
+
+        harness.ui.SetMainsAltsAvailable(false)
+        test.assert_false(view.mainsAltsSearchBox:IsEnabled())
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "mtvs")
+        harness.ui.SetMainsAltsAvailable(true)
+
+        view.mainsAltsSearchBox:SetText("solo")
+        view.mainsAltsSearchBox:SetFocus()
+        view.mainsAltsSearchBox.scripts.OnEnterPressed(view.mainsAltsSearchBox)
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "solo")
+        test.assert_false(view.mainsAltsSearchBox:HasFocus())
+
+        view.mainsAltsSearchBox:SetText("zzz")
+        test.assert_true(view.mainsAltsHeader:IsShown())
+        test.assert_false(view.mainsAltsLines[1].frame:IsShown())
+        test.assert_false(view.text:IsShown())
+
+        view.mainsAltsSearchBox:SetFocus()
+        view.mainsAltsSearchBox.scripts.OnEscapePressed()
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
+        test.assert_false(view.mainsAltsSearchBox:HasFocus())
+        test.assert_nil(next(view.expandedMainsAlts))
+
+        view.mainsAltsSearchBox:SetText("solo")
+        harness.ui.SelectPrimaryTab("roster")
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
+        test.assert_nil(next(view.expandedMainsAlts))
+
+        harness.ui.SelectPrimaryTab("mainsalts")
+        view.mainsAltsSearchBox:SetText("solo")
+        test.assert_nil(harness.database.ui.mainsAltsSearchQuery)
+        harness.ui.Hide()
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
     end),
 
     test.case("Mains/Alts mutation scrolling waits for the final report and jumps to a clamped row", function()

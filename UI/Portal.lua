@@ -78,7 +78,7 @@ function Portal.contextControls(view)
     if view == "roster" then
         return { dropdown = "rank", primary = "Refresh", close = true }
     elseif view == "mainsalts" then
-        return { primary = "Group Toons", close = true }
+        return { primary = "Group Toons", search = "character", close = true }
     elseif view == "bank" then
         return { dropdown = "bankTab", primary = "Refresh", close = true }
     end

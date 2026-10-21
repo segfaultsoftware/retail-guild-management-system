@@ -20,6 +20,9 @@ local function newHarness(options)
         },
         MainsAltsReport = {
             build = function()
+                if options.reportError then
+                    return nil, options.reportError
+                end
                 return { rows = options.rows or {} }
             end,
         },
@@ -148,6 +151,16 @@ return {
         controller.RefreshStatus()
 
         test.assert_equal(calls.status.value, "Roster scan in progress")
+    end),
+
+    test.case("Mains/Alts status disables controls for a corrupt report", function()
+        local controller, calls = newHarness({ reportError = "corrupt roster" })
+
+        controller.RefreshStatus()
+
+        test.assert_false(calls.available)
+        test.assert_nil(calls.report)
+        test.assert_matches(calls.status.value, "corrupt roster")
     end),
 
     test.case("grouping publishes only the replacement groups and completes the UI state", function()

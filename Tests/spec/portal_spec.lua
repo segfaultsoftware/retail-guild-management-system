@@ -25,7 +25,7 @@ return {
             dropdown = "rank", primary = "Refresh", close = true,
         })
         test.assert_equal(portal.contextControls("mainsalts"), {
-            primary = "Group Toons", close = true,
+            primary = "Group Toons", search = "character", close = true,
         })
         test.assert_equal(portal.contextControls("bank"), {
             dropdown = "bankTab", primary = "Refresh", close = true,
