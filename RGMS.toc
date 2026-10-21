@@ -24,8 +24,9 @@ Core\Reset.lua
 Core\DatasetOwnership.lua
 Core\Commands.lua
 MainsAlts\Search.lua
-UI\UI.lua
 Roster\Names.lua
+MainsAlts\Tags.lua
+UI\UI.lua
 Roster\Report.lua
 MainsAlts\Groups.lua
 MainsAlts\Report.lua

@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 3
+## Account-wide schema: version 4
 
 ```text
 {
-  schemaVersion = 3,
+  schemaVersion = 4,
   settings = {
     minimapPos = number,
   },
@@ -35,6 +35,16 @@ view and does not create, bind, replace, or erase an account guild partition.
       characterNotes = {
         [CharacterNameRealm] = NoteText,
       },
+      tags = {
+        definitions = {
+          [NormalizedTagName] = true,
+        },
+        assignments = {
+          [CharacterNameRealm] = {
+            [NormalizedTagName] = true,
+          },
+        },
+      },
     },
   },
 }
@@ -44,8 +54,10 @@ view and does not create, bind, replace, or erase an account guild partition.
 LibDBIcon uses it to place the draggable RGMS button around the current minimap
 shape and size. The position is shared by every character on the account.
 Version 1 account data gains the default position of 225 degrees, and version 2
-renames `minimapAngle` to LibDBIcon's `minimapPos`; both migrations are
-copy-on-write, so the original table is left untouched if validation fails.
+renames `minimapAngle` to LibDBIcon's `minimapPos`. Version 3 data gains an
+empty-assignment tag catalog containing the required `me` definition. All
+migrations are copy-on-write, so the original table is left untouched if
+validation fails.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
@@ -57,16 +69,20 @@ Roster and bank initialization flags are independent. `false` means no
 account-wide decision has been made for that dataset. `true` with empty
 collections and no scan timestamp is an intentional empty state, including a
 reset state; later migration code must not repopulate it from deprecated
-per-character observations. Main/alt groups and character notes are stored in
-the same guild partition. The Mains/Alts tab projects group membership from
-this partition but limits its character population to the active guild's saved
-roster.
+per-character observations. Main/alt groups, character notes, and tags are
+stored in the same guild partition. The Mains/Alts tab projects group
+membership from this partition but limits its character population to the
+active guild's saved roster.
 
 Character-note keys use the same case-insensitive canonical character identity
 as the roster projection. Saved note text is trimmed, whitespace-only text is
 removed, and editor-created notes are limited to 5,500 characters. Grouping,
-promotion, and removal update only `mainAltGroups`, so notes remain attached to
-their character identities.
+promotion, and removal update only `mainAltGroups`, so notes and tag assignments
+remain attached to their character identities. Tag definitions are normalized
+by trimming edge whitespace and downcasing ASCII letters while preserving
+interior whitespace and non-ASCII spelling. Every guild catalog contains `me`;
+custom definitions remain saved even when unused. Assignments are removed only
+when their character leaves the retained roster database.
 
 ## Per-character schema: version 8
 
@@ -132,12 +148,15 @@ commit also clears the logged-in character's corresponding deprecated dataset
 while preserving the other dataset and window position. Failed, incomplete,
 timed-out, and canceled scans preserve both the last account-wide observations
 and the pending deprecated data. The other account dataset, initialization
-flag, groups, notes, and every other guild partition remain unchanged.
+flag, groups, notes, tag definitions and assignments, and every other guild
+partition remain unchanged. Successful roster commits reconcile assignments
+against the retained roster while preserving the complete tag catalog.
 
 ## Reset and recovery
 
 Confirming `/rgms reset` while guilded clears the current guild's roster, bank,
-groups, and notes. It leaves both dataset initialization flags true, preserves
+groups, notes, custom tag definitions, and tag assignments, then reseeds `me`.
+It leaves both dataset initialization flags true, preserves
 all other guild partitions and deprecated per-character observations, and
 preserves the character's window position. The initialized empty datasets
 prevent legacy repopulation; the next successful roster or bank scan removes

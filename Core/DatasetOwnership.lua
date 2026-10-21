@@ -167,13 +167,28 @@ function DatasetOwnership.create(dependencies)
                 if not groups then
                     return nil, notesOrError
                 end
+                local tags = currentGuild and currentGuild.tags or {
+                    definitions = { me = true },
+                    assignments = {},
+                }
+                if type(dependencies.reconcileCharacterTags) == "function" then
+                    local reconciled, tagsError = dependencies.reconcileCharacterTags(
+                        transaction.dataset,
+                        tags
+                    )
+                    if not reconciled then
+                        return nil, tagsError
+                    end
+                    tags = reconciled
+                end
                 committedModel, guildOrError =
                     dependencies.accountData.replaceRosterAndFeatures(
                         currentModel,
                         transaction.guild,
                         transaction.dataset,
                         groups,
-                        notesOrError
+                        notesOrError,
+                        tags
                     )
             else
                 committedModel, guildOrError = dependencies.accountData.replaceDataset(
@@ -290,6 +305,13 @@ if type(RGMS) == "table" then
                 return nil, "Mains/Alts roster reconciliation is unavailable"
             end
             return RGMS.MainsAltsGroups.reconcile(dataset, groups, notes)
+        end,
+        reconcileCharacterTags = function(dataset, tags)
+            if type(RGMS.MainsAltsTags) ~= "table"
+                or type(RGMS.MainsAltsTags.reconcile) ~= "function" then
+                return nil, "Mains/Alts tag reconciliation is unavailable"
+            end
+            return RGMS.MainsAltsTags.reconcile(dataset, tags)
         end,
         print = RGMS.Print,
     })

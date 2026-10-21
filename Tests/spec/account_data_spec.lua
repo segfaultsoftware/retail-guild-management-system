@@ -2,6 +2,7 @@ local accountData = require("Core.AccountData")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
 local groups = require("MainsAlts.Groups")
+local tags = require("MainsAlts.Tags")
 local reset = require("Core.Reset")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
@@ -36,7 +37,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 3,
+            schemaVersion = 4,
             settings = {
                 minimapPos = 225,
             },
@@ -55,7 +56,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 3,
+            schemaVersion = 4,
             settings = {
                 minimapPos = 225,
             },
@@ -79,7 +80,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 3,
+            schemaVersion = 4,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -88,6 +89,29 @@ return {
             settings = { minimapAngle = 42 },
             guilds = {},
         })
+    end),
+
+    test.case("version 3 account data gains the seeded tag catalog copy-on-write", function()
+        local identity = guild("Night Shift", "area-52")
+        local original = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            completedRoster(identity, "Main")
+        ))
+        original.schemaVersion = 3
+        accountData.findGuild(original, identity).tags = nil
+
+        local state = accountData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 3)
+        test.assert_equal(state.model.schemaVersion, 4)
+        test.assert_equal(accountData.findGuild(state.model, identity).tags, {
+            definitions = { me = true },
+            assignments = {},
+        })
+        test.assert_nil(accountData.findGuild(original, identity).tags)
     end),
 
     test.case("account data validates the saved LibDBIcon position", function()
@@ -242,9 +266,13 @@ return {
         test.assert_equal(partition.bank, { tabs = {}, slots = {} })
         test.assert_equal(partition.mainAltGroups, {})
         test.assert_equal(partition.characterNotes, {})
+        test.assert_equal(partition.tags, {
+            definitions = { me = true },
+            assignments = {},
+        })
     end),
 
-    test.case("replacing groups preserves roster bank and character notes", function()
+    test.case("replacing groups preserves roster bank notes and tags", function()
         local identity = guild("Night Shift", "area-52")
         local model = assert(accountData.replaceDataset(
             accountData.newModel(),
@@ -254,6 +282,8 @@ return {
         ))
         local partition = accountData.findGuild(model, identity)
         partition.characterNotes["Main-area-52"] = "Keep this note"
+        partition.tags.definitions.raid = true
+        partition.tags.assignments["main-area-52"] = { raid = true }
         local originalRoster = partition.roster
 
         local replacement = assert(accountData.replaceMainAltGroups(
@@ -270,7 +300,51 @@ return {
             ["Main-area-52"] = "Keep this note",
         })
         test.assert_equal(updated.roster, originalRoster)
+        test.assert_equal(updated.tags, partition.tags)
         test.assert_equal(partition.mainAltGroups, {})
+    end),
+
+    test.case("replacing character tags is atomic and preserves guild data", function()
+        local identity = guild("Night Shift", "area-52")
+        local model = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            completedRoster(identity, "Main")
+        ))
+        local partition = accountData.findGuild(model, identity)
+        partition.mainAltGroups = { ["Main-area-52"] = { "Alt-area-52" } }
+        partition.characterNotes = { ["main-area-52"] = "Keep this note" }
+        local replacementTags = {
+            definitions = { me = true, raid = true },
+            assignments = { ["main-area-52"] = { raid = true } },
+        }
+
+        local replacement = assert(accountData.replaceCharacterTags(
+            model,
+            identity,
+            replacementTags
+        ))
+        local updated = accountData.findGuild(replacement, identity)
+
+        test.assert_equal(updated.tags, replacementTags)
+        test.assert_equal(updated.roster, partition.roster)
+        test.assert_equal(updated.mainAltGroups, partition.mainAltGroups)
+        test.assert_equal(updated.characterNotes, partition.characterNotes)
+        test.assert_equal(partition.tags, {
+            definitions = { me = true },
+            assignments = {},
+        })
+        replacementTags.definitions.changedAfterPublish = true
+        test.assert_nil(updated.tags.definitions.changedAfterPublish)
+
+        local invalid, invalidError = accountData.replaceCharacterTags(
+            model,
+            identity,
+            { definitions = { raid = true }, assignments = {} }
+        )
+        test.assert_nil(invalid)
+        test.assert_matches(invalidError, "me")
     end),
 
     test.case("replacing one character note is atomic and preserves guild data", function()
@@ -366,7 +440,7 @@ return {
         test.assert_true(accountData.findGuild(current, identity).rosterInitialized)
     end),
 
-    test.case("successful account roster commits reconcile groups and notes atomically", function()
+    test.case("successful account roster commits reconcile groups notes and tags atomically", function()
         local identity = guild("Night Shift", "Area-52")
         local current = assert(accountData.replaceDataset(
             accountData.newModel(),
@@ -398,6 +472,13 @@ return {
             ["main-area-52"] = "Delete this note",
             ["alt-area-52"] = "Keep this note",
         }
+        partition.tags = {
+            definitions = { me = true, raid = true },
+            assignments = {
+                ["main-area-52"] = { raid = true },
+                ["alt-area-52"] = { me = true },
+            },
+        }
         local commits = 0
         local controller = datasetOwnership.create({
             savedData = savedData,
@@ -405,6 +486,7 @@ return {
             getSavedData = function() return current end,
             commit = function(model) current = model; commits = commits + 1 end,
             reconcileRosterFeatures = groups.reconcile,
+            reconcileCharacterTags = tags.reconcile,
             print = function() end,
         })
         local transaction = assert(controller:begin("roster", identity))
@@ -424,6 +506,10 @@ return {
         test.assert_equal(partition.characterNotes, {
             ["alt-area-52"] = "Keep this note",
         })
+        test.assert_equal(partition.tags, {
+            definitions = { me = true, raid = true },
+            assignments = { ["alt-area-52"] = { me = true } },
+        })
         test.assert_equal(partition.roster.members[1].name, "Alt")
     end),
 
@@ -437,6 +523,9 @@ return {
             "roster",
             completedRoster(active, "Active")
         ))
+        local activePartition = accountData.findGuild(account, active)
+        activePartition.tags.definitions.raid = true
+        activePartition.tags.assignments["active-area-52"] = { raid = true }
         account = assert(accountData.replaceDataset(
             account,
             other,
@@ -465,6 +554,10 @@ return {
         test.assert_true(controller:confirm(controller:requestManual()))
         test.assert_equal(accountData.findGuild(account, active).roster.members, {})
         test.assert_true(accountData.findGuild(account, active).rosterInitialized)
+        test.assert_equal(accountData.findGuild(account, active).tags, {
+            definitions = { me = true },
+            assignments = {},
+        })
         test.assert_equal(
             accountData.findGuild(account, other).roster.members[1].name,
             "Other"

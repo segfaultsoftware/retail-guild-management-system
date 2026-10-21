@@ -42,23 +42,54 @@ function Search.matches(name, query)
     return true
 end
 
-function Search.filter(report, query)
+local function matchesTags(character, selectedTags)
+    if type(selectedTags) ~= "table" then
+        return true
+    end
+    local assigned = {}
+    for _, name in ipairs(character.tags or {}) do
+        assigned[name] = true
+    end
+    for name, selected in pairs(selectedTags) do
+        if selected == true and assigned[name] ~= true then
+            return false
+        end
+    end
+    return true
+end
+
+local function hasSelectedTags(selectedTags)
+    for _, selected in pairs(selectedTags or {}) do
+        if selected == true then
+            return true
+        end
+    end
+    return false
+end
+
+function Search.characterMatches(character, query, selectedTags)
+    return Search.matches(character.name, query)
+        and matchesTags(character, selectedTags)
+end
+
+function Search.filter(report, query, selectedTags)
     if type(report) ~= "table" or type(report.rows) ~= "table" then
         return nil, nil, "Mains/Alts search requires report rows"
     end
 
     local normalized = Search.normalize(query)
-    if normalized == "" then
+    selectedTags = type(selectedTags) == "table" and selectedTags or {}
+    if normalized == "" and not hasSelectedTags(selectedTags) then
         return { rows = report.rows }, {}, normalized
     end
 
     local rows = {}
     local expanded = {}
     for _, row in ipairs(report.rows) do
-        local matches = Search.matches(row.name, normalized)
+        local matches = Search.characterMatches(row, normalized, selectedTags)
         if not matches then
             for _, alt in ipairs(row.alts or {}) do
-                if Search.matches(alt.name, normalized) then
+                if Search.characterMatches(alt, normalized, selectedTags) then
                     matches = true
                     break
                 end

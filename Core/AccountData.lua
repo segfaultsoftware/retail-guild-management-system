@@ -9,8 +9,9 @@ local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
-AccountData.CURRENT_SCHEMA_VERSION = 3
+AccountData.CURRENT_SCHEMA_VERSION = 4
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
+AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
 
 local function characterCount(value)
@@ -151,6 +152,60 @@ local function validateNotes(value, path)
     end)
 end
 
+local function newTags()
+    return {
+        definitions = { me = true },
+        assignments = {},
+    }
+end
+
+local function normalizeTagName(value)
+    local trimmed = string.match(value, "^%s*(.-)%s*$") or ""
+    return (string.gsub(trimmed, "[A-Z]", function(character)
+        return string.char(string.byte(character) + 32)
+    end))
+end
+
+local function validateTags(value, path)
+    if type(value) ~= "table"
+        or type(value.definitions) ~= "table"
+        or type(value.assignments) ~= "table" then
+        return nil, path .. " must contain definitions and assignments"
+    end
+    for key in pairs(value) do
+        if key ~= "definitions" and key ~= "assignments" then
+            return nil, path .. " contains unexpected field " .. tostring(key)
+        end
+    end
+    if value.definitions.me ~= true then
+        return nil, path .. ".definitions must contain me"
+    end
+    for name, present in pairs(value.definitions) do
+        if type(name) ~= "string" or name == "" or present ~= true then
+            return nil, path .. ".definitions must use non-empty string names"
+        end
+        if normalizeTagName(name) ~= name then
+            return nil, path .. ".definitions names must be normalized"
+        end
+        if characterCount(name) > AccountData.MAX_TAG_NAME_LENGTH then
+            return nil, path .. ".definitions names must not exceed "
+                .. AccountData.MAX_TAG_NAME_LENGTH .. " characters"
+        end
+    end
+    for identity, assigned in pairs(value.assignments) do
+        if type(identity) ~= "string" or identity == ""
+            or type(assigned) ~= "table" or next(assigned) == nil then
+            return nil, path .. ".assignments must use non-empty character entries"
+        end
+        for name, present in pairs(assigned) do
+            if present ~= true or value.definitions[name] ~= true then
+                return nil, path .. ".assignments must reference saved definitions"
+            end
+        end
+    end
+    return true
+end
+
 function AccountData.guildKey(identity)
     if type(identity) ~= "table"
         or type(identity.name) ~= "string"
@@ -191,6 +246,7 @@ function AccountData.newGuild(identity)
         bank = emptyDataset("bank"),
         mainAltGroups = {},
         characterNotes = {},
+        tags = newTags(),
     }
 end
 
@@ -240,6 +296,7 @@ function AccountData.validate(model)
             bank = true,
             mainAltGroups = true,
             characterNotes = true,
+            tags = true,
         }
         for field in pairs(guild) do
             if not allowed[field] then
@@ -295,6 +352,13 @@ function AccountData.validate(model)
         local valid, validationError = validateGroups(
             guild.mainAltGroups,
             "account data.guilds[" .. key .. "].mainAltGroups"
+        )
+        if not valid then
+            return nil, validationError
+        end
+        valid, validationError = validateTags(
+            guild.tags,
+            "account data.guilds[" .. key .. "].tags"
         )
         if not valid then
             return nil, validationError
@@ -393,6 +457,27 @@ function AccountData.load(saved)
             minimapPos = minimapAngle,
         }
     end
+    if working.schemaVersion == 3 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for _, guild in pairs(working.guilds) do
+            if type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild partitions must be tables",
+                    saved
+                )
+            end
+            guild.tags = newTags()
+        end
+        migratedFrom = migratedFrom or 3
+        working.schemaVersion = 4
+    end
     local valid, validationError = AccountData.validate(working)
     if not valid then
         return disabledState("corrupt", validationError, saved)
@@ -459,7 +544,8 @@ function AccountData.replaceRosterAndFeatures(
     identity,
     roster,
     groups,
-    notes
+    notes,
+    tags
 )
     local valid, validationError = AccountData.validate(model)
     if not valid then
@@ -476,6 +562,12 @@ function AccountData.replaceRosterAndFeatures(
     valid, validationError = validateNotes(notes, "characterNotes")
     if not valid then
         return nil, validationError
+    end
+    if tags ~= nil then
+        valid, validationError = validateTags(tags, "tags")
+        if not valid then
+            return nil, validationError
+        end
     end
 
     local replacement, copyError = deepCopy(model)
@@ -503,6 +595,12 @@ function AccountData.replaceRosterAndFeatures(
     guild.characterNotes, copyError = deepCopy(notes)
     if not guild.characterNotes then
         return nil, copyError
+    end
+    if tags ~= nil then
+        guild.tags, copyError = deepCopy(tags)
+        if not guild.tags then
+            return nil, copyError
+        end
     end
     guild.rosterInitialized = true
 
@@ -588,6 +686,41 @@ function AccountData.replaceCharacterNote(model, identity, characterIdentity, no
     return replacement, guild, key
 end
 
+function AccountData.replaceCharacterTags(model, identity, tags)
+    local valid, validationError = AccountData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateTags(tags, "tags")
+    if not valid then
+        return nil, validationError
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+    local guild, key = AccountData.findGuild(replacement, identity)
+    if not guild then
+        local guildError
+        guild, guildError = AccountData.newGuild(identity)
+        if not guild then
+            return nil, guildError
+        end
+        replacement.guilds[key] = guild
+    end
+    guild.tags, copyError = deepCopy(tags)
+    if not guild.tags then
+        return nil, copyError
+    end
+
+    valid, validationError = AccountData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+    return replacement, guild, key
+end
+
 function AccountData.resetGuild(model, identity)
     local valid, validationError = AccountData.validate(model)
     if not valid then
@@ -612,6 +745,7 @@ function AccountData.resetGuild(model, identity)
     guild.bank = emptyDataset("bank")
     guild.mainAltGroups = {}
     guild.characterNotes = {}
+    guild.tags = newTags()
 
     valid, validationError = AccountData.validate(replacement)
     if not valid then
@@ -627,6 +761,7 @@ function AccountData.view(model, identity, ui)
         bank = guild and guild.bank or emptyDataset("bank"),
         mainAltGroups = guild and guild.mainAltGroups or {},
         characterNotes = guild and guild.characterNotes or {},
+        tags = guild and guild.tags or newTags(),
         ui = ui or {},
     }
 end
