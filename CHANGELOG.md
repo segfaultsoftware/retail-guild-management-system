@@ -5,7 +5,16 @@ All notable user-visible changes to RGMS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.0.1
+
+### Fixed
+
+- Click-dragging in editable text controls now preserves native text selection
+  instead of moving the main RGMS window.
+- Tag pills now use stable half-circle endcaps and compositor-safe text
+  refreshes, preventing detached circular ends and missing labels.
+
+## 1.0.0
 
 ### Added
 
@@ -21,10 +30,6 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
-- Click-dragging in editable text controls now preserves native text selection
-  instead of moving the main RGMS window.
-- Tag pills now use stable half-circle endcaps and compositor-safe text
-  refreshes, preventing detached circular ends and missing labels.
 - Dropdown selections and Roster group headings now force their prepared text
   to render when first shown, and duplicate rank names remain distinguishable.
 - Clicking anywhere outside a Mains/Alts tag editor now closes it without
