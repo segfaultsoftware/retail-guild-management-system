@@ -21,6 +21,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Tag pills now use stable half-circle endcaps and compositor-safe text
+  refreshes, preventing detached circular ends and missing labels.
 - Dropdown selections and Roster group headings now force their prepared text
   to render when first shown, and duplicate rank names remain distinguishable.
 - Clicking anywhere outside a Mains/Alts tag editor now closes it without

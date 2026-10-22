@@ -181,6 +181,8 @@ local function newRegion(parent)
             value = string.sub(value, 1, self.maxLetters)
         end
         self.setTextCalls = (self.setTextCalls or 0) + 1
+        self.textHistory = self.textHistory or {}
+        self.textHistory[#self.textHistory + 1] = value
         self.text = value
         if self.scripts.OnTextChanged then
             self.scripts.OnTextChanged(self)
@@ -195,8 +197,15 @@ local function newRegion(parent)
         return #(self.text or "") * 7
     end
 
-    function region:SetTexture(value)
+    function region:SetTexture(value, wrapHorizontal, wrapVertical, filterMode)
         self.texture = value
+        self.wrapHorizontal = wrapHorizontal
+        self.wrapVertical = wrapVertical
+        self.filterMode = filterMode
+    end
+
+    function region:SetTexCoord(left, right, top, bottom)
+        self.texCoord = { left, right, top, bottom }
     end
 
     function region:SetFont(path, size, flags)
@@ -270,12 +279,20 @@ local function newRegion(parent)
         self.justifyH = justification
     end
 
-    function region:CreateFontString()
-        return newRegion(self)
+    function region:CreateFontString(_, drawLayer, templateName, sublevel)
+        local child = newRegion(self)
+        child.drawLayer = drawLayer
+        child.templateName = templateName
+        child.sublevel = sublevel
+        return child
     end
 
-    function region:CreateTexture()
-        return newRegion(self)
+    function region:CreateTexture(_, drawLayer, templateName, sublevel)
+        local child = newRegion(self)
+        child.drawLayer = drawLayer
+        child.templateName = templateName
+        child.sublevel = sublevel
+        return child
     end
 
     function region:SetScrollChild(child)
@@ -966,6 +983,22 @@ return {
         test.assert_equal(view.mainsAltsLines[1].tagButton.width, 16)
         test.assert_equal(view.mainsAltsLines[1].tagButton.x, -236)
         test.assert_true(view.mainsAltsTagFilterButton.tagCapsule ~= nil)
+        local filterCapsule = view.mainsAltsTagFilterButton.tagCapsule
+        test.assert_equal(filterCapsule.border.left.width, 16)
+        test.assert_equal(filterCapsule.border.left.height, 32)
+        test.assert_equal(filterCapsule.border.left.texCoord, { 0, 0.5, 0, 1 })
+        test.assert_equal(filterCapsule.border.right.texCoord, { 0.5, 1, 0, 1 })
+        test.assert_equal(filterCapsule.border.left.wrapHorizontal, "CLAMP")
+        test.assert_equal(filterCapsule.border.left.wrapVertical, "CLAMP")
+        test.assert_equal(filterCapsule.border.left.drawLayer, "BACKGROUND")
+        test.assert_equal(filterCapsule.border.left.sublevel, -2)
+        test.assert_equal(filterCapsule.fill.left.width, 15)
+        test.assert_equal(filterCapsule.fill.left.height, 30)
+        test.assert_equal(filterCapsule.fill.left.sublevel, -1)
+        test.assert_equal(
+            view.mainsAltsTagFilterButton.label.drawLayer,
+            "OVERLAY"
+        )
         view.mainsAltsLines[1].tagButton.scripts.OnEnter()
         test.assert_false(view.mainsAltsTagPreview:IsShown())
         view.mainsAltsLines[2].tagButton.scripts.OnEnter()
@@ -980,6 +1013,15 @@ return {
             view.mainsAltsTagPreview.pills[1].tagCapsule.border.left.texture,
             "Interface\\CharacterFrame\\TempPortraitAlphaMask"
         )
+        test.assert_equal(
+            view.mainsAltsTagPreview.pills[1].tagCapsule.border.left.width,
+            10
+        )
+        test.assert_equal(
+            view.mainsAltsTagPreview.pills[1].label.drawLayer,
+            "OVERLAY"
+        )
+        test.assert_equal(view.mainsAltsTagPreview.pills[1].label.setTextCalls, 2)
         view.mainsAltsLines[2].tagButton.scripts.OnLeave()
         test.assert_false(view.mainsAltsTagPreview:IsShown())
 
@@ -992,7 +1034,19 @@ return {
         view.mainsAltsTagFilter.pills[2].scripts.OnClick(
             view.mainsAltsTagFilter.pills[2]
         )
-        test.assert_equal(view.mainsAltsTagFilterButton.label.text, "Filter tags... (1)")
+        test.assert_equal(
+            view.mainsAltsTagFilterButton.label.text,
+            "Filter tags... (1)"
+        )
+        local filterTextHistory = view.mainsAltsTagFilterButton.label.textHistory
+        test.assert_equal(
+            filterTextHistory[#filterTextHistory - 1],
+            ""
+        )
+        test.assert_equal(
+            filterTextHistory[#filterTextHistory],
+            "Filter tags... (1)"
+        )
         test.assert_equal(view.mainsAltsLines[1].identity, "main-area52")
         test.assert_equal(view.mainsAltsLines[2].identity, "raidalt-area52")
         test.assert_true(view.expandedMainsAlts["main-area52"])
