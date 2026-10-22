@@ -32,7 +32,8 @@ end
 
 local function CreateFrame(frameType, name, parent, template)
     local frame = createFrame(frameType, name, parent, template)
-    if windowDragRoot and isInsideMainWindow(parent) then
+    if frameType ~= "EditBox"
+        and windowDragRoot and isInsideMainWindow(parent) then
         enableWindowDragging(frame)
     end
     return frame

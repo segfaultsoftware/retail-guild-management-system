@@ -21,6 +21,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Click-dragging in editable text controls now preserves native text selection
+  instead of moving the main RGMS window.
 - Tag pills now use stable half-circle endcaps and compositor-safe text
   refreshes, preventing detached circular ends and missing labels.
 - Dropdown selections and Roster group headings now force their prepared text
