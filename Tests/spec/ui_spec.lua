@@ -225,6 +225,11 @@ local function newRegion(parent)
         self.vertexColor = { red, green, blue, alpha }
     end
 
+    function region:SetDrawLayer(drawLayer, sublevel)
+        self.drawLayer = drawLayer
+        self.sublevel = sublevel
+    end
+
     function region:SetRotation(rotation)
         self.rotation = rotation
     end
@@ -2316,6 +2321,14 @@ return {
         dropdown.menuGenerator(dropdown, rootDescription)
         local menuButton = newRegion()
         menuButton.fontString = newRegion(menuButton)
+        menuButton.leftTexture1 = newRegion(menuButton)
+        menuButton.leftTexture2 = newRegion(menuButton)
+        function menuButton:AttachTexture()
+            local texture = newRegion(self)
+            self.attachedTextures = self.attachedTextures or {}
+            self.attachedTextures[#self.attachedTextures + 1] = texture
+            return texture
+        end
         function menuButton.fontString:SetFont()
             error("SetFont is disallowed by the Blizzard menu compositor")
         end
@@ -2325,6 +2338,48 @@ return {
         test.assert_equal(descriptions[2].label, "Officer (Rank 7)")
         test.assert_equal(menuButton:GetHeight(), 32)
         test.assert_equal(menuButton.fontString.fontObject, harness.fonts.RGMSMenuFont)
+        test.assert_equal(
+            menuButton.leftTexture1.vertexColor,
+            { 0.204, 0.227, 0.275, 1 }
+        )
+        test.assert_equal(menuButton.leftTexture1.width, 16)
+        test.assert_equal(menuButton.leftTexture1.height, 16)
+        test.assert_equal(
+            menuButton.leftTexture1.texture,
+            "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+        )
+        test.assert_equal(menuButton.leftTexture1.drawLayer, "ARTWORK")
+        test.assert_equal(menuButton.leftTexture1.sublevel, 0)
+        test.assert_equal(menuButton.leftTexture1.point, "LEFT")
+        test.assert_equal(menuButton.leftTexture1.relativeTo, menuButton)
+        test.assert_equal(menuButton.leftTexture1.relativePoint, "LEFT")
+        test.assert_equal(menuButton.leftTexture1.x, 10)
+        test.assert_equal(
+            menuButton.leftTexture2.texture,
+            "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+        )
+        test.assert_equal(
+            menuButton.leftTexture2.vertexColor,
+            { 0.925, 0.282, 0.6, 1 }
+        )
+        test.assert_equal(menuButton.leftTexture2.width, 8)
+        test.assert_equal(menuButton.leftTexture2.height, 8)
+        test.assert_equal(menuButton.leftTexture2.sublevel, 2)
+        test.assert_equal(menuButton.leftTexture2.relativeTo, menuButton.leftTexture1)
+        test.assert_equal(menuButton.rgmsRadioInterior.width, 12)
+        test.assert_equal(menuButton.rgmsRadioInterior.height, 12)
+        test.assert_equal(
+            menuButton.rgmsRadioInterior.vertexColor,
+            { 0.059, 0.067, 0.082, 1 }
+        )
+        test.assert_equal(menuButton.rgmsRadioInterior.sublevel, 1)
+        test.assert_equal(
+            menuButton.rgmsRadioInterior.relativeTo,
+            menuButton.leftTexture1
+        )
+        test.assert_equal(menuButton.fontString.relativeTo, menuButton.leftTexture1)
+        test.assert_equal(menuButton.fontString.relativePoint, "RIGHT")
+        test.assert_equal(menuButton.fontString.x, 8)
         test.assert_equal(harness.fonts.RGMSMenuFont.font, {
             "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf",
             12,
