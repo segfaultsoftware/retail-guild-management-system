@@ -55,6 +55,8 @@ local INITIAL_COPY = {
 local HEADER_HEIGHT = 56
 local SIDEBAR_WIDTH = 136
 local CONTENT_PADDING = 16
+local GLOBAL_DIMMER_ALPHA = 0.8
+local GLOBAL_DIMMER_FRAME_LEVEL_OFFSET = 100
 local CONTROL_GAP = 8
 local RANK_TAB_WIDTH = 0
 local RANK_TAB_HEIGHT = 24
@@ -2480,35 +2482,6 @@ local function createView(parent, tabId)
     view.status:SetText(INITIAL_COPY[tabId])
     setFont(view.status, FONT_REGULAR, 11)
     setTextColor(view.status, PALETTE.secondary)
-    view.spinner = CreateFrame("Frame", nil, view)
-    view.spinner:SetSize(88, 16)
-    view.spinner:SetPoint(
-        "TOPLEFT",
-        parent,
-        "TOPLEFT",
-        tabId == "mainsalts" and 576 or 272,
-        -20
-    )
-    view.spinner.icon = view.spinner:CreateTexture(nil, "ARTWORK")
-    view.spinner.icon:SetSize(16, 16)
-    view.spinner.icon:SetPoint("LEFT", view.spinner, "LEFT", 0, 0)
-    view.spinner.icon:SetTexture("Interface\\AddOns\\RGMS\\assets\\icons\\loader-circle.png")
-    view.spinner.icon:SetVertexColor(unpackColor(PALETTE.pink))
-    view.spinner.label = view.spinner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    view.spinner.label:SetPoint("LEFT", view.spinner.icon, "RIGHT", 6, 0)
-    view.spinner.label:SetPoint("RIGHT", view.spinner, "RIGHT", 0, 0)
-    view.spinner.label:SetJustifyH("LEFT")
-    view.spinner.label:SetText("Scanning...")
-    setFont(view.spinner.label, FONT_REGULAR, 11)
-    setTextColor(view.spinner.label, PALETTE.secondary)
-    view.spinner.rotation = 0
-    view.spinner:SetScript("OnUpdate", function(spinner, elapsed)
-        spinner.rotation = (spinner.rotation + elapsed * 5) % (math.pi * 2)
-        if type(spinner.icon.SetRotation) == "function" then
-            spinner.icon:SetRotation(spinner.rotation)
-        end
-    end)
-    view.spinner:Hide()
     view.statusHitbox = CreateFrame("Button", nil, view)
     view.statusHitbox:SetAllPoints(view.status)
     view.statusHitbox:SetScript("OnEnter", function(button)
@@ -3066,11 +3039,40 @@ local function createWindow()
     frame.numTabs = #TAB_ORDER
 
     frame.globalDimmer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    frame.globalDimmer:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -HEADER_HEIGHT)
-    frame.globalDimmer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    frame.globalDimmer:SetFrameLevel(
+        frame:GetFrameLevel() + GLOBAL_DIMMER_FRAME_LEVEL_OFFSET
+    )
+    frame.globalDimmer:SetAllPoints(frame)
     frame.globalDimmer:SetBackdrop({ bgFile = WHITE_TEXTURE })
-    frame.globalDimmer:SetBackdropColor(0, 0, 0, 0.5)
+    frame.globalDimmer:SetBackdropColor(0, 0, 0, GLOBAL_DIMMER_ALPHA)
     frame.globalDimmer:EnableMouse(true)
+
+    local scanNotice = CreateFrame("Frame", nil, frame.globalDimmer, "BackdropTemplate")
+    scanNotice:SetFrameLevel(frame.globalDimmer:GetFrameLevel() + 1)
+    scanNotice:SetSize(184, 56)
+    scanNotice:SetPoint("CENTER", frame.globalDimmer, "CENTER", 0, 0)
+    flatBackdrop(scanNotice, PALETTE.shell, PALETTE.pink)
+    scanNotice.icon = scanNotice:CreateTexture(nil, "ARTWORK")
+    scanNotice.icon:SetSize(24, 24)
+    scanNotice.icon:SetPoint("LEFT", scanNotice, "LEFT", 20, 0)
+    scanNotice.icon:SetTexture("Interface\\AddOns\\RGMS\\assets\\icons\\loader-circle.png")
+    scanNotice.icon:SetVertexColor(unpackColor(PALETTE.pink))
+    scanNotice.label = scanNotice:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    scanNotice.label:SetPoint("LEFT", scanNotice.icon, "RIGHT", 10, 0)
+    scanNotice.label:SetPoint("RIGHT", scanNotice, "RIGHT", -20, 0)
+    scanNotice.label:SetJustifyH("LEFT")
+    scanNotice.label:SetText("Scanning...")
+    setFont(scanNotice.label, FONT_SEMIBOLD, 16)
+    setTextColor(scanNotice.label, PALETTE.text)
+    scanNotice.rotation = 0
+    scanNotice:SetScript("OnUpdate", function(notice, elapsed)
+        notice.rotation = (notice.rotation + elapsed * 5) % (math.pi * 2)
+        if type(notice.icon.SetRotation) == "function" then
+            notice.icon:SetRotation(notice.rotation)
+        end
+    end)
+    frame.globalDimmer.notice = scanNotice
+    frame.closeButtonBaseFrameLevel = frame.closeButton:GetFrameLevel()
     frame.globalDimmer:Hide()
 
     frame.modalDimmer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
@@ -3745,6 +3747,11 @@ function UI.SetGlobalScanLock(locked)
     end
     UI.globalScanLocked = locked == true
     UI.frame.globalDimmer:SetShown(UI.globalScanLocked)
+    UI.frame.closeButton:SetFrameLevel(
+        UI.globalScanLocked
+            and UI.frame.globalDimmer:GetFrameLevel() + 2
+            or UI.frame.closeButtonBaseFrameLevel
+    )
     if UI.globalScanLocked and UI.frame.notesEditor:IsShown() then
         UI.CloseCharacterNoteEditor()
     end
@@ -3759,7 +3766,6 @@ function UI.SetGlobalScanLock(locked)
     end
     for _, tabId in ipairs(TAB_ORDER) do
         local view = UI.frame.views[tabId]
-        view.spinner:SetShown(UI.globalScanLocked)
         if type(view.scrollFrame.EnableMouse) == "function" then
             view.scrollFrame:EnableMouse(not UI.globalScanLocked)
         end

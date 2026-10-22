@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Replaced the per-view contextual scan labels with a prominent centered
+  indicator on a darker full-window overlay rendered above all page content.
 - Replaced the Roster and Guild Bank text refresh buttons with standalone,
   clickable refresh icons and contextual tooltips.
 
