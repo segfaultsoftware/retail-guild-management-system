@@ -221,6 +221,10 @@ local function newRegion(parent)
         self.fontObject = fontObject
     end
 
+    function region:SetTextColor(red, green, blue, alpha)
+        self.textColor = { red, green, blue, alpha }
+    end
+
     function region:SetVertexColor(red, green, blue, alpha)
         self.vertexColor = { red, green, blue, alpha }
     end
@@ -422,6 +426,11 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
 
     UIParent = uiParent
     GameTooltip = tooltip
+    RAID_CLASS_COLORS = {
+        DRUID = { r = 1, g = 0.49, b = 0.04 },
+        MAGE = { r = 0.25, g = 0.78, b = 0.92 },
+        WARRIOR = { r = 0.78, g = 0.61, b = 0.43 },
+    }
     UISpecialFrames = {}
     MenuUtil = {}
     CreateFont = function(name)
@@ -630,6 +639,7 @@ return {
                 {
                     identity = "main-area52",
                     displayName = "Main-Area52",
+                    classFileName = "WARRIOR",
                     note = "Main note",
                     hasNote = true,
                     altCount = 2,
@@ -637,6 +647,7 @@ return {
                         {
                             identity = "alta-area52",
                             displayName = "AltA-Area52",
+                            classFileName = "DRUID",
                             note = "",
                             hasNote = false,
                         },
@@ -672,6 +683,9 @@ return {
         test.assert_equal(view.groupButton.text, "Group Toons")
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
+        test.assert_equal(view.mainsAltsLines[1].name.textColor, {
+            0.78, 0.61, 0.43, 1,
+        })
         test.assert_equal(view.mainsAltsHeader.character.points[1].x, 28)
         test.assert_equal(view.mainsAltsLines[1].checkbox.x, 8)
         test.assert_equal(#view.mainsAltsLines[1].checkbox.points, 1)
@@ -712,6 +726,9 @@ return {
 
         view.mainsAltsLines[1].expandButton.scripts.OnClick()
         test.assert_equal(view.mainsAltsLines[2].name.text, "AltA-Area52")
+        test.assert_equal(view.mainsAltsLines[2].name.textColor, {
+            1, 0.49, 0.04, 1,
+        })
         test.assert_equal(view.mainsAltsLines[2].name.x, 44)
         test.assert_false(view.mainsAltsLines[2].checkbox:IsShown())
         test.assert_true(view.mainsAltsLines[2].promoteButton:IsShown())
@@ -766,6 +783,9 @@ return {
         test.assert_false(view.mainsAltsLines[1].checkbox:GetChecked())
         harness.ui.Hide()
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
+        test.assert_equal(view.mainsAltsLines[2].name.textColor, {
+            0.957, 0.957, 0.961, 1,
+        })
         test.assert_equal(view.mainsAltsLines[3].name.text, "Other-Area52 (+1)")
         test.assert_false(view.mainsAltsLinePool[4].frame:IsShown())
     end),
@@ -1980,6 +2000,7 @@ return {
         local first = rosterRank(1, "Guild Master")
         first.groups[1].members[1] = {
             displayName = "Current-Example Realm",
+            classFileName = "MAGE",
             lastOnlineText = "5 hours ago",
             tenureDays = 12,
         }
@@ -1996,7 +2017,13 @@ return {
         test.assert_matches(tableText, "12 days")
         test.assert_false(string.find(tableText, " | ", 1, true) ~= nil)
         local memberLine = view.rosterLines[2]
+        test.assert_equal(view.rosterLines[1].primary.textColor, {
+            0.957, 0.957, 0.961, 1,
+        })
         test.assert_equal(memberLine.primary.text, "Current-Example Realm")
+        test.assert_equal(memberLine.primary.textColor, {
+            0.25, 0.78, 0.92, 1,
+        })
         test.assert_equal(memberLine.secondary.text, "5 hours ago")
         test.assert_equal(memberLine.tertiary.text, "12 days")
 

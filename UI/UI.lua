@@ -152,6 +152,20 @@ local function setTextColor(region, color)
     end
 end
 
+local function setCharacterNameColor(region, classFileName)
+    local color = type(RAID_CLASS_COLORS) == "table"
+        and RAID_CLASS_COLORS[classFileName]
+        or nil
+    if type(color) == "table"
+        and type(color.r) == "number"
+        and type(color.g) == "number"
+        and type(color.b) == "number" then
+        region:SetTextColor(color.r, color.g, color.b, 1)
+        return
+    end
+    setTextColor(region, PALETTE.text)
+end
+
 local function flatBackdrop(frame, color, borderColor)
     if type(frame.SetBackdrop) ~= "function" then
         return
@@ -967,6 +981,10 @@ local function renderRosterRank(view, rank, forceTextRefresh)
         line.primary:SetText(primary or "")
         line.secondary:SetText(secondary or "")
         line.tertiary:SetText(tertiary or "")
+        setCharacterNameColor(
+            line.primary,
+            member and member.classFileName or nil
+        )
         if member then
             if type(line.primary.SetFontObject) == "function" then
                 line.primary:SetFontObject("GameFontHighlight")
@@ -1322,6 +1340,7 @@ local function bindMainsAltsLine(view, line, row, rowIndex)
     ] == true
     line.hasNote = character.hasNote == true
     line.tags = character.tags or {}
+    setCharacterNameColor(line.name, character.classFileName)
     line.frame:ClearAllPoints()
     line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -row.offset)
     line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)

@@ -201,6 +201,7 @@ function Report.build(dataset, currentDate, dateTime)
         local projectedMember = {
             name = member.name,
             displayName = Names.displayName(member.name, member.realm),
+            classFileName = member.classFileName,
             lastOnlineText = lastOnlineText,
             tenureDays = tenureDays,
             isMissing = member.isMissing == true,

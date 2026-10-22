@@ -16,9 +16,9 @@ return {
             members = {
                 member("Zulu", "Area52"),
                 member("Alpha", "Zulu"),
-                member("Main", "Area52"),
+                member("Main", "Area52", { classFileName = "WARRIOR" }),
                 member("Alpha", "Area52", { isMissing = true }),
-                member("Alt", "Area52"),
+                member("Alt", "Area52", { classFileName = "DRUID" }),
             },
         }
         local groups = {
@@ -44,12 +44,14 @@ return {
         test.assert_false(result.rows[1].hasNote)
         test.assert_equal(result.rows[2].displayName, "Alpha-Zulu")
         test.assert_equal(result.rows[3].displayName, "Main-Area52")
+        test.assert_equal(result.rows[3].classFileName, "WARRIOR")
         test.assert_equal(result.tagCatalog, { "me", "raid" })
         test.assert_equal(result.rows[3].tags, { "me", "raid" })
         test.assert_true(result.rows[3].hasNote)
         test.assert_equal(result.rows[3].note, "Main note")
         test.assert_equal(result.rows[3].altCount, 2)
         test.assert_equal(result.rows[3].alts[1].displayName, "Alt-Area52")
+        test.assert_equal(result.rows[3].alts[1].classFileName, "DRUID")
         test.assert_equal(result.rows[3].alts[1].tags, { "me" })
         test.assert_true(result.rows[3].alts[1].hasNote)
         test.assert_equal(result.rows[3].alts[1].note, "Alt note")
