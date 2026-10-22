@@ -9,6 +9,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Consolidated release packaging, artifact retention, tagging, and GitHub
+  publication into one main-branch Create Release workflow, with release
+  preparation now promoting the changelog and updating the manifest directly.
 - Highlighted the exact Mains/Alts characters that match active name and tag
   filters while retaining the rest of each matching group for context.
 - Tightened and raised the Mains/Alts Filter Tags control, increased its label

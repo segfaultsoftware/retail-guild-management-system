@@ -153,33 +153,16 @@ Expected result: one intentional failure and a non-zero exit status. Do not add
 that example to the default suites. See [`Tests/README.md`](Tests/README.md) for
 fixture patterns, assertions, and suite registration.
 
-## Manual QA and recorded evidence
+## Manual regression testing
 
 Automated tests cannot reproduce Retail event timing, guild permissions,
-SavedVariables flushing, or the default guild-bank UI. For a release candidate:
-
-1. Copy `docs/MVP_SCENARIO_CHECKLIST.md` to
-   `docs/qa/<version>-<tester>.md`, for example
-   `docs/qa/0.1.0-rc.1-segfaultsoftware.md`.
-2. Commit the prepared record with the release-candidate work on the matching
-   `release/X.Y` branch. The successful **Build Release Candidate** workflow
-   returns an automation-populated copy as
-   `qa-record.md` beside the canonical ZIP.
-3. Replace the prepared record at its original path with `qa-record.md`, then
-   fill the observations while executing the checklist. Do not check an item
-   from memory.
-4. Add the final QA GitHub username, Pacific date, and `PASS` or `FAIL` signoff.
-   Document an owner for each blocker or failure.
-5. Remove private account and character identifiers from evidence.
-6. Commit exactly that one completed QA record as the only file change on the
-   same release branch. Large images or videos should be attached to the
-   corresponding GitHub issue or release and linked from the record instead of
-   committed.
-
-A second person must follow the contributor setup and dry-run the release
-runbook through creation and inspection of an unpublished package before the
-first public release. Add that review to the evidence section of the same QA
-record; do not create a second release QA record.
+SavedVariables flushing, or the default guild-bank UI. The project owner runs
+live-client regression testing between tickets and may use
+[`docs/MVP_SCENARIO_CHECKLIST.md`](docs/MVP_SCENARIO_CHECKLIST.md) as the test
+reference. Record observations from the exact checkout or package under test,
+never from memory, and remove private account and character identifiers from
+any shared evidence. Large images or videos belong on the corresponding GitHub
+issue or release rather than in the repository.
 
 ## Dependencies, assets, and attribution
 
@@ -206,7 +189,8 @@ redistribution permission.
 ## Release-related changes
 
 User-visible changes belong under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md).
-Do not create or move release tags casually: a `vX.Y.Z` or `vX.Y.Z-rc.N` tag
-starts the automated verified-package and draft-release workflow, and its
-version must match `RGMS.toc`. Maintainers should use the complete
+Do not create or move release tags manually. The **Create Release** workflow
+builds the verified package, creates the matching `vX.Y.Z` or `vX.Y.Z-rc.N`
+tag, and publishes the GitHub release; its version must match `RGMS.toc` and the
+promoted changelog section. Maintainers should use the complete
 [`docs/RELEASING.md`](docs/RELEASING.md) runbook.
