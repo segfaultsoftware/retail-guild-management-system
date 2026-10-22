@@ -124,6 +124,7 @@ local FONT_SEMIBOLD = "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.tt
 local PALETTE = type(RGMS.Portal) == "table" and RGMS.Portal.PALETTE or {
     shell = { 0.059, 0.067, 0.082, 1 }, surface = { 0.094, 0.106, 0.129, 1 },
     control = { 0.133, 0.149, 0.18, 1 }, border = { 0.204, 0.227, 0.275, 1 },
+    zebra = { 0.114, 0.125, 0.153, 1 }, filterMatch = { 0.231, 0.137, 0.192, 1 },
     pink = { 0.925, 0.282, 0.6, 1 }, pinkHover = { 0.957, 0.447, 0.714, 1 }, text = { 0.957, 0.957, 0.961, 1 },
     secondary = { 0.631, 0.631, 0.667, 1 }, disabled = { 0.443, 0.443, 0.478, 1 },
     error = { 0.973, 0.443, 0.443, 1 },
@@ -1316,6 +1317,9 @@ local function bindMainsAltsLine(view, line, row, rowIndex)
     line.hasAlts = not line.isAlt and character.altCount > 0
     line.identity = character.identity
     line.offset = row.offset
+    line.isFilterMatch = (view.mainsAltsMatchingCharacters or {})[
+        character.identity
+    ] == true
     line.hasNote = character.hasNote == true
     line.tags = character.tags or {}
     line.frame:ClearAllPoints()
@@ -1375,7 +1379,9 @@ local function bindMainsAltsLine(view, line, row, rowIndex)
             line.expandButton:Hide()
         end
     end
-    line.baseColor = (rowIndex % 2 == 0) and PALETTE.zebra or PALETTE.surface
+    line.baseColor = line.isFilterMatch and PALETTE.filterMatch
+        or (rowIndex % 2 == 0) and PALETTE.zebra
+        or PALETTE.surface
     line.background:SetVertexColor(unpackColor(line.baseColor))
     line.frame:Show()
 end
@@ -1610,18 +1616,21 @@ local function applyMainsAltsSearch(view, resetScroll, resolvePendingTarget)
         end
     end
 
-    local filtered, matchingGroups, normalized = RGMS.MainsAltsSearch.filter(
-        source,
-        view.mainsAltsSearchQuery,
-        view.mainsAltsTagFilters
-    )
+    local filtered, matchingGroups, normalized, matchingCharacters =
+        RGMS.MainsAltsSearch.filter(
+            source,
+            view.mainsAltsSearchQuery,
+            view.mainsAltsTagFilters
+        )
     if not filtered then
         filtered = source
         matchingGroups = {}
         normalized = ""
+        matchingCharacters = {}
     end
     view.mainsAltsReport = filtered
     view.mainsAltsNormalizedSearch = normalized
+    view.mainsAltsMatchingCharacters = matchingCharacters or {}
     local hasTagFilters = type(view.mainsAltsTagFilters) == "table"
         and next(view.mainsAltsTagFilters) ~= nil
     if normalized ~= "" or hasTagFilters then
