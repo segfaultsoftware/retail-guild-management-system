@@ -101,6 +101,7 @@ local MAINS_ALTS_VIEWPORT_BUFFER_ROWS = 1
 local MAINS_ALTS_SEARCH_WIDTH = 252
 local MAINS_ALTS_SEARCH_HEIGHT = 32
 local MAINS_ALTS_FILTER_WIDTH = 124
+local MAINS_ALTS_FILTER_HEIGHT = 28
 local TAG_POPOVER_WIDTH = 340
 local TAG_PILL_HEIGHT = 20
 local TAG_PILL_GAP = 6
@@ -1753,17 +1754,17 @@ local function createMainsAltsSearch(view)
     view.mainsAltsTagFilters = view.mainsAltsTagFilters or {}
 
     local filterButton = CreateFrame("Button", nil, view, "BackdropTemplate")
-    filterButton:SetSize(MAINS_ALTS_FILTER_WIDTH, MAINS_ALTS_SEARCH_HEIGHT)
-    filterButton:SetPoint("LEFT", editBox, "RIGHT", CONTROL_GAP, 0)
+    filterButton:SetSize(MAINS_ALTS_FILTER_WIDTH, MAINS_ALTS_FILTER_HEIGHT)
+    filterButton:SetPoint("LEFT", editBox, "RIGHT", CONTROL_GAP, 1)
     styleTagCapsule(filterButton, PALETTE.control, PALETTE.border)
     filterButton.label = filterButton:CreateFontString(
         nil,
         "OVERLAY",
         "GameFontHighlightSmall"
     )
-    filterButton.label:SetAllPoints(filterButton)
+    filterButton.label:SetPoint("CENTER", filterButton, "CENTER", 0, -1)
     filterButton.label:SetJustifyH("CENTER")
-    setFont(filterButton.label, FONT_SEMIBOLD, 11)
+    setFont(filterButton.label, FONT_SEMIBOLD, 12)
     setTextColor(filterButton.label, PALETTE.text)
     filterButton:SetScript("OnClick", function()
         if mainsAltsControlsEnabled(view) then

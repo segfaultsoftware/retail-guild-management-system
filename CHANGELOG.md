@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Tightened and raised the Mains/Alts Filter Tags control, increased its label
+  size, and lowered the text slightly for a more balanced, readable pill.
 - Restyled Roster and Guild Bank dropdown radio controls with compact slate
   rings, pink selection dots, and spacing aligned with the portal controls.
 - Replaced the per-view contextual scan labels with a prominent centered
