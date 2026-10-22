@@ -1014,17 +1014,34 @@ return {
         test.assert_equal(view.mainsAltsLines[1].tagButton.width, 16)
         test.assert_equal(view.mainsAltsLines[1].tagButton.x, -236)
         test.assert_true(view.mainsAltsTagFilterButton.tagCapsule ~= nil)
+        test.assert_equal(view.mainsAltsTagFilterButton.width, 124)
+        test.assert_equal(view.mainsAltsTagFilterButton.height, 28)
+        test.assert_equal(view.mainsAltsTagFilterButton.y, 1)
+        test.assert_equal(view.mainsAltsTagFilterButton.label.point, "CENTER")
+        test.assert_equal(
+            view.mainsAltsTagFilterButton.label.relativePoint,
+            "CENTER"
+        )
+        test.assert_equal(view.mainsAltsTagFilterButton.label.y, -1)
+        test.assert_equal(
+            view.mainsAltsTagFilterButton.label.font,
+            {
+                "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf",
+                12,
+                "",
+            }
+        )
         local filterCapsule = view.mainsAltsTagFilterButton.tagCapsule
-        test.assert_equal(filterCapsule.border.left.width, 16)
-        test.assert_equal(filterCapsule.border.left.height, 32)
+        test.assert_equal(filterCapsule.border.left.width, 14)
+        test.assert_equal(filterCapsule.border.left.height, 28)
         test.assert_equal(filterCapsule.border.left.texCoord, { 0, 0.5, 0, 1 })
         test.assert_equal(filterCapsule.border.right.texCoord, { 0.5, 1, 0, 1 })
         test.assert_equal(filterCapsule.border.left.wrapHorizontal, "CLAMP")
         test.assert_equal(filterCapsule.border.left.wrapVertical, "CLAMP")
         test.assert_equal(filterCapsule.border.left.drawLayer, "BACKGROUND")
         test.assert_equal(filterCapsule.border.left.sublevel, -2)
-        test.assert_equal(filterCapsule.fill.left.width, 15)
-        test.assert_equal(filterCapsule.fill.left.height, 30)
+        test.assert_equal(filterCapsule.fill.left.width, 13)
+        test.assert_equal(filterCapsule.fill.left.height, 26)
         test.assert_equal(filterCapsule.fill.left.sublevel, -1)
         test.assert_equal(
             view.mainsAltsTagFilterButton.label.drawLayer,
