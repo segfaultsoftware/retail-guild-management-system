@@ -107,6 +107,10 @@ local function newRegion(parent)
         end
     end
 
+    function region:SetAllPoints(relativeTo)
+        self.allPoints = relativeTo or true
+    end
+
     function region:ClearAllPoints()
         self.point = nil
         self.points = {}
@@ -219,6 +223,22 @@ local function newRegion(parent)
 
     function region:SetVertexColor(red, green, blue, alpha)
         self.vertexColor = { red, green, blue, alpha }
+    end
+
+    function region:SetRotation(rotation)
+        self.rotation = rotation
+    end
+
+    function region:SetFrameLevel(frameLevel)
+        self.frameLevel = frameLevel
+    end
+
+    function region:GetFrameLevel()
+        return self.frameLevel or 0
+    end
+
+    function region:SetBackdropColor(red, green, blue, alpha)
+        self.backdropColor = { red, green, blue, alpha }
     end
 
     function region:SetEnabled(enabled)
@@ -337,9 +357,7 @@ local function newRegion(parent)
         "SetClampedToScreen",
         "SetClampRectInsets",
         "SetBackdrop",
-        "SetBackdropColor",
         "SetJustifyV",
-        "SetAllPoints",
         "SetMultiLine",
     }
     for _, methodName in ipairs(noOpMethods) do
@@ -2209,7 +2227,7 @@ return {
         })
     end),
 
-    test.case("global scan lock blocks the portal discards note drafts and leaves close available", function()
+    test.case("global scan lock covers the full portal and leaves close available", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show()
@@ -2223,11 +2241,40 @@ return {
 
         test.assert_true(harness.ui.SetGlobalScanLock(true))
         test.assert_true(harness.frame().globalDimmer:IsShown())
+        test.assert_equal(
+            harness.frame().globalDimmer.backdropColor,
+            { 0, 0, 0, 0.8 }
+        )
+        local notice = harness.frame().globalDimmer.notice
+        test.assert_equal(
+            harness.frame().globalDimmer:GetFrameLevel(),
+            harness.frame():GetFrameLevel() + 100
+        )
+        test.assert_equal(harness.frame().globalDimmer.allPoints, harness.frame())
+        test.assert_equal(
+            notice:GetFrameLevel(),
+            harness.frame().globalDimmer:GetFrameLevel() + 1
+        )
+        test.assert_equal(
+            harness.frame().closeButton:GetFrameLevel(),
+            harness.frame().globalDimmer:GetFrameLevel() + 2
+        )
+        test.assert_equal(notice.label.text, "Scanning...")
+        test.assert_equal(notice.label.font, {
+            "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf",
+            16,
+            "",
+        })
+        test.assert_equal(
+            notice.icon.texture,
+            "Interface\\AddOns\\RGMS\\assets\\icons\\loader-circle.png"
+        )
+        notice.scripts.OnUpdate(notice, 0.5)
+        test.assert_equal(notice.rotation, 2.5)
+        test.assert_equal(notice.icon.rotation, 2.5)
         test.assert_false(harness.frame().notesEditor:IsShown())
         for _, tabId in ipairs({ "roster", "mainsalts", "bank" }) do
-            local spinner = harness.frame().views[tabId].spinner
-            test.assert_true(spinner:IsShown())
-            test.assert_equal(spinner.label.text, "Scanning...")
+            test.assert_nil(harness.frame().views[tabId].spinner)
         end
         local selected, reason = harness.ui.SelectPrimaryTab("bank")
         test.assert_nil(selected)
@@ -2238,9 +2285,10 @@ return {
         test.assert_false(harness.ui.IsShown())
 
         test.assert_true(harness.ui.SetGlobalScanLock(false))
-        for _, tabId in ipairs({ "roster", "mainsalts", "bank" }) do
-            test.assert_false(harness.frame().views[tabId].spinner:IsShown())
-        end
+        test.assert_equal(
+            harness.frame().closeButton:GetFrameLevel(),
+            harness.frame().closeButtonBaseFrameLevel
+        )
         harness.ui.Show("bank")
         test.assert_equal(harness.ui.selectedTab, "roster")
     end),
