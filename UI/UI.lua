@@ -110,6 +110,7 @@ local BORDER_TEXTURE = "Interface\\Tooltips\\UI-Tooltip-Border"
 local LOGO_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\rgms-logo.png"
 local CLOSE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\x.png"
 local CHEVRON_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\chevron-right.png"
+local REFRESH_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\refresh-cw.png"
 local FONT_REGULAR = "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-Regular.ttf"
 local FONT_SEMIBOLD = "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf"
 local PALETTE = type(RGMS.Portal) == "table" and RGMS.Portal.PALETTE or {
@@ -272,6 +273,12 @@ local function styleButton(button, kind, height)
             self:SetBackdropColor(unpackColor(background))
         end
     end)
+end
+
+local function setRefreshButtonEnabled(button, enabled)
+    enabled = enabled == true
+    button:SetEnabled(enabled)
+    setTextureColor(button.icon, enabled and PALETTE.text or PALETTE.disabled)
 end
 
 local function styleScrollFrame(scrollFrame)
@@ -2514,11 +2521,40 @@ local function createView(parent, tabId)
     end)
 
     if tabId == "roster" or tabId == "bank" then
-        view.refreshButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
-        view.refreshButton:SetSize(84, 32)
+        view.refreshButton = CreateFrame("Button", nil, view)
+        view.refreshButton:SetSize(32, 32)
         view.refreshButton:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -56, -12)
-        view.refreshButton:SetText("Refresh")
-        styleButton(view.refreshButton, "primary", 32)
+        view.refreshButton.icon = view.refreshButton:CreateTexture(nil, "ARTWORK")
+        view.refreshButton.icon:SetSize(18, 18)
+        view.refreshButton.icon:SetPoint("CENTER", view.refreshButton, "CENTER", 0, 0)
+        view.refreshButton.icon:SetTexture(REFRESH_TEXTURE)
+        setRefreshButtonEnabled(view.refreshButton, tabId == "roster")
+        view.refreshButton:SetScript("OnEnter", function(button)
+            if button:IsEnabled() then
+                setTextureColor(button.icon, PALETTE.pinkHover)
+            end
+            local body = tabId == "roster"
+                and "Refresh the guild roster."
+                or "Refresh the guild bank."
+            showOwnedTooltip(button, "Refresh", body)
+        end)
+        view.refreshButton:SetScript("OnLeave", function(button)
+            setTextureColor(
+                button.icon,
+                button:IsEnabled() and PALETTE.text or PALETTE.disabled
+            )
+            hideOwnedTooltip(button)
+        end)
+        view.refreshButton:SetScript("OnMouseDown", function(button)
+            if button:IsEnabled() then
+                setTextureColor(button.icon, PALETTE.pink)
+            end
+        end)
+        view.refreshButton:SetScript("OnMouseUp", function(button)
+            if button:IsEnabled() then
+                setTextureColor(button.icon, PALETTE.pinkHover)
+            end
+        end)
         if tabId == "roster" then
             view.rosterAvailable = true
             view.rosterScanInProgress = false
@@ -2531,7 +2567,6 @@ local function createView(parent, tabId)
             end)
             view.bankOpen = false
             view.bankScanInProgress = false
-            view.refreshButton:SetEnabled(false)
         end
     end
 
@@ -3767,7 +3802,8 @@ function UI.SetRosterScanInProgress(inProgress)
 
     local view = UI.frame.views.roster
     view.rosterScanInProgress = inProgress == true
-    view.refreshButton:SetEnabled(
+    setRefreshButtonEnabled(
+        view.refreshButton,
         UI.dataEnabled ~= false
             and view.rosterAvailable ~= false
             and not view.rosterScanInProgress
@@ -3786,7 +3822,8 @@ function UI.SetRosterScanInProgress(inProgress)
 end
 
 updateBankRefreshButton = function(view)
-    view.refreshButton:SetEnabled(
+    setRefreshButtonEnabled(
+        view.refreshButton,
         UI.dataEnabled ~= false
             and UI.globalScanLocked ~= true
             and view.bankOpen == true
@@ -3795,7 +3832,8 @@ updateBankRefreshButton = function(view)
 end
 
 updateRosterRefreshButton = function(view)
-    view.refreshButton:SetEnabled(
+    setRefreshButtonEnabled(
+        view.refreshButton,
         UI.dataEnabled ~= false
             and UI.globalScanLocked ~= true
             and view.rosterAvailable ~= false

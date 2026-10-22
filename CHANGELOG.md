@@ -5,6 +5,13 @@ All notable user-visible changes to RGMS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Replaced the Roster and Guild Bank text refresh buttons with standalone,
+  clickable refresh icons and contextual tooltips.
+
 ## 1.0.1
 
 ### Fixed
