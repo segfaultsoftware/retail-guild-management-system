@@ -14,6 +14,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Replaced the Roster and Guild Bank text refresh buttons with standalone,
   clickable refresh icons and contextual tooltips.
 
+### Fixed
+
+- Hid the Roster, Mains/Alts, and Guild Bank report scrollbars when their
+  selected content fits within the viewport, while retaining them for overflow.
+
 ## 1.0.1
 
 ### Fixed

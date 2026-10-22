@@ -309,6 +309,13 @@ local function styleScrollFrame(scrollFrame)
     end
 end
 
+local function setScrollBarShown(scrollFrame, shown)
+    local scrollBar = scrollFrame and (scrollFrame.ScrollBar or scrollFrame.scrollBar)
+    if scrollBar and type(scrollBar.SetShown) == "function" then
+        scrollBar:SetShown(shown == true)
+    end
+end
+
 local showOwnedTooltip
 local hideOwnedTooltip
 local closeMainsAltsTagEditor
@@ -745,6 +752,7 @@ local function refreshScrollChild(view)
         or view.bankTableHeight
         or view.mainsAltsTableHeight
         or (view.text:GetStringHeight() + 16)
+    setScrollBarShown(view.scrollFrame, contentHeight > viewportHeight)
     view.scrollChild:SetHeight(math.max(viewportHeight, contentHeight))
 end
 
