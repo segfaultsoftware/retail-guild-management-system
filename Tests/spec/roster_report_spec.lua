@@ -118,6 +118,7 @@ return {
 
         test.assert_true(rows[1].tenureDays > rows[4].tenureDays)
         test.assert_equal(rows[4].displayName, "Alpha-Example Realm")
+        test.assert_equal(rows[4].classFileName, "MAGE")
         test.assert_equal(rows[5].displayName, "Zulu-Example Realm")
         test.assert_equal(rows[4].tenureDays, rows[5].tenureDays)
         test.assert_equal(rows[4].lastOnlineText, "4 days ago")

@@ -7,6 +7,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Color-coded character names by their standard World of Warcraft class colors
+  in the Roster and Mains/Alts views.
+
 ## 1.0.2
 
 ### Changed
