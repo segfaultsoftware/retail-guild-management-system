@@ -34,6 +34,7 @@ $distributionFiles = @(
     "assets/icons/chevron-right.png",
     "assets/icons/loader-circle.png",
     "assets/icons/notebook-pen.png",
+    "assets/icons/refresh-cw.png",
     "assets/icons/tag.png",
     "assets/icons/x.png",
     "licenses/Inter-OFL.txt",

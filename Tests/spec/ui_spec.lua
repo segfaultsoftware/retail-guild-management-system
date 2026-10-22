@@ -407,9 +407,10 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         fonts[name] = font
         return font
     end
-    CreateFrame = function(frameType, name, parent)
+    CreateFrame = function(frameType, name, parent, templateName)
         local frame = newRegion(parent)
         frame.name = name
+        frame.templateName = templateName
         if frameType == "DropdownButton" then
             function frame:SetupMenu(generator)
                 self.menuGenerator = generator
@@ -1507,14 +1508,61 @@ return {
         harness.ui.Initialize()
         local refreshButton = harness.frame().views.roster.refreshButton
 
+        test.assert_equal(refreshButton:GetWidth(), 32)
+        test.assert_equal(refreshButton:GetText(), "")
+        test.assert_nil(refreshButton.templateName)
+        test.assert_equal(refreshButton.icon.width, 18)
+        test.assert_equal(
+            refreshButton.icon.texture,
+            "Interface\\AddOns\\RGMS\\assets\\icons\\refresh-cw.png"
+        )
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.957, 0.957, 0.961, 1 }
+        )
+        refreshButton.scripts.OnEnter(refreshButton)
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.957, 0.447, 0.714, 1 }
+        )
+        local tooltip = harness.frame().ownedTooltip
+        test.assert_true(tooltip:IsShown())
+        test.assert_true(tooltip.owner == refreshButton)
+        test.assert_equal(tooltip.title.text, "Refresh")
+        test.assert_equal(tooltip.body.text, "Refresh the guild roster.")
+        refreshButton.scripts.OnMouseDown(refreshButton)
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.925, 0.282, 0.6, 1 }
+        )
+        refreshButton.scripts.OnMouseUp(refreshButton)
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.957, 0.447, 0.714, 1 }
+        )
+        refreshButton.scripts.OnLeave(refreshButton)
+        test.assert_false(tooltip:IsShown())
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.957, 0.957, 0.961, 1 }
+        )
+
         test.assert_true(refreshButton:IsEnabled())
         refreshButton.scripts.OnClick()
         test.assert_equal(harness.refreshRequests(), 1)
 
         test.assert_true(harness.ui.SetRosterScanInProgress(true))
         test.assert_false(refreshButton:IsEnabled())
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.443, 0.443, 0.478, 1 }
+        )
         test.assert_true(harness.ui.SetRosterScanInProgress(false))
         test.assert_true(refreshButton:IsEnabled())
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.957, 0.957, 0.961, 1 }
+        )
 
         test.assert_true(harness.ui.SetRosterAvailable(false))
         test.assert_false(refreshButton:IsEnabled())
@@ -1527,9 +1575,33 @@ return {
         harness.ui.Initialize()
         local refreshButton = harness.frame().views.bank.refreshButton
 
+        test.assert_equal(refreshButton:GetWidth(), 32)
+        test.assert_equal(refreshButton:GetText(), "")
+        test.assert_nil(refreshButton.templateName)
+        test.assert_equal(
+            refreshButton.icon.texture,
+            "Interface\\AddOns\\RGMS\\assets\\icons\\refresh-cw.png"
+        )
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.443, 0.443, 0.478, 1 }
+        )
+        refreshButton.scripts.OnEnter(refreshButton)
+        local tooltip = harness.frame().ownedTooltip
+        test.assert_true(tooltip:IsShown())
+        test.assert_true(tooltip.owner == refreshButton)
+        test.assert_equal(tooltip.title.text, "Refresh")
+        test.assert_equal(tooltip.body.text, "Refresh the guild bank.")
+        refreshButton.scripts.OnLeave(refreshButton)
+        test.assert_false(tooltip:IsShown())
+
         test.assert_false(refreshButton:IsEnabled())
         test.assert_true(harness.ui.SetGuildBankOpen(true))
         test.assert_true(refreshButton:IsEnabled())
+        test.assert_equal(
+            refreshButton.icon.vertexColor,
+            { 0.957, 0.957, 0.961, 1 }
+        )
         refreshButton.scripts.OnClick()
         test.assert_equal(harness.bankRefreshRequests(), 1)
 
