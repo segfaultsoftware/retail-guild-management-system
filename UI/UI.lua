@@ -71,6 +71,11 @@ local BANK_ICON_SIZE = 18
 local BANK_HEADER_HEIGHT = 28
 local BANK_TITLE_HEIGHT = 0
 local ROSTER_TITLE_HEIGHT = 0
+local DROPDOWN_RADIO_SIZE = 16
+local DROPDOWN_RADIO_INNER_SIZE = 12
+local DROPDOWN_RADIO_DOT_SIZE = 8
+local DROPDOWN_RADIO_LEFT = 10
+local DROPDOWN_RADIO_LABEL_GAP = 8
 local ROSTER_GROUP_HEIGHT = 24
 local ROSTER_ROW_HEIGHT = 24
 local ROSTER_GROUP_GAP = 0
@@ -2394,6 +2399,47 @@ local function updateDropdownLabel(dropdown, option, emptyLabel, forceTextRefres
     end
 end
 
+local function styleDropdownRadio(button)
+    local ring = button.leftTexture1
+    if ring then
+        ring:ClearAllPoints()
+        ring:SetPoint("LEFT", button, "LEFT", DROPDOWN_RADIO_LEFT, 0)
+        ring:SetSize(DROPDOWN_RADIO_SIZE, DROPDOWN_RADIO_SIZE)
+        ring:SetTexture(CIRCLE_TEXTURE)
+        ring:SetDrawLayer("ARTWORK", 0)
+        ring:SetVertexColor(unpackColor(PALETTE.border))
+
+        local interior = button:AttachTexture()
+        interior:SetPoint("CENTER", ring, "CENTER", 0, 0)
+        interior:SetSize(DROPDOWN_RADIO_INNER_SIZE, DROPDOWN_RADIO_INNER_SIZE)
+        interior:SetTexture(CIRCLE_TEXTURE)
+        interior:SetDrawLayer("ARTWORK", 1)
+        interior:SetVertexColor(unpackColor(PALETTE.shell))
+        button.rgmsRadioInterior = interior
+    end
+
+    local dot = button.leftTexture2
+    if dot and ring then
+        dot:ClearAllPoints()
+        dot:SetPoint("CENTER", ring, "CENTER", 0, 0)
+        dot:SetSize(DROPDOWN_RADIO_DOT_SIZE, DROPDOWN_RADIO_DOT_SIZE)
+        dot:SetTexture(CIRCLE_TEXTURE)
+        dot:SetDrawLayer("ARTWORK", 2)
+        dot:SetVertexColor(unpackColor(PALETTE.pink))
+    end
+
+    if button.fontString and ring then
+        button.fontString:ClearAllPoints()
+        button.fontString:SetPoint(
+            "LEFT",
+            ring,
+            "RIGHT",
+            DROPDOWN_RADIO_LABEL_GAP,
+            0
+        )
+    end
+end
+
 local function createDropdown(parent, width, emptyLabel, selected, options)
     local frameType = type(MenuUtil) == "table" and "DropdownButton" or "Button"
     local dropdown = CreateFrame(frameType, nil, parent, "BackdropTemplate")
@@ -2439,6 +2485,7 @@ local function createDropdown(parent, width, emptyLabel, selected, options)
                 )
                 description:AddInitializer(function(button)
                     button:SetHeight(32)
+                    styleDropdownRadio(button)
                     if button.fontString and MENU_FONT
                         and type(button.fontString.SetFontObject) == "function" then
                         button.fontString:SetFontObject(MENU_FONT)
