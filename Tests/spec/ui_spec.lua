@@ -1887,7 +1887,7 @@ return {
         test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
     end),
 
-    test.case("dragging anywhere saves a canonical per-character position", function()
+    test.case("dragging non-text controls saves a canonical position", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local frame = harness.frame()
@@ -1922,6 +1922,16 @@ return {
             x = 125,
             y = 90,
         })
+    end),
+
+    test.case("editable text controls preserve native click-drag selection", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+
+        local searchBox = harness.frame().views.mainsalts.mainsAltsSearchBox
+        test.assert_nil(searchBox.dragButton)
+        test.assert_nil(searchBox.scripts.OnDragStart)
+        test.assert_nil(searchBox.scripts.OnDragStop)
     end),
 
     test.case("guild bank alignment uses scaled bounds without saving a position", function()
