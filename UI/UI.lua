@@ -174,22 +174,25 @@ local function styleTagCapsule(control, background, borderColor)
     if not control.tagCapsule then
         local capsule = {}
         for _, layer in ipairs({ "border", "fill" }) do
+            local sublevel = layer == "border" and -2 or -1
             capsule[layer] = {
-                left = control:CreateTexture(nil, "BACKGROUND"),
-                center = control:CreateTexture(nil, "BACKGROUND"),
-                right = control:CreateTexture(nil, "BACKGROUND"),
+                left = control:CreateTexture(nil, "BACKGROUND", nil, sublevel),
+                center = control:CreateTexture(nil, "BACKGROUND", nil, sublevel),
+                right = control:CreateTexture(nil, "BACKGROUND", nil, sublevel),
             }
             capsule[layer].left:SetTexture(
                 CIRCLE_TEXTURE,
-                "CLAMPTOBLACKADDITIVE",
-                "CLAMPTOBLACKADDITIVE"
+                "CLAMP",
+                "CLAMP"
             )
+            capsule[layer].left:SetTexCoord(0, 0.5, 0, 1)
             capsule[layer].center:SetTexture(WHITE_TEXTURE)
             capsule[layer].right:SetTexture(
                 CIRCLE_TEXTURE,
-                "CLAMPTOBLACKADDITIVE",
-                "CLAMPTOBLACKADDITIVE"
+                "CLAMP",
+                "CLAMP"
             )
+            capsule[layer].right:SetTexCoord(0.5, 1, 0, 1)
         end
         control.tagCapsule = capsule
     end
@@ -199,19 +202,20 @@ local function styleTagCapsule(control, background, borderColor)
     local radius = height / 2
     local inset = 1
     local innerHeight = math.max(1, height - inset * 2)
+    local innerRadius = innerHeight / 2
 
     capsule.border.left:ClearAllPoints()
-    capsule.border.left:SetSize(height, height)
+    capsule.border.left:SetSize(radius, height)
     capsule.border.left:SetPoint("LEFT", control, "LEFT", 0, 0)
     capsule.border.center:ClearAllPoints()
     capsule.border.center:SetPoint("TOPLEFT", control, "TOPLEFT", radius, 0)
     capsule.border.center:SetPoint("BOTTOMRIGHT", control, "BOTTOMRIGHT", -radius, 0)
     capsule.border.right:ClearAllPoints()
-    capsule.border.right:SetSize(height, height)
+    capsule.border.right:SetSize(radius, height)
     capsule.border.right:SetPoint("RIGHT", control, "RIGHT", 0, 0)
 
     capsule.fill.left:ClearAllPoints()
-    capsule.fill.left:SetSize(innerHeight, innerHeight)
+    capsule.fill.left:SetSize(innerRadius, innerHeight)
     capsule.fill.left:SetPoint("LEFT", control, "LEFT", inset, 0)
     capsule.fill.center:ClearAllPoints()
     capsule.fill.center:SetPoint("TOPLEFT", control, "TOPLEFT", radius, -inset)
@@ -223,7 +227,7 @@ local function styleTagCapsule(control, background, borderColor)
         inset
     )
     capsule.fill.right:ClearAllPoints()
-    capsule.fill.right:SetSize(innerHeight, innerHeight)
+    capsule.fill.right:SetSize(innerRadius, innerHeight)
     capsule.fill.right:SetPoint("RIGHT", control, "RIGHT", -inset, 0)
 
     for _, texture in pairs(capsule.border) do
@@ -1731,7 +1735,7 @@ local function createMainsAltsSearch(view)
     styleTagCapsule(filterButton, PALETTE.control, PALETTE.border)
     filterButton.label = filterButton:CreateFontString(
         nil,
-        "ARTWORK",
+        "OVERLAY",
         "GameFontHighlightSmall"
     )
     filterButton.label:SetAllPoints(filterButton)
@@ -1801,7 +1805,7 @@ local function acquireTagPill(container, index)
         return pill
     end
     pill = CreateFrame("Button", nil, container, "BackdropTemplate")
-    pill.label = pill:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    pill.label = pill:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     pill.label:SetAllPoints(pill)
     pill.label:SetJustifyH("CENTER")
     setFont(pill.label, FONT_SEMIBOLD, 11)
@@ -1830,6 +1834,7 @@ local function layoutTagPills(container, names, selected, onClick, startX, start
         pill:ClearAllPoints()
         pill:SetPoint("TOPLEFT", container, "TOPLEFT", x, y)
         pill:SetSize(width, TAG_PILL_HEIGHT)
+        pill.label:SetText("")
         pill.label:SetText(name)
         pill.tagName = name
         pill:SetEnabled(onClick ~= nil and mainsAltsControlsEnabled(container.view))
@@ -1893,9 +1898,11 @@ updateMainsAltsTagFilterAppearance = function(view)
             count = count + 1
         end
     end
-    view.mainsAltsTagFilterButton.label:SetText(
-        count > 0 and ("Filter tags... (" .. count .. ")") or "Filter tags..."
-    )
+    local label = count > 0
+        and ("Filter tags... (" .. count .. ")")
+        or "Filter tags..."
+    view.mainsAltsTagFilterButton.label:SetText("")
+    view.mainsAltsTagFilterButton.label:SetText(label)
     styleTagCapsule(
         view.mainsAltsTagFilterButton,
         count > 0 and PALETTE.pink or PALETTE.control,
