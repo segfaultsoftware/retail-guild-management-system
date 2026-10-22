@@ -1,13 +1,13 @@
-# MVP release-candidate scenario checklist
+# MVP scenario checklist
 
 Use this document to verify the combined RGMS MVP in a live World of Warcraft
 Retail client. It is deliberately self-contained: a tester should not need an
 issue, design note, or another checklist to know the setup, action, or expected
 result.
 
-Do not mark an item complete from memory. Record the observed result, and attach
-the completed copy to the release-candidate evidence. The automated companion
-scenarios use the fixed Pacific dates listed below and run with:
+Do not mark an item complete from memory. Record the observed result for the
+exact checkout or package under test. The automated companion scenarios use the
+fixed Pacific dates listed below and run with:
 
 ```text
 lua Tests/run.lua
@@ -19,10 +19,8 @@ transition that failed.
 
 ## Test record
 
-- Release candidate: ______________________________
-- Release branch: _________________________________
-- Candidate commit: _______________________________
-- Candidate build run: ____________________________
+- Version under test: ______________________________
+- Main commit: _____________________________________
 - Retail version/build from `/dump GetBuildInfo()`: __________________________
 - Retail interface number from `/dump select(4, GetBuildInfo())`: ____________
 - Tester: _________________________________________
@@ -72,7 +70,7 @@ mapping and use it consistently.
 
 Required setup:
 
-- [ ] Extract the candidate ZIP so it installs as
+- [ ] Install the checkout or package under test as
   `_retail_/Interface/AddOns/RGMS` and enable only RGMS while collecting
   failure evidence.
 - [ ] Enable Lua errors with `/console scriptErrors 1`.
@@ -357,8 +355,8 @@ Observed result/evidence: _________________________________________________
 - [ ] Character A and Character B data were verified in separate files.
 - Blocker or failure notes and owner: ______________________________________
 
-## QA signoff
+## Test signoff
 
-- QA GitHub username: @____________________________
-- QA date (Pacific): YYYY-MM-DD
+- Tester GitHub username: @________________________
+- Test date (Pacific): YYYY-MM-DD
 - Result: PASS / FAIL

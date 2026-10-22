@@ -30,10 +30,9 @@ migration sources remain per character. It does not send data anywhere.
 - Adds a draggable minimap button using the RGMS logo. Left-clicking it toggles
   the Roster window, and its position is shared account-wide.
 
-RGMS is **Retail only**. The manifest currently declares interface `120100` in
-[`RGMS.toc`](RGMS.toc). A release supports only the live Retail build recorded
-in that release's completed QA record; an interface value is updated only after
-the addon has been tested on that client build.
+RGMS is **Retail only**. The supported interface is declared in
+[`RGMS.toc`](RGMS.toc) and is updated during release preparation only after the
+addon has been tested on that live Retail client build.
 
 ## Commands
 
@@ -79,10 +78,9 @@ A passing run exits with status `0` and reports zero failures. CI runs the same
 suite with Lua 5.1 for every push and pull request. See
 [`Tests/README.md`](Tests/README.md) for fixture and test conventions.
 
-Release candidates must also complete the live-client
-[`MVP scenario checklist`](docs/MVP_SCENARIO_CHECKLIST.md). Store a completed
-copy as described in [`docs/qa/README.md`](docs/qa/README.md); automated tests
-do not replace Retail client verification.
+The project owner also performs live-client regression testing between tickets.
+The [`MVP scenario checklist`](docs/MVP_SCENARIO_CHECKLIST.md) remains available
+as a testing reference; it is not a separate release gate.
 
 ## Build a local test package
 
@@ -93,27 +91,28 @@ From Git Bash, build and verify a ZIP using the version in `RGMS.toc`:
 ```
 
 The package is written to a timestamped `.release/local-*/RGMS-<version>.zip`
-directory. This is intended for local installation and testing; the canonical
-release-candidate artifact still comes from GitHub Actions.
+directory. This is intended for local installation and testing; public release
+artifacts come from GitHub Actions.
 
-## Prepare a release candidate
+## Prepare and create a release
 
-On the clean release-line branch matching the version (for example,
-`release/0.1`), use the Git Bash preparation entry point:
+On a clean `main` branch, use the Git Bash preparation entry point with values
+from the tested Retail client:
 
 ```text
-bash ./scripts/prepare-release.sh --version 0.1.0-rc.1 --tester YOUR-NAME
+bash ./scripts/prepare-release.sh \
+  --version 1.1.0 \
+  --retail-version "12.1.0 (build 12345)" \
+  --interface 120100
 ```
 
-The command updates the manifest version and creates a tester-specific QA
-record on the release branch. After that branch is pushed, dispatch **Build
-Release Candidate** from `main` with its name and full tip SHA. The workflow
-runs the complete Lua suite, validates the manifest and
-runtime files, and retains the canonical `RGMS-<version>.zip` together with an
-automation-populated QA record. QA, the draft GitHub release, and the manual
-CurseForge upload all use that exact ZIP without rebuilding it. See
-[`docs/RELEASING.md`](docs/RELEASING.md) for the two-stage candidate and
-promotion procedure.
+The command updates `RGMS.toc` and promotes the `CHANGELOG.md` Unreleased
+section to the target version. After committing and pushing those changes,
+dispatch **Create Release** from `main` with the version and full main-tip SHA.
+The workflow runs the complete Lua suite, builds and retains the canonical ZIP,
+tags the commit, and publishes the GitHub release with that ZIP attached. See
+[`docs/RELEASING.md`](docs/RELEASING.md) for the complete procedure and manual
+CurseForge upload steps.
 
 ## Current exclusions
 
@@ -131,7 +130,7 @@ or partially supported features.
   schema, migrations, validation, and recovery behavior.
 - [`CHANGELOG.md`](CHANGELOG.md) records user-visible changes.
 - [`docs/RELEASING.md`](docs/RELEASING.md) covers versioning, deterministic
-  packaging, automated draft GitHub releases, and manual CurseForge uploads.
+  packaging, automated GitHub releases, and manual CurseForge uploads.
 
 ## License
 

@@ -4,27 +4,24 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Prepare RGMS release-candidate metadata from Git Bash.
+Prepare RGMS release metadata from Git Bash.
 
 Usage:
-  bash ./scripts/prepare-release.sh --version VERSION --tester TESTER [options]
+  bash ./scripts/prepare-release.sh \
+    --version VERSION \
+    --retail-version TEXT \
+    --interface NUMBER
 
 Required:
-  --version VERSION       Release version, such as 0.1.0-rc.1 or 0.1.0.
-  --tester TESTER         Tester identifier used in the QA record filename.
-
-Options:
+  --version VERSION       Release version, such as 1.1.0-rc.1 or 1.1.0.
   --retail-version TEXT   Retail version/build reported by GetBuildInfo().
   --interface NUMBER      Retail interface reported by GetBuildInfo().
-  --qa-record PATH        QA record path under docs/qa. Defaults to
-                          docs/qa/VERSION-TESTER.md.
   -h, --help              Show this help.
 
---retail-version and --interface must be supplied together. The script updates
-RGMS.toc and creates a prepopulated QA record on a release/X.Y branch.
-GitHub builds the canonical package only after that branch is pushed. This
-script never builds, commits, pushes, tags, or installs files into the Retail
-client.
+The script runs only on a clean main branch. It updates the Version and
+Interface fields in RGMS.toc and promotes CHANGELOG.md's Unreleased content to
+the requested version. It never builds, commits, pushes, tags, or publishes a
+release.
 EOF
 }
 
@@ -34,21 +31,14 @@ fail() {
 }
 
 version=""
-tester=""
 retail_version=""
 interface_number=""
-qa_record=""
 
 while (($# > 0)); do
     case "$1" in
         --version)
             (($# >= 2)) || fail "--version requires a value"
             version="$2"
-            shift 2
-            ;;
-        --tester)
-            (($# >= 2)) || fail "--tester requires a value"
-            tester="$2"
             shift 2
             ;;
         --retail-version)
@@ -59,11 +49,6 @@ while (($# > 0)); do
         --interface)
             (($# >= 2)) || fail "--interface requires a value"
             interface_number="$2"
-            shift 2
-            ;;
-        --qa-record)
-            (($# >= 2)) || fail "--qa-record requires a value"
-            qa_record="$2"
             shift 2
             ;;
         -h|--help)
@@ -77,21 +62,13 @@ while (($# > 0)); do
 done
 
 [[ -n "$version" ]] || fail "--version is required"
-[[ -n "$tester" ]] || fail "--tester is required"
+[[ -n "$retail_version" ]] || fail "--retail-version is required"
+[[ -n "$interface_number" ]] || fail "--interface is required"
 
 release_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
-if [[ ! "$version" =~ $release_pattern ]]; then
+[[ "$version" =~ $release_pattern ]] || \
     fail "version must be X.Y.Z or X.Y.Z-rc.N"
-fi
-expected_branch="release/${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
-[[ "$tester" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
-    fail "tester must contain only letters, numbers, dots, underscores, and hyphens"
-
-if [[ -n "$retail_version" || -n "$interface_number" ]]; then
-    [[ -n "$retail_version" && -n "$interface_number" ]] || \
-        fail "--retail-version and --interface must be supplied together"
-fi
-[[ -z "$interface_number" || "$interface_number" =~ ^[0-9]+$ ]] || \
+[[ "$interface_number" =~ ^[0-9]+$ ]] || \
     fail "interface must be numeric"
 [[ "$retail_version" != *$'\n'* && "$retail_version" != *$'\r'* ]] || \
     fail "retail version must be a single line"
@@ -103,13 +80,13 @@ repository_path="$(git rev-parse --show-toplevel 2>/dev/null)" || \
     fail "run this command from an RGMS Git checkout"
 cd "$repository_path"
 
-[[ -f RGMS.toc && -f docs/MVP_SCENARIO_CHECKLIST.md ]] || \
-    fail "the checkout does not contain the expected RGMS release files"
+[[ -f RGMS.toc && -f CHANGELOG.md ]] || \
+    fail "the checkout does not contain RGMS.toc and CHANGELOG.md"
 
 branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" || \
     fail "release preparation requires a branch, not a detached HEAD"
-[[ "$branch" == "$expected_branch" ]] || \
-    fail "version $version must be prepared on $expected_branch, not $branch"
+[[ "$branch" == "main" ]] || \
+    fail "release preparation must run on main, not $branch"
 
 worktree_status="$(git status --porcelain --untracked-files=all)"
 [[ -z "$worktree_status" ]] || {
@@ -122,22 +99,16 @@ if git show-ref --verify --quiet "refs/tags/$tag"; then
     fail "local tag already exists: $tag"
 fi
 
-if [[ -z "$qa_record" ]]; then
-    qa_record="docs/qa/$version-$tester.md"
-fi
-qa_record="${qa_record//\\//}"
-[[ "$qa_record" =~ ^docs/qa/[A-Za-z0-9._-]+\.md$ ]] || \
-    fail "QA record must be a simple Markdown path directly under docs/qa"
-[[ ! -e "$qa_record" ]] || fail "QA record already exists: $qa_record"
-
 manifest_backup="$(mktemp "${TMPDIR:-/tmp}/rgms-manifest.XXXXXX")"
+changelog_backup="$(mktemp "${TMPDIR:-/tmp}/rgms-changelog.XXXXXX")"
 manifest_replacement="$(mktemp "${TMPDIR:-/tmp}/rgms-manifest-new.XXXXXX")"
-qa_replacement="$(mktemp "${TMPDIR:-/tmp}/rgms-qa.XXXXXX")"
+changelog_replacement="$(mktemp "${TMPDIR:-/tmp}/rgms-changelog-new.XXXXXX")"
 cp RGMS.toc "$manifest_backup"
+cp CHANGELOG.md "$changelog_backup"
 
 completed=false
 manifest_changed=false
-qa_created=false
+changelog_changed=false
 
 cleanup() {
     exit_code=$?
@@ -145,11 +116,15 @@ cleanup() {
         if [[ "$manifest_changed" == true ]]; then
             cp "$manifest_backup" RGMS.toc
         fi
-        if [[ "$qa_created" == true ]]; then
-            rm -f -- "$qa_record"
+        if [[ "$changelog_changed" == true ]]; then
+            cp "$changelog_backup" CHANGELOG.md
         fi
     fi
-    rm -f -- "$manifest_backup" "$manifest_replacement" "$qa_replacement"
+    rm -f -- \
+        "$manifest_backup" \
+        "$changelog_backup" \
+        "$manifest_replacement" \
+        "$changelog_replacement"
     exit "$exit_code"
 }
 trap cleanup EXIT
@@ -162,11 +137,7 @@ awk -v version="$version" -v interface_number="$interface_number" '
         next
     }
     /^## Interface:/ {
-        if (interface_number != "") {
-            print "## Interface: " interface_number
-        } else {
-            print $0
-        }
+        print "## Interface: " interface_number
         interface_count += 1
         next
     }
@@ -178,54 +149,55 @@ awk -v version="$version" -v interface_number="$interface_number" '
     }
 ' RGMS.toc > "$manifest_replacement" || \
     fail "RGMS.toc must contain exactly one Interface and one Version field"
-mv "$manifest_replacement" RGMS.toc
-manifest_changed=true
 
-awk \
-    -v version="$version" \
-    -v branch="$branch" \
-    -v tester="$tester" \
-    -v retail_version="$retail_version" \
-    -v interface_number="$interface_number" '
-    /^- Release candidate:/ {
-        print "- Release candidate: " version
+awk -v version="$version" '
+    BEGIN {
+        unreleased_count = 0
+        target_count = 0
+        in_unreleased = 0
+        unreleased_content = 0
+    }
+    $0 == "## Unreleased" {
+        unreleased_count += 1
+        in_unreleased = 1
+        print
+        print ""
+        print "## " version
         next
     }
-    /^- Release branch:/ {
-        print "- Release branch: " branch
-        next
+    $0 == "## " version || $0 == "## [" version "]" {
+        target_count += 1
     }
-    /^- Retail version\/build from/ && retail_version != "" {
-        print "- Retail version/build from `/dump GetBuildInfo()`: " retail_version
-        next
+    /^## / && in_unreleased {
+        in_unreleased = 0
     }
-    /^- Retail interface number from/ && interface_number != "" {
-        print "- Retail interface number from `/dump select(4, GetBuildInfo())`: " interface_number
-        next
-    }
-    /^- Tester:/ {
-        print "- Tester: " tester
-        next
-    }
-    /^- Automated result and test count:/ {
-        print "- Automated result and test count: PENDING (Build Release Candidate workflow)"
-        next
+    in_unreleased && $0 !~ /^[[:space:]]*$/ {
+        unreleased_content += 1
     }
     { print }
-' docs/MVP_SCENARIO_CHECKLIST.md > "$qa_replacement"
-mv "$qa_replacement" "$qa_record"
-qa_created=true
+    END {
+        if (unreleased_count != 1 || target_count != 0 || unreleased_content == 0) {
+            exit 42
+        }
+    }
+' CHANGELOG.md > "$changelog_replacement" || \
+    fail "CHANGELOG.md must contain one non-empty Unreleased section and no $version section"
 
-git diff --check -- RGMS.toc "$qa_record"
+mv "$manifest_replacement" RGMS.toc
+manifest_changed=true
+mv "$changelog_replacement" CHANGELOG.md
+changelog_changed=true
+
+git diff --check -- RGMS.toc CHANGELOG.md
 
 completed=true
-printf '\nPrepared release candidate files:\n'
+printf '\nPrepared release files:\n'
+printf '  Release version: %s\n' "$version"
+printf '  Retail version/build: %s\n' "$retail_version"
+printf '  Retail interface: %s\n' "$interface_number"
 printf '  Manifest: RGMS.toc\n'
-printf '  QA record: %s\n' "$qa_record"
+printf '  Changelog: CHANGELOG.md\n'
 printf '\nNext steps:\n'
-printf '  1. Commit and push %s, then copy its full tip SHA.\n' "$branch"
-printf '  2. Dispatch Build Release Candidate from main for branch %s, version %s, and that SHA.\n' "$branch" "$version"
-printf '  3. Download that workflow artifact and replace %s with its populated qa-record.md.\n' "$qa_record"
-printf '  4. Test the canonical ZIP, complete the record, and add the QA signoff.\n'
-printf '  5. Commit and push only that completed QA record on %s.\n' "$branch"
-printf '  6. Dispatch Release from main with branch %s and the full QA commit SHA.\n' "$branch"
+printf '  1. Review, commit, and push RGMS.toc and CHANGELOG.md on main.\n'
+printf '  2. Copy the full 40-character main tip SHA.\n'
+printf '  3. Dispatch Create Release from main with version %s and that SHA.\n' "$version"

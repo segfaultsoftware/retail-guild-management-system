@@ -1,0 +1,283 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix (for example, 1.1.0)
+        required: true
+        type: string
+      commit:
+        description: Full 40-character commit SHA at the main branch tip
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: create-release-${{ inputs.version }}-${{ inputs.commit }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.commit }}
+
+      - name: Validate release request
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          WORKFLOW_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
+          commit_pattern='^[0-9a-fA-F]{40}$'
+
+          [[ "$RELEASE_VERSION" =~ $version_pattern ]] || {
+            echo "Version must be X.Y.Z or X.Y.Z-rc.N." >&2
+            exit 1
+          }
+          [[ "$RELEASE_COMMIT" =~ $commit_pattern ]] || {
+            echo "Commit must be a full 40-character SHA." >&2
+            exit 1
+          }
+          [[ "$WORKFLOW_REF_NAME" == "main" ]] || {
+            echo "Create Release must be dispatched from main." >&2
+            exit 1
+          }
+
+          actual_commit="$(git rev-parse HEAD)"
+          [[ "${actual_commit,,}" == "${RELEASE_COMMIT,,}" ]] || {
+            echo "Checked-out commit does not match the requested commit." >&2
+            exit 1
+          }
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          main_commit="$(git rev-parse "refs/remotes/origin/main^{commit}")"
+          [[ "${actual_commit,,}" == "${main_commit,,}" ]] || {
+            echo "Requested commit is not the current origin/main commit." >&2
+            exit 1
+          }
+
+          manifest_version="$(sed -n 's/^## Version:[[:space:]]*\([^[:space:]]\+\)[[:space:]]*$/\1/p' RGMS.toc)"
+          [[ "$(grep -Ec '^## Version:' RGMS.toc)" -eq 1 &&
+             "$manifest_version" == "$RELEASE_VERSION" ]] || {
+            echo "RGMS.toc must contain exactly one Version field matching $RELEASE_VERSION." >&2
+            exit 1
+          }
+
+          tag="v$RELEASE_VERSION"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            echo "Tag already exists: $tag" >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release already exists: $tag" >&2
+            exit 1
+          fi
+
+          echo "artifact_name=RGMS-$RELEASE_VERSION.zip" >> "$GITHUB_OUTPUT"
+          echo "commit=${actual_commit,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release changelog
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.request.outputs.version }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          $changelog = Get-Content -Raw CHANGELOG.md
+          $escapedVersion = [regex]::Escape($version)
+          $matches = [regex]::Matches(
+            $changelog,
+            "(?ms)^## (?:\[${escapedVersion}\]|${escapedVersion})(?:[ \t]+[^\r\n]*)?\r?\n(.*?)(?=^## |\z)"
+          )
+          if ($matches.Count -ne 1) {
+            throw "CHANGELOG.md must contain exactly one section for $version."
+          }
+          if ([string]::IsNullOrWhiteSpace($matches[0].Groups[1].Value)) {
+            throw "CHANGELOG.md section for $version must not be empty."
+          }
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.1
+
+      - name: Build canonical release package
+        id: package
+        env:
+          RELEASE_VERSION: ${{ steps.request.outputs.version }}
+          ARTIFACT_NAME: ${{ steps.request.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p .release
+          pwsh -NoProfile -File ./scripts/build-release.ps1 \
+            -Version "$RELEASE_VERSION" \
+            -LuaCommand lua5.1 | tee .release/build.log
+
+          artifact=".release/$ARTIFACT_NAME"
+          checksum="$(sha256sum "$artifact" | awk '{ print tolower($1) }')"
+          test_result="$(grep -E '^[0-9]+ tests: [0-9]+ passed, 0 failed$' .release/build.log | tail -n 1)"
+          [[ -n "$test_result" ]] || {
+            echo "Could not read the passing test count from the release build." >&2
+            exit 1
+          }
+
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+          echo "test_result=$test_result" >> "$GITHUB_OUTPUT"
+
+      - name: Retain release package
+        id: hosted_package
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.request.outputs.version }}-${{ steps.request.outputs.commit }}-${{ github.run_attempt }}
+          path: .release/${{ steps.request.outputs.artifact_name }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
+      - name: Prepare release notes
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.request.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.request.outputs.commit }}
+          PACKAGE_CHECKSUM: ${{ steps.package.outputs.checksum }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          $changelog = Get-Content -Raw CHANGELOG.md
+          $escapedVersion = [regex]::Escape($version)
+          $match = [regex]::Match(
+            $changelog,
+            "(?ms)^## (?:\[${escapedVersion}\]|${escapedVersion})(?:[ \t]+[^\r\n]*)?\r?\n(.*?)(?=^## |\z)"
+          )
+
+          $notes = @"
+          Built by GitHub from commit ``$($env:RELEASE_COMMIT)``.
+
+          SHA-256: ``$($env:PACKAGE_CHECKSUM)``
+
+          ## Changelog
+
+          $($match.Groups[1].Value.Trim())
+          "@
+          Set-Content -Path .release/release-notes.md -Value $notes -Encoding utf8NoBOM
+
+      - name: Recheck release target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ steps.request.outputs.commit }}
+          RELEASE_TAG: ${{ steps.request.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          main_commit="$(git rev-parse "refs/remotes/origin/main^{commit}")"
+          [[ "${main_commit,,}" == "${RELEASE_COMMIT,,}" ]] || {
+            echo "origin/main moved after validation; rerun Create Release for its new tip." >&2
+            exit 1
+          }
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "Tag appeared after validation: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release appeared after validation: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Create and push release tag
+        env:
+          RELEASE_TAG: ${{ steps.request.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.request.outputs.commit }}
+          RELEASE_VERSION: ${{ steps.request.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_TAG" "$RELEASE_COMMIT" -m "RGMS $RELEASE_VERSION"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.request.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.request.outputs.version }}
+          ARTIFACT_NAME: ${{ steps.request.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          arguments=(
+            release create "$RELEASE_TAG"
+            ".release/$ARTIFACT_NAME"
+            --verify-tag
+            --title "RGMS $RELEASE_VERSION"
+            --notes-file .release/release-notes.md
+          )
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            arguments+=(--prerelease)
+          else
+            arguments+=(--latest)
+          fi
+          gh "${arguments[@]}"
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.request.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.request.outputs.commit }}
+          RELEASE_VERSION: ${{ steps.request.outputs.version }}
+          ARTIFACT_NAME: ${{ steps.request.outputs.artifact_name }}
+          EXPECTED_CHECKSUM: ${{ steps.package.outputs.checksum }}
+          TEST_RESULT: ${{ steps.package.outputs.test_result }}
+          HOSTED_ARTIFACT_ID: ${{ steps.hosted_package.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+
+          tagged_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          [[ "${tagged_commit,,}" == "${RELEASE_COMMIT,,}" ]] || {
+            echo "Tag does not resolve to the requested release commit." >&2
+            exit 1
+          }
+
+          release_json="$(gh release view "$RELEASE_TAG" --json tagName,name,isDraft,isPrerelease,assets,url)"
+          [[ "$(jq -r '.tagName' <<<"$release_json")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.name' <<<"$release_json")" == "RGMS $RELEASE_VERSION" ]]
+          [[ "$(jq -r '.isDraft' <<<"$release_json")" == "false" ]]
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            [[ "$(jq -r '.isPrerelease' <<<"$release_json")" == "true" ]]
+          else
+            [[ "$(jq -r '.isPrerelease' <<<"$release_json")" == "false" ]]
+          fi
+          [[ "$(jq --arg name "$ARTIFACT_NAME" '[.assets[] | select(.name == $name)] | length' <<<"$release_json")" -eq 1 ]]
+
+          mkdir -p .release/downloaded
+          gh release download "$RELEASE_TAG" \
+            --pattern "$ARTIFACT_NAME" \
+            --dir .release/downloaded
+          downloaded_checksum="$(sha256sum ".release/downloaded/$ARTIFACT_NAME" | awk '{ print tolower($1) }')"
+          [[ "$downloaded_checksum" == "$EXPECTED_CHECKSUM" ]] || {
+            echo "Downloaded release asset checksum does not match the built package." >&2
+            exit 1
+          }
+
+          release_url="$(jq -r '.url' <<<"$release_json")"
+          {
+            echo "## Published release"
+            echo
+            echo "- Tag: \`$RELEASE_TAG\`"
+            echo "- Commit: \`$RELEASE_COMMIT\`"
+            echo "- Asset: \`$ARTIFACT_NAME\`"
+            echo "- Retained artifact ID: \`$HOSTED_ARTIFACT_ID\`"
+            echo "- Automated tests: \`PASS ($TEST_RESULT)\`"
+            echo "- SHA-256: \`$EXPECTED_CHECKSUM\`"
+            echo "- Release: $release_url"
+          } >> "$GITHUB_STEP_SUMMARY"
