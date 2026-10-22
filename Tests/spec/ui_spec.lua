@@ -429,6 +429,12 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         local frame = newRegion(parent)
         frame.name = name
         frame.templateName = templateName
+        if frameType == "ScrollFrame" then
+            frame.ScrollBar = newRegion(frame)
+            frame.ScrollBar.ScrollUpButton = newRegion(frame.ScrollBar)
+            frame.ScrollBar.ScrollDownButton = newRegion(frame.ScrollBar)
+            frame.ScrollBar.ThumbTexture = newRegion(frame.ScrollBar)
+        end
         if frameType == "DropdownButton" then
             function frame:SetupMenu(generator)
                 self.menuGenerator = generator
@@ -768,6 +774,7 @@ return {
 
         test.assert_equal(#view.mainsAltsRows, 300)
         test.assert_equal(view.mainsAltsTableHeight, 7208)
+        test.assert_true(view.scrollFrame.ScrollBar:IsShown())
         test.assert_true(#view.mainsAltsLinePool <= 5)
         test.assert_equal(view.mainsAltsLines[1].identity, "char01-area52")
 
@@ -1834,6 +1841,68 @@ return {
             view.bankTabScrollChild:GetHeight() > view.bankTabScrollFrame:GetHeight()
         )
         test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
+        test.assert_true(view.scrollFrame.ScrollBar:IsShown())
+    end),
+
+    test.case("bank item scrollbar appears only when the selected tab overflows", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.bank
+        view.scrollFrame:SetHeight(76)
+
+        local report = { tabs = {} }
+        for tabIndex = 1, 2 do
+            local tab = {
+                index = tabIndex,
+                name = "Tab " .. tabIndex,
+                icon = 9000 + tabIndex,
+                isViewable = true,
+                rows = {},
+            }
+            local rowCount = tabIndex == 1 and 3 or 4
+            for slotIndex = 1, rowCount do
+                tab.rows[slotIndex] = {
+                    slotIndex = slotIndex,
+                    itemLink = "|Hitem:1|h[Test Item]|h",
+                    itemName = "Test Item " .. slotIndex,
+                    icon = 8000,
+                    quantity = 1,
+                    stableSinceDate = "2024-06-01",
+                    ageDays = 21,
+                    isStale = true,
+                }
+            end
+            report.tabs[tabIndex] = tab
+        end
+
+        test.assert_true(harness.ui.SetBankReport(report))
+        test.assert_equal(view.scrollChild:GetHeight(), view.scrollFrame:GetHeight())
+        test.assert_false(view.scrollFrame.ScrollBar:IsShown())
+
+        test.assert_true(harness.ui.SelectBankTab(2))
+        test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
+        test.assert_true(view.scrollFrame.ScrollBar:IsShown())
+
+        test.assert_true(harness.ui.SelectBankTab(1))
+        test.assert_false(view.scrollFrame.ScrollBar:IsShown())
+    end),
+
+    test.case("Mains/Alts scrollbar appears only when character rows overflow", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.mainsalts
+        view.scrollFrame:SetHeight(80)
+
+        test.assert_true(harness.ui.SetMainsAltsReport(mainsAltsReport(3)))
+        test.assert_equal(view.scrollChild:GetHeight(), view.scrollFrame:GetHeight())
+        test.assert_false(view.scrollFrame.ScrollBar:IsShown())
+
+        test.assert_true(harness.ui.SetMainsAltsReport(mainsAltsReport(4)))
+        test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
+        test.assert_true(view.scrollFrame.ScrollBar:IsShown())
+
+        test.assert_true(harness.ui.SetMainsAltsReport(mainsAltsReport(3)))
+        test.assert_false(view.scrollFrame.ScrollBar:IsShown())
     end),
 
     test.case("closing RGMS preserves a bank scan and committed bank content", function()
@@ -1975,6 +2044,42 @@ return {
             view.rankScrollChild:GetHeight() > view.rankScrollFrame:GetHeight()
         )
         test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
+        test.assert_true(view.scrollFrame.ScrollBar:IsShown())
+    end),
+
+    test.case("roster scrollbar appears only when the selected rank overflows", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.roster
+        view.scrollFrame:SetHeight(196)
+
+        local exactRank = rosterRank(1, "Exact")
+        local overflowRank = rosterRank(2, "Overflow")
+        overflowRank.groups[1].members = {
+            {
+                displayName = "First-Example Realm",
+                lastOnlineText = "Online",
+                tenureDays = 1,
+            },
+            {
+                displayName = "Second-Example Realm",
+                lastOnlineText = "Online",
+                tenureDays = 1,
+            },
+        }
+
+        test.assert_true(harness.ui.SetRosterReport({
+            ranks = { exactRank, overflowRank },
+        }))
+        test.assert_equal(view.scrollChild:GetHeight(), view.scrollFrame:GetHeight())
+        test.assert_false(view.scrollFrame.ScrollBar:IsShown())
+
+        test.assert_true(harness.ui.SelectRosterRank(2))
+        test.assert_true(view.scrollChild:GetHeight() > view.scrollFrame:GetHeight())
+        test.assert_true(view.scrollFrame.ScrollBar:IsShown())
+
+        test.assert_true(harness.ui.SelectRosterRank(1))
+        test.assert_false(view.scrollFrame.ScrollBar:IsShown())
     end),
 
     test.case("dragging non-text controls saves a canonical position", function()
