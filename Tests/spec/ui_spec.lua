@@ -854,6 +854,27 @@ return {
         test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
         test.assert_equal(view.mainsAltsLines[2].name.text, "OtherAlt-Area52")
         test.assert_equal(view.mainsAltsLines[3].name.text, "Mountvesuvius-Area52")
+        test.assert_false(view.mainsAltsLines[1].isFilterMatch)
+        test.assert_false(view.mainsAltsLines[2].isFilterMatch)
+        test.assert_true(view.mainsAltsLines[3].isFilterMatch)
+        test.assert_equal(view.mainsAltsLines[3].background.vertexColor, {
+            0.231,
+            0.137,
+            0.192,
+            1,
+        })
+        view.mainsAltsLines[3].frame.scripts.OnEnter()
+        test.assert_equal(
+            view.mainsAltsLines[3].background.vertexColor,
+            { 0.133, 0.149, 0.18, 1 }
+        )
+        view.mainsAltsLines[3].frame.scripts.OnLeave()
+        test.assert_equal(view.mainsAltsLines[3].background.vertexColor, {
+            0.231,
+            0.137,
+            0.192,
+            1,
+        })
         test.assert_true(view.expandedMainsAlts["main-area52"])
         test.assert_equal(view.scrollFrame:GetVerticalScroll(), 0)
 
@@ -878,6 +899,8 @@ return {
         test.assert_true(view.mainsAltsSearchBox:HasFocus())
         test.assert_nil(next(view.expandedMainsAlts))
         test.assert_equal(view.mainsAltsLines[2].name.text, "Solo-Area52")
+        test.assert_false(view.mainsAltsLines[1].isFilterMatch)
+        test.assert_false(view.mainsAltsLines[2].isFilterMatch)
         test.assert_true(view.mainsAltsLines[1].checkbox:GetChecked())
         test.assert_true(view.mainsAltsLines[2].checkbox:GetChecked())
     end),
@@ -1097,6 +1120,8 @@ return {
         )
         test.assert_equal(view.mainsAltsLines[1].identity, "main-area52")
         test.assert_equal(view.mainsAltsLines[2].identity, "raidalt-area52")
+        test.assert_false(view.mainsAltsLines[1].isFilterMatch)
+        test.assert_true(view.mainsAltsLines[2].isFilterMatch)
         test.assert_true(view.expandedMainsAlts["main-area52"])
         test.assert_true(view.mainsAltsSelections["solo-area52"])
 

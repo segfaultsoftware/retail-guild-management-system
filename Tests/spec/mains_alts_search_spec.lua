@@ -41,11 +41,17 @@ return {
         })
         local report = { rows = { first, group, retainedMissing } }
 
-        local filtered, expanded = search.filter(report, "mtvs")
+        local filtered, expanded, _, matchingCharacters = search.filter(
+            report,
+            "mtvs"
+        )
 
         test.assert_equal(filtered.rows, { group })
         test.assert_equal(filtered.rows[1].alts, group.alts)
         test.assert_true(expanded[group.identity])
+        test.assert_equal(matchingCharacters, {
+            [matchingAlt.identity] = true,
+        })
         test.assert_equal(search.filter(report, "main").rows, { group })
         test.assert_equal(search.filter(report, "m").rows, {
             group,
@@ -93,11 +99,34 @@ return {
             raid = true,
         }).rows, { group })
 
-        local filtered, expanded = search.filter(report, "other", {
-            healer = true,
-            raid = true,
-        })
+        local filtered, expanded, _, matchingCharacters = search.filter(
+            report,
+            "other",
+            {
+                healer = true,
+                raid = true,
+            }
+        )
         test.assert_equal(filtered.rows[1].alts, group.alts)
         test.assert_true(expanded[group.identity])
+        test.assert_equal(matchingCharacters, {
+            [group.alts[2].identity] = true,
+        })
+
+        local allMatching, _, _, allMatchingCharacters = search.filter(
+            report,
+            "",
+            { healer = true }
+        )
+        test.assert_equal(allMatching.rows, { group, solo })
+        test.assert_equal(allMatchingCharacters, {
+            [group.alts[1].identity] = true,
+            [group.alts[2].identity] = true,
+            [solo.identity] = true,
+        })
+
+        local unfiltered, _, _, unfilteredMatches = search.filter(report, "")
+        test.assert_equal(unfiltered.rows, report.rows)
+        test.assert_equal(unfilteredMatches, {})
     end),
 }

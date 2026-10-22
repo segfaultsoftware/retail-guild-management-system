@@ -80,23 +80,29 @@ function Search.filter(report, query, selectedTags)
     local normalized = Search.normalize(query)
     selectedTags = type(selectedTags) == "table" and selectedTags or {}
     if normalized == "" and not hasSelectedTags(selectedTags) then
-        return { rows = report.rows }, {}, normalized
+        return { rows = report.rows }, {}, normalized, {}
     end
 
     local rows = {}
     local expanded = {}
+    local matchingCharacters = {}
     for _, row in ipairs(report.rows) do
-        local matches = Search.characterMatches(row, normalized, selectedTags)
-        if not matches then
-            for _, alt in ipairs(row.alts or {}) do
-                if Search.characterMatches(alt, normalized, selectedTags) then
-                    matches = true
-                    break
-                end
+        local groupMatches = Search.characterMatches(
+            row,
+            normalized,
+            selectedTags
+        )
+        if groupMatches then
+            matchingCharacters[row.identity] = true
+        end
+        for _, alt in ipairs(row.alts or {}) do
+            if Search.characterMatches(alt, normalized, selectedTags) then
+                groupMatches = true
+                matchingCharacters[alt.identity] = true
             end
         end
 
-        if matches then
+        if groupMatches then
             rows[#rows + 1] = row
             if (row.altCount or 0) > 0 then
                 expanded[row.identity] = true
@@ -104,7 +110,7 @@ function Search.filter(report, query, selectedTags)
         end
     end
 
-    return { rows = rows }, expanded, normalized
+    return { rows = rows }, expanded, normalized, matchingCharacters
 end
 
 if type(RGMS) == "table" then

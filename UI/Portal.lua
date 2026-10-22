@@ -19,6 +19,7 @@ Portal.PALETTE = {
     control = { 0x22 / 255, 0x26 / 255, 0x2E / 255, 1 },
     border = { 0x34 / 255, 0x3A / 255, 0x46 / 255, 1 },
     zebra = { 0x1D / 255, 0x20 / 255, 0x27 / 255, 1 },
+    filterMatch = { 0x3B / 255, 0x23 / 255, 0x31 / 255, 1 },
     pink = { 0xEC / 255, 0x48 / 255, 0x99 / 255, 1 },
     pinkHover = { 0xF4 / 255, 0x72 / 255, 0xB6 / 255, 1 },
     text = { 0xF4 / 255, 0xF4 / 255, 0xF5 / 255, 1 },
