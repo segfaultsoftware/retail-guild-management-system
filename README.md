@@ -84,6 +84,18 @@ Release candidates must also complete the live-client
 copy as described in [`docs/qa/README.md`](docs/qa/README.md); automated tests
 do not replace Retail client verification.
 
+## Build a local test package
+
+From Git Bash, build and verify a ZIP using the version in `RGMS.toc`:
+
+```text
+./scripts/build-local-release.sh
+```
+
+The package is written to a timestamped `.release/local-*/RGMS-<version>.zip`
+directory. This is intended for local installation and testing; the canonical
+release-candidate artifact still comes from GitHub Actions.
+
 ## Prepare a release candidate
 
 On the clean release-line branch matching the version (for example,
