@@ -71,8 +71,13 @@ function Resolve-CurseForgeRetailGameVersion {
         [Parameter(Mandatory)][string]$RetailVersion
     )
 
+    # PowerShell 7 preserves a top-level JSON array returned directly by
+    # Invoke-RestMethod as one nested Object[] in some expression contexts.
+    # Passing each pipeline item through output enumeration normalizes both
+    # flat and nested responses before inspecting individual version records.
+    $normalizedGameVersions = @($GameVersions | ForEach-Object { $_ })
     $validGameVersions = @(
-        $GameVersions | Where-Object {
+        $normalizedGameVersions | Where-Object {
             $null -ne $_.id -and
             $null -ne $_.gameVersionTypeID -and
             -not [string]::IsNullOrWhiteSpace([string]$_.name)
@@ -94,7 +99,19 @@ function Resolve-CurseForgeRetailGameVersion {
         } else {
             ''
         }
-        throw "CurseForge must return exactly one game version named '$RetailVersion'; found $($matches.Count).$typeDetail"
+        $majorVersion = $RetailVersion.Split('.')[0]
+        $nearbyVersions = @(
+            $validGameVersions |
+                Where-Object { ([string]$_.name) -like "$majorVersion.*" } |
+                ForEach-Object { [string]$_.name } |
+                Sort-Object -Unique -Descending |
+                Select-Object -First 10
+        )
+        $catalogDetail = " The API returned $($validGameVersions.Count) valid entries."
+        if ($nearbyVersions.Count -gt 0) {
+            $catalogDetail += " Same-major versions include: $($nearbyVersions -join ', ')."
+        }
+        throw "CurseForge must return exactly one game version named '$RetailVersion'; found $($matches.Count).$typeDetail$catalogDetail"
     }
 
     $gameVersionId = [long]$matches[0].id

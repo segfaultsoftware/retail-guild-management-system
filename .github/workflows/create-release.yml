@@ -186,11 +186,10 @@ jobs:
           }
 
           $headers = @{ 'X-Api-Token' = $env:CURSEFORGE_API_TOKEN }
-          $gameVersions = @(
-            Invoke-RestMethod `
-              -Uri 'https://www.curseforge.com/api/game/wow/versions?cache=true' `
-              -Headers $headers
-          )
+          $gameVersionResponse = Invoke-RestMethod `
+            -Uri 'https://wow.curseforge.com/api/game/wow/versions' `
+            -Headers $headers
+          $gameVersions = @($gameVersionResponse)
           $gameVersionId = Resolve-CurseForgeRetailGameVersion `
             -GameVersions $gameVersions `
             -RetailVersion $retailGameVersion
@@ -424,7 +423,7 @@ jobs:
               file = Get-Item -LiteralPath ".release/github/$($env:ARTIFACT_NAME)"
             }
             $response = Invoke-WebRequest `
-              -Uri 'https://www.curseforge.com/api/projects/1741733/upload-file' `
+              -Uri 'https://wow.curseforge.com/api/projects/1741733/upload-file' `
               -Method Post `
               -Headers $headers `
               -Form $form `
