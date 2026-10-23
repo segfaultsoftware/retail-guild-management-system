@@ -83,15 +83,17 @@ All three values are required. The script:
 - never builds, commits, pushes, tags, or publishes anything.
 
 Review the diff, run the automated suite, then commit and push the prepared
-`RGMS.toc` and `CHANGELOG.md` files to `main`. Copy the resulting full
-40-character commit SHA.
+`RGMS.toc` and `CHANGELOG.md` files to `main`.
 
 ## Create the release
 
-Dispatch **Create Release** from `main` with two inputs:
+Dispatch **Create Release** from `main` with one input:
 
-- `version`: the same version passed to `prepare-release.sh`, without `v`;
-- `commit`: the full 40-character SHA at the current `main` tip.
+- `version`: the same version passed to `prepare-release.sh`, without `v`.
+
+GitHub supplies the current `main` HEAD automatically. Validation pins the
+checkout to that dispatch SHA and confirms it is still the current
+`origin/main` tip before publishing anything.
 
 The Actions run list labels each dispatch as **Create Release vX.Y.Z** so runs
 for different addon versions can be distinguished at a glance.
@@ -102,8 +104,7 @@ The equivalent authenticated GitHub CLI command is:
 gh workflow run "Create Release" \
   --repo segfaultsoftware/retail-guild-management-system \
   --ref main \
-  -f version=1.1.0 \
-  -f commit=FULL_40_CHARACTER_MAIN_COMMIT_SHA
+  -f version=1.1.0
 ```
 
 The jobs run in this order:

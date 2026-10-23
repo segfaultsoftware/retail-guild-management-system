@@ -95,6 +95,9 @@ Assert-True ($guidance.Contains('idempotency key')) 'Failure guidance must expla
 
 $workflow = Get-Content -Raw -LiteralPath "$PSScriptRoot/../.github/workflows/create-release.yml"
 Assert-True ($workflow.Contains('run-name: Create Release v${{ inputs.version }}')) 'Release runs must display their requested version.'
+Assert-True (-not $workflow.Contains('inputs.commit')) 'Release dispatch must not require a copied commit SHA.'
+Assert-True ($workflow.Contains('ref: ${{ github.sha }}')) 'Release checkout must pin the workflow dispatch SHA.'
+Assert-True ($workflow.Contains('RELEASE_COMMIT: ${{ github.sha }}')) 'Release validation must use the workflow dispatch SHA.'
 Assert-True ($workflow.Contains("-Uri 'https://wow.curseforge.com/api/game/wow/versions'")) 'Version lookup must use the game-scoped WoW author API endpoint.'
 Assert-True ($workflow.Contains("-Uri 'https://wow.curseforge.com/api/projects/1741733/upload-file'")) 'Upload must use the WoW CurseForge author API host.'
 Assert-True (-not $workflow.Contains('https://wow.curseforge.com/api/game/versions')) 'The unscoped legacy version endpoint must not be used.'
