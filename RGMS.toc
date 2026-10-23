@@ -26,6 +26,7 @@ Core\Commands.lua
 MainsAlts\Search.lua
 Roster\Names.lua
 MainsAlts\Tags.lua
+MainsAlts\Notes.lua
 UI\UI.lua
 Roster\Report.lua
 MainsAlts\Groups.lua
@@ -33,6 +34,7 @@ MainsAlts\Report.lua
 Roster\Tenure.lua
 Roster\Scanner.lua
 MainsAlts\MainsAlts.lua
+MainsAlts\NotesRetail.lua
 Roster\Roster.lua
 Bank\State.lua
 Bank\Report.lua

@@ -370,6 +370,10 @@ if type(Roster.Scanner) ~= "table"
             Roster.RefreshStatus()
         end,
         completeSuccess = function()
+            if type(RGMS.MainsAlts) == "table"
+                and type(RGMS.MainsAlts.RefreshGuildNotes) == "function" then
+                RGMS.MainsAlts.RefreshGuildNotes()
+            end
             if type(RGMS.UI) == "table"
                 and type(RGMS.UI.CompleteRosterScan) == "function" then
                 RGMS.UI.CompleteRosterScan()
