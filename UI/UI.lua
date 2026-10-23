@@ -2785,7 +2785,7 @@ local function createView(parent, tabId)
     return view
 end
 
-local function createNotesEditor()
+local function createNotesEditor(owner)
     local editor = CreateFrame(
         "Frame",
         "RGMSNotesEditor",
@@ -2793,11 +2793,10 @@ local function createNotesEditor()
         "BackdropTemplate"
     )
     editor:SetSize(440, 330)
-    editor:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    editor:SetPoint("TOPLEFT", owner, "TOPRIGHT", 0, 0)
     editor:SetFrameStrata("DIALOG")
     editor:SetToplevel(true)
     editor:EnableMouse(true)
-    editor:SetClampedToScreen(true)
     editor:SetBackdrop({
         bgFile = WHITE_TEXTURE,
         edgeFile = BORDER_TEXTURE,
@@ -2809,6 +2808,12 @@ local function createNotesEditor()
     if type(editor.SetBackdropBorderColor) == "function" then
         editor:SetBackdropBorderColor(unpackColor(PALETTE.border))
     end
+    local shadow = editor:CreateTexture(nil, "BACKGROUND", nil, -8)
+    shadow:SetTexture(WHITE_TEXTURE)
+    shadow:SetPoint("TOPLEFT", editor, "TOPLEFT", -6, 6)
+    shadow:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", 6, -6)
+    shadow:SetVertexColor(0, 0, 0, 0.45)
+    editor.shadow = shadow
 
     editor.title = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     editor.title:SetPoint("TOPLEFT", editor, "TOPLEFT", 18, -17)
@@ -2839,6 +2844,11 @@ local function createNotesEditor()
         hideOwnedTooltip(button)
     end)
 
+    editor.textArea = CreateFrame("Frame", nil, editor, "BackdropTemplate")
+    editor.textArea:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -78)
+    editor.textArea:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -20, 58)
+    flatBackdrop(editor.textArea, PALETTE.control, PALETTE.border)
+
     editor.scrollFrame = CreateFrame(
         "ScrollFrame",
         nil,
@@ -2851,16 +2861,32 @@ local function createNotesEditor()
     editor.editBox = CreateFrame(
         "EditBox",
         nil,
-        editor.scrollFrame,
-        "InputBoxTemplate"
+        editor.scrollFrame
     )
     editor.editBox:SetMultiLine(true)
     editor.editBox:SetAutoFocus(false)
     editor.editBox:SetFontObject("ChatFontNormal")
+    editor.editBox:SetJustifyH("LEFT")
+    editor.editBox:SetJustifyV("TOP")
+    editor.editBox:SetTextInsets(8, 8, 8, 8)
     editor.editBox:SetWidth(370)
     editor.editBox:SetHeight(185)
     editor.editBox:SetMaxLetters(CHARACTER_NOTE_LIMIT)
     editor.scrollFrame:SetScrollChild(editor.editBox)
+
+    local function focusEditBox()
+        if editor.editBox:IsEnabled() then
+            editor.editBox:SetFocus()
+        end
+    end
+    for _, focusSurface in ipairs({
+        editor.textArea,
+        editor.scrollFrame,
+        editor.editBox,
+    }) do
+        focusSurface:EnableMouse(true)
+        focusSurface:SetScript("OnMouseDown", focusEditBox)
+    end
 
     editor.characterCount = editor:CreateFontString(
         nil,
@@ -2958,6 +2984,7 @@ local function createNotesEditor()
         editor.displayName = nil
         editor.noteExists = false
     end)
+    enableWindowDragging(editor)
     editor:Hide()
     return editor
 end
@@ -3165,7 +3192,7 @@ local function createWindow()
     frame.modalDimmer:SetBackdropColor(0, 0, 0, 0.5)
     frame.modalDimmer:EnableMouse(true)
     frame.modalDimmer:Hide()
-    frame.notesEditor = createNotesEditor()
+    frame.notesEditor = createNotesEditor(frame)
     frame.ownedTooltip = createOwnedTooltip()
 
     frame:SetScript("OnShow", function()

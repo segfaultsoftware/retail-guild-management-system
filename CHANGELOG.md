@@ -7,6 +7,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Changed
+
+- Restyled the character-note editor as a bordered multiline text area that
+  gains focus when clicked anywhere, opens flush with the main window's
+  top-right edge with a matching drop shadow, and moves together with the
+  main window while preserving its existing size and scrolling behavior.
+
 ## 1.0.3
 
 ### Added

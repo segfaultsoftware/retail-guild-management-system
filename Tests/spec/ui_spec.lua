@@ -1534,6 +1534,48 @@ return {
         local view = harness.frame().views.mainsalts
         local editor = harness.frame().notesEditor
 
+        test.assert_equal(editor.point, "TOPLEFT")
+        test.assert_equal(editor.relativeTo, harness.frame())
+        test.assert_equal(editor.relativePoint, "TOPRIGHT")
+        test.assert_equal(editor.x, 0)
+        test.assert_equal(editor.y, 0)
+        test.assert_equal(
+            editor.shadow.texture,
+            "Interface\\Buttons\\WHITE8X8"
+        )
+        test.assert_equal(editor.shadow.drawLayer, "BACKGROUND")
+        test.assert_equal(editor.shadow.sublevel, -8)
+        test.assert_equal(editor.shadow.points[1].x, -6)
+        test.assert_equal(editor.shadow.points[1].y, 6)
+        test.assert_equal(editor.shadow.points[2].x, 6)
+        test.assert_equal(editor.shadow.points[2].y, -6)
+        test.assert_equal(editor.shadow.vertexColor, { 0, 0, 0, 0.45 })
+        test.assert_equal(editor.textArea.templateName, "BackdropTemplate")
+        test.assert_equal(
+            editor.textArea.backdropColor,
+            { 0.133, 0.149, 0.18, 1 }
+        )
+        test.assert_equal(editor.textArea.points[1].x, 20)
+        test.assert_equal(editor.textArea.points[2].x, -20)
+        test.assert_nil(editor.editBox.templateName)
+        test.assert_equal(editor.editBox:GetWidth(), 370)
+        test.assert_equal(editor.editBox:GetHeight(), 185)
+        test.assert_equal(editor.editBox.justifyH, "LEFT")
+        test.assert_equal(editor.editBox.textInsets, { 8, 8, 8, 8 })
+
+        for index, focusSurface in ipairs({
+            editor.textArea,
+            editor.scrollFrame,
+            editor.editBox,
+        }) do
+            editor.editBox:ClearFocus()
+            focusSurface.scripts.OnMouseDown(
+                focusSurface,
+                ({ "LeftButton", "RightButton", "MiddleButton" })[index]
+            )
+            test.assert_true(editor.editBox:HasFocus())
+        end
+
         view.mainsAltsLines[1].noteButton.scripts.OnClick()
         test.assert_true(editor:IsShown())
         test.assert_equal(editor.character.text, "Editing note for Main-Area52")
@@ -2171,6 +2213,7 @@ return {
             frame.views.roster.refreshButton,
             dynamicLine.frame,
             dynamicLine.noteButton,
+            frame.notesEditor,
         }
 
         for _, surface in ipairs(dragSurfaces) do
@@ -2180,9 +2223,9 @@ return {
         end
 
         frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 125, 90)
-        frame.views.roster.refreshButton.scripts.OnDragStart()
+        frame.notesEditor.scripts.OnDragStart()
         test.assert_true(frame.moving)
-        frame.views.roster.refreshButton.scripts.OnDragStop()
+        frame.notesEditor.scripts.OnDragStop()
 
         test.assert_false(frame.moving)
         test.assert_equal(harness.database.ui.windowPosition, {
