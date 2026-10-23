@@ -130,9 +130,10 @@ The jobs run in this order:
 The CurseForge file is submitted as:
 
 - filename: `RGMS-X.Y.Z.zip`;
-- display name: `RGMS X.Y.Z`;
+- display name: `RGMS-X.Y.Z.zip`;
 - release type: **Release**;
-- changelog: the matching `CHANGELOG.md` section as Markdown;
+- changelog: a `## X.Y.Z` heading followed by the matching `CHANGELOG.md`
+  section as Markdown;
 - supported version: the single Retail ID resolved in preflight;
 - release option: public automatically after CurseForge approval;
 - relationship: LibDBIcon-1.0 project `15552` as an embedded library.
@@ -158,7 +159,7 @@ If **Publish CurseForge** fails after **Publish GitHub** succeeds:
 2. Open the failed workflow run and select **Re-run failed jobs**. This retries
    the failed CurseForge job without recreating the successful GitHub release.
 3. If the request timed out or may have reached CurseForge, first open the
-   project's **Files** dashboard and look for the same `RGMS X.Y.Z` display
+   project's **Files** dashboard and look for the same `RGMS-X.Y.Z.zip` display
    name. The author Upload API does not document an idempotency key or a safe
    duplicate-upload check, so do not retry until you have checked.
 
@@ -180,7 +181,7 @@ cannot complete:
 2. Confirm its SHA-256 matches the **Create Release** workflow summary.
 3. In the CurseForge Authors dashboard for project `1741733`, check **Files**
    first to avoid a duplicate after an ambiguous automated failure.
-4. Upload the exact GitHub ZIP with display name `RGMS X.Y.Z`.
+4. Upload the exact GitHub ZIP with display name `RGMS-X.Y.Z.zip`.
 5. Choose **Release**, select only the tested Retail `X.Y.Z`, and configure
    automatic publication after approval.
 6. Paste the matching changelog section as Markdown.

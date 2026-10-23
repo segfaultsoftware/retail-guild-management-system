@@ -139,9 +139,9 @@ function New-CurseForgeReleaseMetadata {
     }
 
     return [ordered]@{
-        changelog = $Changelog
+        changelog = "## $ReleaseVersion`n`n$Changelog"
         changelogType = 'markdown'
-        displayName = "RGMS $ReleaseVersion"
+        displayName = "RGMS-$ReleaseVersion.zip"
         gameVersions = @($GameVersionId)
         releaseType = 'release'
         isMarkedForManualRelease = $false
@@ -194,7 +194,7 @@ function Get-CurseForgeApiErrorMessage {
 }
 
 function Get-CurseForgeUploadFailureGuidance {
-    return 'The GitHub tag and release remain intact. Use Re-run failed jobs to retry only the CurseForge job. If the request timed out or its outcome is unclear, first check the CurseForge Files dashboard for the same RGMS display name; the author Upload API does not document an idempotency key or a safe duplicate-upload check.'
+    return 'The GitHub tag and release remain intact. Use Re-run failed jobs to retry only the CurseForge job. If the request timed out or its outcome is unclear, first check the CurseForge Files dashboard for the same RGMS-X.Y.Z.zip display name; the author Upload API does not document an idempotency key or a safe duplicate-upload check.'
 }
 
 Export-ModuleMember -Function @(

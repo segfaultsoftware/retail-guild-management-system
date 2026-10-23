@@ -404,7 +404,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module ./scripts/release-tools.psm1 -Force
-          $displayName = "RGMS $($env:RELEASE_VERSION)"
+          $displayName = "RGMS-$($env:RELEASE_VERSION).zip"
           $guidance = Get-CurseForgeUploadFailureGuidance
           try {
             $changelog = Get-RgmsChangelogSection CHANGELOG.md $env:RELEASE_VERSION
@@ -455,5 +455,5 @@ jobs:
           @'
           ## CurseForge publication failed
 
-          The verified GitHub tag, release, and ZIP remain intact. Use **Re-run failed jobs** to retry only the CurseForge job. If the upload request timed out or its outcome is unclear, first check the CurseForge **Files** dashboard for the same `RGMS X.Y.Z` display name. The author Upload API does not document an idempotency key or a safe duplicate-upload check.
+          The verified GitHub tag, release, and ZIP remain intact. Use **Re-run failed jobs** to retry only the CurseForge job. If the upload request timed out or its outcome is unclear, first check the CurseForge **Files** dashboard for the same `RGMS-X.Y.Z.zip` display name. The author Upload API does not document an idempotency key or a safe duplicate-upload check.
           '@ >> $env:GITHUB_STEP_SUMMARY

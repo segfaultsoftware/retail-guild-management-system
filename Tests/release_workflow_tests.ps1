@@ -72,7 +72,8 @@ Assert-True ($missingVersionMessage.Contains('The API returned 2 valid entries.'
 Assert-True ($missingVersionMessage.Contains('Same-major versions include: 12.1.5.')) 'Missing-version errors must report nearby versions.'
 
 $metadata = New-CurseForgeReleaseMetadata '1.2.3' '### Added`n- Feature' 13001
-Assert-Equal 'RGMS 1.2.3' $metadata.displayName 'Display name is incorrect.'
+Assert-Equal 'RGMS-1.2.3.zip' $metadata.displayName 'Display name is incorrect.'
+Assert-True ($metadata.changelog.StartsWith("## 1.2.3`n`n### Added")) 'CurseForge changelog must start with the release version heading.'
 Assert-Equal 'release' $metadata.releaseType 'Release type is incorrect.'
 Assert-Equal $false $metadata.isMarkedForManualRelease 'Manual-release flag is incorrect.'
 Assert-Equal 13001L $metadata.gameVersions[0] 'Game-version ID is incorrect.'
@@ -108,5 +109,6 @@ Assert-Equal 2 ([regex]::Matches($workflow, "if: needs\.validate\.outputs\.is_fi
 Assert-True ($workflow.Contains('gh release download "$RELEASE_TAG" --pattern "$ARTIFACT_NAME" --dir .release/github')) 'CurseForge publication must download the GitHub release asset.'
 Assert-True ($workflow.Contains("-SkipHttpErrorCheck`n")) 'The upload path must inspect the HTTP response without retrying it.'
 Assert-True ($workflow.Contains('CurseForge upload failed: $failureReason')) 'Upload failures must preserve the underlying safe API error.'
+Assert-True ($workflow.Contains('$displayName = "RGMS-$($env:RELEASE_VERSION).zip"')) 'CurseForge display name must match the uploaded filename.'
 
 Write-Output "$script:Passed release workflow tests: $script:Passed passed, 0 failed"
