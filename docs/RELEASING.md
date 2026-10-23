@@ -93,6 +93,9 @@ Dispatch **Create Release** from `main` with two inputs:
 - `version`: the same version passed to `prepare-release.sh`, without `v`;
 - `commit`: the full 40-character SHA at the current `main` tip.
 
+The Actions run list labels each dispatch as **Create Release vX.Y.Z** so runs
+for different addon versions can be distinguished at a glance.
+
 The equivalent authenticated GitHub CLI command is:
 
 ```text
@@ -112,8 +115,9 @@ The jobs run in this order:
    records its SHA-256, and retains it as a workflow artifact for 90 days.
 3. **CurseForge preflight** runs only for exact final versions. It authenticates
    with the configured secret, extracts the leading `X.Y.Z` from
-   `X-RGMS-Retail-Version`, and requires exactly one matching Retail
-   game-version ID.
+   `X-RGMS-Retail-Version`, queries CurseForge's current human-readable game
+   versions, and requires exactly one matching numeric game-version ID. No
+   per-patch CurseForge ID is stored in the repository.
 4. **Publish GitHub** rechecks the target, creates and pushes the annotated tag,
    publishes the GitHub release, downloads its attached ZIP, and verifies it
    against the build checksum.

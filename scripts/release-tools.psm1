@@ -1,7 +1,6 @@
 Set-StrictMode -Version Latest
 
 $script:ReleaseVersionPattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
-$script:CurseForgeRetailGameVersionTypeId = 517L
 
 function Test-RgmsReleaseVersion {
     param([Parameter(Mandatory)][string]$Version)
@@ -72,15 +71,30 @@ function Resolve-CurseForgeRetailGameVersion {
         [Parameter(Mandatory)][string]$RetailVersion
     )
 
-    $matches = @(
+    $validGameVersions = @(
         $GameVersions | Where-Object {
-            ([string]$_.name) -ceq $RetailVersion -and
+            $null -ne $_.id -and
             $null -ne $_.gameVersionTypeID -and
-            ([long]$_.gameVersionTypeID) -eq $script:CurseForgeRetailGameVersionTypeId
+            -not [string]::IsNullOrWhiteSpace([string]$_.name)
         }
     )
+    if ($validGameVersions.Count -eq 0) {
+        throw 'CurseForge did not return a valid game-version list.'
+    }
+
+    $matches = @($validGameVersions | Where-Object { ([string]$_.name) -ceq $RetailVersion })
     if ($matches.Count -ne 1 -or $null -eq $matches[0].id) {
-        throw "CurseForge must return exactly one Retail game version named '$RetailVersion'; found $($matches.Count)."
+        $matchingTypeIds = @(
+            $matches |
+                ForEach-Object { [string]$_.gameVersionTypeID } |
+                Sort-Object -Unique
+        )
+        $typeDetail = if ($matchingTypeIds.Count -gt 0) {
+            " Matching game-version type IDs: $($matchingTypeIds -join ', ')."
+        } else {
+            ''
+        }
+        throw "CurseForge must return exactly one game version named '$RetailVersion'; found $($matches.Count).$typeDetail"
     }
 
     $gameVersionId = [long]$matches[0].id
