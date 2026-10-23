@@ -115,9 +115,10 @@ The jobs run in this order:
    records its SHA-256, and retains it as a workflow artifact for 90 days.
 3. **CurseForge preflight** runs only for exact final versions. It authenticates
    with the configured secret, extracts the leading `X.Y.Z` from
-   `X-RGMS-Retail-Version`, queries CurseForge's current human-readable game
-   versions, and requires exactly one matching numeric game-version ID. No
-   per-patch CurseForge ID is stored in the repository.
+   `X-RGMS-Retail-Version`, queries CurseForge's game-scoped `wow` version
+   catalog, and requires exactly one matching numeric game-version ID. The
+   unscoped version endpoint is not used because it can return another game's
+   catalog. No per-patch CurseForge ID is stored in the repository.
 4. **Publish GitHub** rechecks the target, creates and pushes the annotated tag,
    publishes the GitHub release, downloads its attached ZIP, and verifies it
    against the build checksum.

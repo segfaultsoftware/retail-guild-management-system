@@ -53,10 +53,10 @@ try {
 }
 
 $versions = @(
-    [pscustomobject]@{ id = 13001; gameVersionTypeID = 999; name = '12.1.5' },
+    [pscustomobject]@{ id = 16984; gameVersionTypeID = 517; name = '12.1.5' },
     [pscustomobject]@{ id = 13002; gameVersionTypeID = 674; name = '1.15.9' }
 )
-Assert-Equal 13001L (Resolve-CurseForgeRetailGameVersion $versions '12.1.5') 'Retail game-version lookup selected the wrong flavor.'
+Assert-Equal 16984L (Resolve-CurseForgeRetailGameVersion $versions '12.1.5') 'Retail game-version lookup selected the wrong ID.'
 Assert-Throws { Resolve-CurseForgeRetailGameVersion @($versions + [pscustomobject]@{ id = 13003; gameVersionTypeID = 517; name = '12.1.5' }) '12.1.5' } 'Ambiguous Retail game versions must fail.'
 Assert-Throws { Resolve-CurseForgeRetailGameVersion $versions '12.1.6' } 'Missing Retail game versions must fail.'
 Assert-Throws { Resolve-CurseForgeRetailGameVersion @([pscustomobject]@{ status = 'error' }) '12.1.5' } 'Malformed game-version responses must fail.'
@@ -82,6 +82,9 @@ Assert-True ($guidance.Contains('idempotency key')) 'Failure guidance must expla
 
 $workflow = Get-Content -Raw -LiteralPath "$PSScriptRoot/../.github/workflows/create-release.yml"
 Assert-True ($workflow.Contains('run-name: Create Release v${{ inputs.version }}')) 'Release runs must display their requested version.'
+Assert-True ($workflow.Contains("-Uri 'https://www.curseforge.com/api/game/wow/versions?cache=true'")) 'Version lookup must use the game-scoped WoW author API endpoint.'
+Assert-True ($workflow.Contains("-Uri 'https://www.curseforge.com/api/projects/1741733/upload-file'")) 'Upload must use the universal CurseForge author API host.'
+Assert-True (-not $workflow.Contains('https://wow.curseforge.com/api/game/versions')) 'The unscoped legacy version endpoint must not be used.'
 Assert-True ($workflow.Contains("curseforge_preflight:`n    name: CurseForge preflight")) 'CurseForge preflight must remain a distinct job.'
 Assert-True ($workflow.Contains("publish_curseforge:`n    name: Publish CurseForge")) 'CurseForge publication must remain a distinct retryable job.'
 Assert-Equal 2 ([regex]::Matches($workflow, [regex]::Escape('secrets.CURSEFORGE_API_TOKEN')).Count) 'The CurseForge token must be confined to preflight and upload.'
