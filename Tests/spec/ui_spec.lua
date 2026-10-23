@@ -238,6 +238,10 @@ local function newRegion(parent)
         self.rotation = rotation
     end
 
+    function region:SetClipsChildren(clipsChildren)
+        self.clipsChildren = clipsChildren
+    end
+
     function region:SetFrameLevel(frameLevel)
         self.frameLevel = frameLevel
     end
@@ -390,7 +394,9 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local promotionRequests = {}
     local removalRequests = {}
     local noteSaves = {}
-    local noteDeletes = {}
+    local guildNoteRequests = 0
+    local noteDrafts
+    local noteIdentity
     local tagAssignments = {}
     local tagToggles = {}
     local tooltip = {
@@ -478,7 +484,8 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         database.ui.windowPosition = savedPosition
     end
 
-    local rgms = {
+    local rgms
+    rgms = {
         DB = database,
         UILayout = layout,
         MainsAltsSearch = mainsAltsSearch,
@@ -508,12 +515,46 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 removalRequests[#removalRequests + 1] = altIdentity
                 return true
             end,
-            SaveCharacterNote = function(identity, value)
-                noteSaves[#noteSaves + 1] = { identity = identity, value = value }
+            OpenCharacterNotes = function(identity, displayName, privateNote)
+                noteIdentity = identity
+                noteDrafts = {
+                    privateNote = privateNote or "",
+                    publicNote = identity == "main-area52" and "Live public" or "",
+                    officerNote = identity == "main-area52" and "Live officer" or "",
+                }
+                return {
+                    identity = identity,
+                    displayName = displayName,
+                    status = "ready",
+                    drafts = noteDrafts,
+                    publicVisible = true,
+                    publicEditable = false,
+                    officerVisible = true,
+                    officerEditable = false,
+                    saveEnabled = true,
+                }
+            end,
+            SetCharacterNoteDraft = function(kind, value)
+                noteDrafts[kind] = value
                 return true
             end,
-            DeleteCharacterNote = function(identity)
-                noteDeletes[#noteDeletes + 1] = identity
+            SaveCharacterNotes = function()
+                noteSaves[#noteSaves + 1] = {
+                    identity = noteIdentity,
+                    privateNote = noteDrafts.privateNote,
+                    publicNote = noteDrafts.publicNote,
+                    officerNote = noteDrafts.officerNote,
+                }
+                rgms.UI.CloseCharacterNoteEditor(true)
+                return true
+            end,
+            CloseCharacterNotes = function()
+                noteIdentity = nil
+                noteDrafts = nil
+                return true
+            end,
+            RequestGuildNotes = function()
+                guildNoteRequests = guildNoteRequests + 1
                 return true
             end,
             CreateOrAssignTag = function(identity, value)
@@ -534,6 +575,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     }
     local chunk = assert(loadfile("UI/UI.lua"))
     local ui = chunk("RGMS", rgms)
+    rgms.UI = ui
 
     return {
         database = database,
@@ -554,7 +596,9 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         promotionRequests = promotionRequests,
         removalRequests = removalRequests,
         noteSaves = noteSaves,
-        noteDeletes = noteDeletes,
+        guildNoteRequests = function()
+            return guildNoteRequests
+        end,
         tagAssignments = tagAssignments,
         tagToggles = tagToggles,
         tooltip = tooltip,
@@ -692,6 +736,7 @@ return {
         test.assert_equal(view.mainsAltsLines[1].expandButton.x, 28)
         test.assert_equal(view.mainsAltsLines[1].name.x, 48)
         test.assert_true(view.mainsAltsLines[1].noteButton:IsShown())
+        test.assert_equal(view.mainsAltsHeader.note.text, "")
         test.assert_equal(view.mainsAltsHeader.note.justifyH, "CENTER")
         test.assert_equal(view.mainsAltsLines[1].noteButton.relativePoint, "RIGHT")
         test.assert_equal(view.mainsAltsLines[1].noteButton.x, -196)
@@ -753,9 +798,9 @@ return {
         test.assert_false(view.mainsAltsLines[1].noteButton:IsEnabled())
         test.assert_false(view.mainsAltsLines[2].noteButton:IsEnabled())
         test.assert_false(harness.frame().notesEditor.saveButton:IsEnabled())
-        test.assert_false(harness.frame().notesEditor.deleteButton:IsEnabled())
+        test.assert_nil(harness.frame().notesEditor.deleteButton)
         test.assert_false(harness.frame().notesEditor.cancelButton:IsEnabled())
-        test.assert_false(harness.frame().notesEditor.closeButton:IsEnabled())
+        test.assert_true(harness.frame().notesEditor.closeButton:IsEnabled())
         local toggled, message = harness.ui.ToggleMainsAltsGroup("main-area52")
         test.assert_nil(toggled)
         test.assert_matches(message, "disabled")
@@ -1508,7 +1553,7 @@ return {
         test.assert_equal(view.scrollFrame:GetVerticalScroll(), 30)
     end),
 
-    test.case("one character-note editor switches discards limits saves and deletes", function()
+    test.case("combined character-note editor switches discards limits and saves", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.SetMainsAltsReport({
@@ -1537,7 +1582,7 @@ return {
         test.assert_equal(editor.point, "TOPLEFT")
         test.assert_equal(editor.relativeTo, harness.frame())
         test.assert_equal(editor.relativePoint, "TOPRIGHT")
-        test.assert_equal(editor.x, 0)
+        test.assert_equal(editor.x, 20)
         test.assert_equal(editor.y, 0)
         test.assert_equal(
             editor.shadow.texture,
@@ -1555,11 +1600,65 @@ return {
             editor.textArea.backdropColor,
             { 0.133, 0.149, 0.18, 1 }
         )
-        test.assert_equal(editor.textArea.points[1].x, 20)
-        test.assert_equal(editor.textArea.points[2].x, -20)
+        test.assert_equal(editor.fields.privateNote.points[1].x, 20)
+        test.assert_equal(editor.fields.privateNote.points[2].x, -20)
+        test.assert_equal(editor.fields.officerNote.points[1].y, -78)
+        test.assert_equal(editor.fields.publicNote.points[1].y, -198)
+        test.assert_equal(editor.fields.privateNote.points[1].y, -318)
+        test.assert_equal(editor.fields.privateNote.label.text, "Private Note")
+        test.assert_equal(editor.fields.publicNote.label.text, "Public Note")
+        test.assert_equal(editor.fields.officerNote.label.text, "Officer Note")
+        test.assert_equal(editor.fields.publicNote.helpButton.background.text, "○")
+        test.assert_equal(editor.fields.officerNote.helpButton.background.text, "○")
+        test.assert_equal(editor.fields.publicNote.helpButton.glyph.text, "?")
+        test.assert_equal(editor.fields.officerNote.helpButton.glyph.text, "?")
+        test.assert_nil(editor.fields.privateNote.helpButton)
+        test.assert_nil(editor.fields.publicNote.scrollFrame.templateName)
+        test.assert_nil(editor.fields.officerNote.scrollFrame.templateName)
+        test.assert_equal(editor.fields.publicNote.scrollFrame.points[2].x, 0)
+        test.assert_equal(editor.fields.officerNote.scrollFrame.points[2].x, 0)
+        test.assert_equal(
+            editor.fields.privateNote.scrollFrame.templateName,
+            "UIPanelScrollFrameTemplate"
+        )
+        test.assert_equal(editor.fields.privateNote.scrollFrame.points[2].x, -18)
+        test.assert_not_nil(editor.fields.publicNote.readOnlyOverlay)
+        test.assert_not_nil(editor.fields.officerNote.readOnlyOverlay)
+        test.assert_equal(#editor.fields.publicNote.readOnlyOverlay.stripes, 24)
+        test.assert_true(editor.fields.publicNote.readOnlyOverlay.clipsChildren)
+        test.assert_equal(
+            editor.fields.publicNote.readOnlyOverlay.stripes[1]:GetHeight(),
+            5
+        )
+        test.assert_equal(
+            editor.fields.publicNote.readOnlyOverlay.stripes[1].rotation,
+            math.pi / 4
+        )
+        test.assert_equal(
+            editor.fields.publicNote.readOnlyOverlay.stripes[1].vertexColor[4],
+            0.1
+        )
+        test.assert_false(editor.fields.publicNote.characterCount:IsShown())
+        test.assert_false(editor.fields.officerNote.characterCount:IsShown())
+        test.assert_true(editor.fields.privateNote.characterCount:IsShown())
+        editor.fields.publicNote.helpButton.scripts.OnEnter(
+            editor.fields.publicNote.helpButton
+        )
+        local noteTooltip = harness.frame().ownedTooltip
+        test.assert_equal(noteTooltip.title.text, "")
+        test.assert_false(noteTooltip.title:IsShown())
+        test.assert_equal(
+            noteTooltip.body.text,
+            "This note is read-only in RGMS. To change it, use the default Guild Roster interface."
+        )
+        test.assert_nil(noteTooltip.body.text:find("World of Warcraft", 1, true))
+        editor.fields.publicNote.helpButton.scripts.OnLeave(
+            editor.fields.publicNote.helpButton
+        )
+        test.assert_false(noteTooltip:IsShown())
         test.assert_nil(editor.editBox.templateName)
         test.assert_equal(editor.editBox:GetWidth(), 370)
-        test.assert_equal(editor.editBox:GetHeight(), 185)
+        test.assert_equal(editor.editBox:GetHeight(), 116)
         test.assert_equal(editor.editBox.justifyH, "LEFT")
         test.assert_equal(editor.editBox.textInsets, { 8, 8, 8, 8 })
 
@@ -1578,16 +1677,19 @@ return {
 
         view.mainsAltsLines[1].noteButton.scripts.OnClick()
         test.assert_true(editor:IsShown())
-        test.assert_equal(editor.character.text, "Editing note for Main-Area52")
+        test.assert_equal(editor.character.text, "Editing notes for Main-Area52")
         test.assert_equal(editor.editBox:GetText(), "Saved main note")
-        test.assert_true(editor.deleteButton:IsEnabled())
+        test.assert_equal(editor.fields.publicNote.editBox:GetText(), "Live public")
+        test.assert_equal(editor.fields.officerNote.editBox:GetText(), "Live officer")
+        test.assert_false(editor.fields.publicNote.editBox:IsEnabled())
+        test.assert_false(editor.fields.officerNote.editBox:IsEnabled())
+        test.assert_nil(editor.deleteButton)
 
         editor.editBox:SetText("unsaved change")
         view.mainsAltsLines[2].noteButton.scripts.OnClick()
         test.assert_true(editor:IsShown())
         test.assert_equal(editor.characterIdentity, "solo-area52")
         test.assert_equal(editor.editBox:GetText(), "")
-        test.assert_false(editor.deleteButton:IsEnabled())
         editor.cancelButton.scripts.OnClick()
         test.assert_false(editor:IsShown())
         test.assert_equal(harness.noteSaves, {})
@@ -1599,18 +1701,20 @@ return {
         editor.saveButton.scripts.OnClick()
         test.assert_false(editor:IsShown())
         test.assert_equal(harness.noteSaves[1].identity, "main-area52")
-        test.assert_equal(#harness.noteSaves[1].value, 5500)
+        test.assert_equal(#harness.noteSaves[1].privateNote, 5500)
+        test.assert_equal(harness.noteSaves[1].publicNote, "Live public")
 
         view.mainsAltsLines[1].noteButton.scripts.OnClick()
-        editor.deleteButton.scripts.OnClick()
+        editor.editBox:SetText("")
+        editor.saveButton.scripts.OnClick()
         test.assert_false(editor:IsShown())
-        test.assert_equal(harness.noteDeletes, { "main-area52" })
+        test.assert_equal(harness.noteSaves[2].privateNote, "")
 
         view.mainsAltsLines[1].noteButton.scripts.OnClick()
         editor.editBox:SetText("discard me")
         editor.closeButton.scripts.OnClick()
         test.assert_false(editor:IsShown())
-        test.assert_equal(#harness.noteSaves, 1)
+        test.assert_equal(#harness.noteSaves, 2)
 
         harness.ui.SetMainsAltsReport({
             rows = {
@@ -1634,7 +1738,72 @@ return {
         editor.editBox:SetText("discard this removed character edit")
         harness.ui.SetMainsAltsReport({ rows = {} })
         test.assert_false(editor:IsShown())
-        test.assert_equal(#harness.noteSaves, 1)
+        test.assert_equal(#harness.noteSaves, 2)
+    end),
+
+    test.case("combined note loading read-only and saving states preserve close access", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        test.assert_true(harness.ui.OpenCharacterNote(
+            "main-area52",
+            "Main-Area52",
+            "private",
+            true
+        ))
+        local editor = harness.frame().notesEditor
+        editor.fields.publicNote.editBox:SetText(string.rep("p", 32))
+        editor.fields.officerNote.editBox:SetText(string.rep("o", 32))
+        test.assert_equal(#editor.fields.publicNote.editBox:GetText(), 31)
+        test.assert_equal(#editor.fields.officerNote.editBox:GetText(), 31)
+
+        harness.ui.SetCharacterNoteState({
+            identity = "main-area52",
+            displayName = "Main-Area52",
+            status = "loading",
+            drafts = {
+                privateNote = "private draft",
+                publicNote = "",
+                officerNote = "",
+            },
+            publicVisible = true,
+            publicEditable = false,
+            officerVisible = false,
+            officerEditable = false,
+            loading = true,
+            saveEnabled = false,
+        })
+        test.assert_true(editor.fields.privateNote.editBox:IsEnabled())
+        test.assert_false(editor.fields.publicNote.editBox:IsEnabled())
+        test.assert_false(editor.fields.officerNote:IsShown())
+        test.assert_equal(editor.fields.publicNote.points[1].y, -78)
+        test.assert_equal(editor.fields.privateNote.points[1].y, -198)
+        test.assert_equal(editor:GetHeight(), 450)
+        test.assert_true(editor.guildOverlay.points[1].relativeTo
+            == editor.fields.publicNote)
+        test.assert_true(editor.guildOverlay:IsShown())
+        test.assert_true(editor.guildOverlay.spinning)
+        test.assert_false(editor.saveButton:IsEnabled())
+
+        harness.ui.SetCharacterNoteState({
+            identity = "main-area52",
+            displayName = "Main-Area52",
+            status = "saving",
+            drafts = {
+                privateNote = "private draft",
+                publicNote = "public draft",
+                officerNote = "officer draft",
+            },
+            publicVisible = true,
+            publicEditable = true,
+            officerVisible = true,
+            officerEditable = true,
+            saving = true,
+            saveEnabled = false,
+        })
+        test.assert_true(editor.operationOverlay:IsShown())
+        test.assert_false(editor.fields.privateNote.editBox:IsEnabled())
+        test.assert_false(editor.cancelButton:IsEnabled())
+        test.assert_true(editor.closeButton:IsEnabled())
     end),
 
     test.case("roster refresh button starts manual scans and disables while scanning", function()

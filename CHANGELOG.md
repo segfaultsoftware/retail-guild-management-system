@@ -9,10 +9,26 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Combined Private, Public, and permission-eligible Officer Notes in one
+  Mains/Alts editor backed by a transient live guild-note cache, event-driven
+  indicators, conflict detection, verified saves, and best-effort rollback;
+  the fields appear Officer, Public, then Private, and completed roster scans
+  now refresh the live guild-note cache. Retail note writes use the addon-safe
+  indexed APIs instead of Blizzard's protected GUID writer, with bounded
+  polling when roster events are throttled.
+  Confirmed guild-note indicators remain visible during background refreshes,
+  and opening Mains/Alts no longer forces a redundant roster request.
+- Displayed Public and Officer Notes as read-only fields with a subtle grey
+  diagonal-striped overlay because current Retail clients protect guild-note
+  writes from addons, with outlined help icons and body-only tooltips directing
+  users to the default Guild Roster interface for changes, plus no unnecessary
+  scrollbars.
+- Removed the redundant Note label from the Mains/Alts table header to match
+  the icon-only Tags column.
 - Restyled the character-note editor as a bordered multiline text area that
-  gains focus when clicked anywhere, opens flush with the main window's
-  top-right edge with a matching drop shadow, and moves together with the
-  main window while preserving its existing size and scrolling behavior.
+  gains focus when clicked anywhere, opens 20 pixels to the right of the main
+  window's top-right edge with a matching drop shadow, and moves together with
+  the main window while preserving its existing size and scrolling behavior.
 
 ## 1.0.3
 

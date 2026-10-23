@@ -5,6 +5,7 @@ local createFrame = CreateFrame
 local windowDragRoot
 local startWindowDrag
 local stopWindowDrag
+local setEditBoxEnabled
 
 local function isInsideMainWindow(parent)
     local current = parent
@@ -107,6 +108,7 @@ local TAG_PILL_HEIGHT = 20
 local TAG_PILL_GAP = 6
 local TAG_POPOVER_PADDING = 8
 local CHARACTER_NOTE_LIMIT = 5500
+local GUILD_NOTE_LIMIT = 31
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
 local CHARACTER_TAG_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\tag.png"
 local MISSING_WARNING_SIZE = 16
@@ -119,6 +121,7 @@ local LOGO_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\rgms-logo.png"
 local CLOSE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\x.png"
 local CHEVRON_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\chevron-right.png"
 local REFRESH_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\refresh-cw.png"
+local LOADER_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\loader-circle.png"
 local FONT_REGULAR = "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-Regular.ttf"
 local FONT_SEMIBOLD = "Interface\\AddOns\\RGMS\\assets\\fonts\\Inter-SemiBold.ttf"
 local PALETTE = type(RGMS.Portal) == "table" and RGMS.Portal.PALETTE or {
@@ -745,7 +748,7 @@ local function createMainsAltsHeader(view)
     actionsText:SetWidth(160)
     characterText:SetText("Character")
     tagsText:SetText("")
-    noteText:SetText("Note")
+    noteText:SetText("")
     actionsText:SetText("Actions")
     for _, label in ipairs({ characterText, tagsText, noteText, actionsText }) do
         label:SetJustifyH("LEFT")
@@ -817,8 +820,12 @@ showOwnedTooltip = function(owner, title, body)
         return
     end
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(title)
-    if body and body ~= "" then
+    if title and title ~= "" then
+        GameTooltip:SetText(title)
+    else
+        GameTooltip:SetText(body or "", 1, 1, 1, true)
+    end
+    if title and title ~= "" and body and body ~= "" then
         GameTooltip:AddLine(body, 1, 1, 1, true)
     end
     GameTooltip:Show()
@@ -1129,16 +1136,21 @@ local function updateMainsAltsControlState(view)
     end
     if UI.frame and UI.frame.notesEditor then
         local editor = UI.frame.notesEditor
-        editor.saveButton:SetEnabled(enabled)
-        editor.deleteButton:SetEnabled(enabled and editor.noteExists == true)
-        editor.cancelButton:SetEnabled(enabled)
-        editor.closeButton:SetEnabled(enabled)
-        if type(editor.editBox.SetEnabled) == "function" then
-            editor.editBox:SetEnabled(enabled)
-        elseif enabled and type(editor.editBox.Enable) == "function" then
-            editor.editBox:Enable()
-        elseif not enabled and type(editor.editBox.Disable) == "function" then
-            editor.editBox:Disable()
+        local model = editor.model
+        local saving = model and model.saving == true
+        editor.saveButton:SetEnabled(enabled and model and model.saveEnabled == true)
+        editor.cancelButton:SetEnabled(enabled and not saving)
+        editor.closeButton:SetEnabled(true)
+        for key, field in pairs(editor.fields or {}) do
+            local fieldEnabled = enabled and not saving
+            if key == "publicNote" then
+                fieldEnabled = fieldEnabled and model
+                    and model.publicEditable == true and not model.loading
+            elseif key == "officerNote" then
+                fieldEnabled = fieldEnabled and model
+                    and model.officerEditable == true and not model.loading
+            end
+            setEditBoxEnabled(field.editBox, fieldEnabled == true)
         end
     end
 end
@@ -2785,6 +2797,174 @@ local function createView(parent, tabId)
     return view
 end
 
+setEditBoxEnabled = function(editBox, enabled)
+    if type(editBox.SetEnabled) == "function" then
+        editBox:SetEnabled(enabled)
+    elseif enabled and type(editBox.Enable) == "function" then
+        editBox:Enable()
+    elseif not enabled and type(editBox.Disable) == "function" then
+        editBox:Disable()
+    end
+end
+
+local function createNoteField(editor, key, labelText, y, height, limit, readOnly)
+    local field = CreateFrame("Frame", nil, editor)
+    field:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, y)
+    field:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -20, y)
+    field:SetHeight(height)
+    field.key = key
+    field.limit = limit
+
+    field.label = field:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    field.label:SetPoint("TOPLEFT", field, "TOPLEFT", 0, 0)
+    field.label:SetText(labelText)
+    setFont(field.label, FONT_SEMIBOLD, 11)
+    setTextColor(field.label, PALETTE.text)
+
+    if readOnly then
+        field.helpButton = CreateFrame("Button", nil, field)
+        field.helpButton:SetSize(14, 14)
+        field.helpButton:SetPoint("LEFT", field.label, "RIGHT", 5, 0)
+        field.helpButton.background = field.helpButton:CreateFontString(
+            nil,
+            "ARTWORK",
+            "GameFontNormal"
+        )
+        field.helpButton.background:SetPoint("CENTER", field.helpButton, "CENTER", 0, 0)
+        field.helpButton.background:SetText("○")
+        setFont(field.helpButton.background, FONT_SEMIBOLD, 16)
+        setTextColor(field.helpButton.background, PALETTE.secondary)
+        field.helpButton.glyph = field.helpButton:CreateFontString(
+            nil,
+            "OVERLAY",
+            "GameFontNormalSmall"
+        )
+        field.helpButton.glyph:SetPoint("CENTER", field.helpButton, "CENTER", 0, 0)
+        field.helpButton.glyph:SetText("?")
+        setFont(field.helpButton.glyph, FONT_SEMIBOLD, 10)
+        setTextColor(field.helpButton.glyph, PALETTE.secondary)
+        field.helpButton:SetScript("OnEnter", function(button)
+            showOwnedTooltip(
+                button,
+                nil,
+                "This note is read-only in RGMS. To change it, use the default Guild Roster interface."
+            )
+        end)
+        field.helpButton:SetScript("OnLeave", function(button)
+            hideOwnedTooltip(button)
+        end)
+    end
+
+    field.textArea = CreateFrame("Frame", nil, field, "BackdropTemplate")
+    field.textArea:SetPoint("TOPLEFT", field, "TOPLEFT", 0, -19)
+    field.textArea:SetPoint("BOTTOMRIGHT", field, "BOTTOMRIGHT", 0, 0)
+    flatBackdrop(field.textArea, PALETTE.control, PALETTE.border)
+
+    local scrollTemplate
+    if not readOnly then
+        scrollTemplate = "UIPanelScrollFrameTemplate"
+    end
+    field.scrollFrame = CreateFrame(
+        "ScrollFrame",
+        nil,
+        field,
+        scrollTemplate
+    )
+    field.scrollFrame:SetPoint("TOPLEFT", field.textArea, "TOPLEFT", 0, 0)
+    field.scrollFrame:SetPoint(
+        "BOTTOMRIGHT",
+        field.textArea,
+        "BOTTOMRIGHT",
+        readOnly and 0 or -18,
+        0
+    )
+
+    field.editBox = CreateFrame("EditBox", nil, field.scrollFrame)
+    field.editBox:SetMultiLine(true)
+    field.editBox:SetAutoFocus(false)
+    field.editBox:SetFontObject("ChatFontNormal")
+    field.editBox:SetJustifyH("LEFT")
+    field.editBox:SetJustifyV("TOP")
+    field.editBox:SetTextInsets(8, 8, 8, 8)
+    field.editBox:SetWidth(370)
+    field.editBox:SetHeight(math.max(44, height - 24))
+    field.editBox:SetMaxLetters(limit)
+    field.scrollFrame:SetScrollChild(field.editBox)
+
+    field.characterCount = field:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontHighlightSmall"
+    )
+    field.characterCount:SetPoint("BOTTOMRIGHT", field.textArea, "BOTTOMRIGHT", -7, 4)
+    field.characterCount:SetText("0 / " .. limit)
+    setTextColor(field.characterCount, PALETTE.secondary)
+    field.characterCount:SetShown(readOnly ~= true)
+
+    if readOnly then
+        field.readOnlyOverlay = CreateFrame(
+            "Frame",
+            nil,
+            field.textArea,
+            "BackdropTemplate"
+        )
+        field.readOnlyOverlay:SetAllPoints(field.textArea)
+        field.readOnlyOverlay:SetFrameLevel(field.scrollFrame:GetFrameLevel() + 2)
+        field.readOnlyOverlay:SetBackdrop({ bgFile = WHITE_TEXTURE })
+        field.readOnlyOverlay:SetBackdropColor(0.32, 0.34, 0.38, 0.05)
+        if type(field.readOnlyOverlay.SetClipsChildren) == "function" then
+            field.readOnlyOverlay:SetClipsChildren(true)
+        end
+        field.readOnlyOverlay:EnableMouse(true)
+        field.readOnlyOverlay.stripes = {}
+        for index = 1, 24 do
+            local stripe = field.readOnlyOverlay:CreateTexture(nil, "OVERLAY")
+            stripe:SetTexture(WHITE_TEXTURE)
+            stripe:SetVertexColor(0.58, 0.6, 0.64, 0.1)
+            stripe:SetSize(180, 5)
+            stripe:SetPoint(
+                "CENTER",
+                field.readOnlyOverlay,
+                "CENTER",
+                -276 + ((index - 1) * 24),
+                0
+            )
+            stripe:SetRotation(math.pi / 4)
+            field.readOnlyOverlay.stripes[index] = stripe
+        end
+    end
+
+    local function focusEditBox()
+        if field.editBox:IsEnabled() then
+            field.editBox:SetFocus()
+        end
+    end
+    for _, surface in ipairs({ field.textArea, field.scrollFrame, field.editBox }) do
+        surface:EnableMouse(true)
+        surface:SetScript("OnMouseDown", focusEditBox)
+    end
+    field.editBox:SetScript("OnTextChanged", function(editBox)
+        field.characterCount:SetText(
+            characterCount(editBox:GetText()) .. " / " .. limit
+        )
+        if type(editBox.GetStringHeight) == "function" then
+            editBox:SetHeight(math.max(height - 24, editBox:GetStringHeight() + 20))
+        end
+        if type(field.scrollFrame.UpdateScrollChildRect) == "function" then
+            field.scrollFrame:UpdateScrollChildRect()
+        end
+        if not editor.settingState
+            and type(RGMS.MainsAlts) == "table"
+            and type(RGMS.MainsAlts.SetCharacterNoteDraft) == "function" then
+            RGMS.MainsAlts.SetCharacterNoteDraft(key, editBox:GetText())
+        end
+    end)
+    field.editBox:SetScript("OnEscapePressed", function()
+        UI.CloseCharacterNoteEditor()
+    end)
+    return field
+end
+
 local function createNotesEditor(owner)
     local editor = CreateFrame(
         "Frame",
@@ -2792,8 +2972,8 @@ local function createNotesEditor(owner)
         UIParent,
         "BackdropTemplate"
     )
-    editor:SetSize(440, 330)
-    editor:SetPoint("TOPLEFT", owner, "TOPRIGHT", 0, 0)
+    editor:SetSize(440, 570)
+    editor:SetPoint("TOPLEFT", owner, "TOPRIGHT", 20, 0)
     editor:SetFrameStrata("DIALOG")
     editor:SetToplevel(true)
     editor:EnableMouse(true)
@@ -2844,99 +3024,104 @@ local function createNotesEditor(owner)
         hideOwnedTooltip(button)
     end)
 
-    editor.textArea = CreateFrame("Frame", nil, editor, "BackdropTemplate")
-    editor.textArea:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -78)
-    editor.textArea:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -20, 58)
-    flatBackdrop(editor.textArea, PALETTE.control, PALETTE.border)
+    editor.fields = {
+        officerNote = createNoteField(
+            editor,
+            "officerNote",
+            "Officer Note",
+            -78,
+            112,
+            GUILD_NOTE_LIMIT,
+            true
+        ),
+        publicNote = createNoteField(
+            editor,
+            "publicNote",
+            "Public Note",
+            -198,
+            112,
+            GUILD_NOTE_LIMIT,
+            true
+        ),
+        privateNote = createNoteField(
+            editor,
+            "privateNote",
+            "Private Note",
+            -318,
+            140,
+            CHARACTER_NOTE_LIMIT,
+            false
+        ),
+    }
+    -- Retain the established private-field aliases for callers and layout tests.
+    editor.textArea = editor.fields.privateNote.textArea
+    editor.scrollFrame = editor.fields.privateNote.scrollFrame
+    editor.editBox = editor.fields.privateNote.editBox
+    editor.characterCount = editor.fields.privateNote.characterCount
 
-    editor.scrollFrame = CreateFrame(
-        "ScrollFrame",
-        nil,
-        editor,
-        "UIPanelScrollFrameTemplate"
+    editor.status = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    editor.status:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 20, 48)
+    editor.status:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -20, 48)
+    editor.status:SetJustifyH("LEFT")
+    setTextColor(editor.status, PALETTE.error)
+
+    editor.guildOverlay = CreateFrame("Frame", nil, editor, "BackdropTemplate")
+    editor.guildOverlay:SetPoint("TOPLEFT", editor.fields.officerNote, "TOPLEFT", 0, 0)
+    editor.guildOverlay:SetPoint(
+        "BOTTOMRIGHT",
+        editor.fields.publicNote,
+        "BOTTOMRIGHT",
+        0,
+        0
     )
-    editor.scrollFrame:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, -78)
-    editor.scrollFrame:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -38, 58)
-
-    editor.editBox = CreateFrame(
-        "EditBox",
-        nil,
-        editor.scrollFrame
-    )
-    editor.editBox:SetMultiLine(true)
-    editor.editBox:SetAutoFocus(false)
-    editor.editBox:SetFontObject("ChatFontNormal")
-    editor.editBox:SetJustifyH("LEFT")
-    editor.editBox:SetJustifyV("TOP")
-    editor.editBox:SetTextInsets(8, 8, 8, 8)
-    editor.editBox:SetWidth(370)
-    editor.editBox:SetHeight(185)
-    editor.editBox:SetMaxLetters(CHARACTER_NOTE_LIMIT)
-    editor.scrollFrame:SetScrollChild(editor.editBox)
-
-    local function focusEditBox()
-        if editor.editBox:IsEnabled() then
-            editor.editBox:SetFocus()
-        end
-    end
-    for _, focusSurface in ipairs({
-        editor.textArea,
-        editor.scrollFrame,
-        editor.editBox,
-    }) do
-        focusSurface:EnableMouse(true)
-        focusSurface:SetScript("OnMouseDown", focusEditBox)
-    end
-
-    editor.characterCount = editor:CreateFontString(
+    editor.guildOverlay:SetBackdrop({ bgFile = WHITE_TEXTURE })
+    editor.guildOverlay:SetBackdropColor(0, 0, 0, 0.58)
+    editor.guildOverlay:SetFrameLevel(editor:GetFrameLevel() + 10)
+    editor.guildOverlay:EnableMouse(true)
+    editor.guildOverlay.icon = editor.guildOverlay:CreateTexture(nil, "OVERLAY")
+    editor.guildOverlay.icon:SetSize(22, 22)
+    editor.guildOverlay.icon:SetPoint("CENTER", editor.guildOverlay, "CENTER", 0, 10)
+    editor.guildOverlay.icon:SetTexture(LOADER_TEXTURE)
+    editor.guildOverlay.message = editor.guildOverlay:CreateFontString(
         nil,
         "OVERLAY",
         "GameFontHighlightSmall"
     )
-    editor.characterCount:SetPoint(
-        "BOTTOMRIGHT",
-        editor,
-        "BOTTOMRIGHT",
-        -20,
-        39
-    )
-    editor.characterCount:SetText("0 / " .. CHARACTER_NOTE_LIMIT)
-    editor.editBox:SetScript("OnTextChanged", function(editBox)
-        editor.characterCount:SetText(
-            characterCount(editBox:GetText()) .. " / " .. CHARACTER_NOTE_LIMIT
-        )
-        if type(editBox.GetStringHeight) == "function" then
-            editBox:SetHeight(math.max(185, editBox:GetStringHeight() + 20))
-        end
-        if type(editor.scrollFrame.UpdateScrollChildRect) == "function" then
-            editor.scrollFrame:UpdateScrollChildRect()
+    editor.guildOverlay.message:SetPoint("TOP", editor.guildOverlay.icon, "BOTTOM", 0, -8)
+    editor.guildOverlay:SetScript("OnUpdate", function(overlay, elapsed)
+        if overlay.spinning then
+            overlay.rotation = ((overlay.rotation or 0) + elapsed * 5)
+                % (math.pi * 2)
+            if type(overlay.icon.SetRotation) == "function" then
+                overlay.icon:SetRotation(overlay.rotation)
+            end
         end
     end)
-    editor.editBox:SetScript("OnEscapePressed", function()
-        UI.CloseCharacterNoteEditor()
-    end)
+    editor.guildOverlay:Hide()
 
-    editor.deleteButton = CreateFrame(
-        "Button",
+    editor.operationOverlay = CreateFrame("Frame", nil, editor, "BackdropTemplate")
+    editor.operationOverlay:SetAllPoints(editor)
+    editor.operationOverlay:SetBackdrop({ bgFile = WHITE_TEXTURE })
+    editor.operationOverlay:SetBackdropColor(0, 0, 0, 0.66)
+    editor.operationOverlay:EnableMouse(true)
+    editor.operationOverlay.icon = editor.operationOverlay:CreateTexture(nil, "OVERLAY")
+    editor.operationOverlay.icon:SetSize(24, 24)
+    editor.operationOverlay.icon:SetPoint("CENTER", editor.operationOverlay, "CENTER", 0, 8)
+    editor.operationOverlay.icon:SetTexture(LOADER_TEXTURE)
+    editor.operationOverlay.message = editor.operationOverlay:CreateFontString(
         nil,
-        editor,
-        "UIPanelButtonTemplate"
+        "OVERLAY",
+        "GameFontHighlightSmall"
     )
-    editor.deleteButton:SetSize(76, 22)
-    editor.deleteButton:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 20, 18)
-    editor.deleteButton:SetText("Delete")
-    styleButton(editor.deleteButton, "danger", 32)
-    editor.deleteButton:SetScript("OnClick", function()
-        local deleted, deleteError = RGMS.MainsAlts.DeleteCharacterNote(
-            editor.characterIdentity
-        )
-        if deleted then
-            UI.CloseCharacterNoteEditor()
-        elseif type(RGMS.Print) == "function" then
-            RGMS.Print("Could not delete character note: "
-                .. tostring(deleteError) .. ".")
+    editor.operationOverlay.message:SetPoint("TOP", editor.operationOverlay.icon, "BOTTOM", 0, -8)
+    editor.operationOverlay.message:SetText("Saving and verifying notes…")
+    editor.operationOverlay:SetScript("OnUpdate", function(overlay, elapsed)
+        overlay.rotation = ((overlay.rotation or 0) + elapsed * 5) % (math.pi * 2)
+        if type(overlay.icon.SetRotation) == "function" then
+            overlay.icon:SetRotation(overlay.rotation)
         end
     end)
+    editor.operationOverlay:Hide()
 
     editor.cancelButton = CreateFrame(
         "Button",
@@ -2963,14 +3148,9 @@ local function createNotesEditor(owner)
     editor.saveButton:SetText("Save")
     styleButton(editor.saveButton, "primary", 32)
     editor.saveButton:SetScript("OnClick", function()
-        local saved, saveError = RGMS.MainsAlts.SaveCharacterNote(
-            editor.characterIdentity,
-            editor.editBox:GetText()
-        )
-        if saved then
-            UI.CloseCharacterNoteEditor()
-        elseif type(RGMS.Print) == "function" then
-            RGMS.Print("Could not save character note: "
+        local saved, saveError = RGMS.MainsAlts.SaveCharacterNotes()
+        if not saved and type(RGMS.Print) == "function" then
+            RGMS.Print("Could not save character notes: "
                 .. tostring(saveError) .. ".")
         end
     end)
@@ -2982,7 +3162,7 @@ local function createNotesEditor(owner)
         editor.editBox:ClearFocus()
         editor.characterIdentity = nil
         editor.displayName = nil
-        editor.noteExists = false
+        editor.model = nil
     end)
     enableWindowDragging(editor)
     editor:Hide()
@@ -3166,7 +3346,7 @@ local function createWindow()
     scanNotice.icon = scanNotice:CreateTexture(nil, "ARTWORK")
     scanNotice.icon:SetSize(24, 24)
     scanNotice.icon:SetPoint("LEFT", scanNotice, "LEFT", 20, 0)
-    scanNotice.icon:SetTexture("Interface\\AddOns\\RGMS\\assets\\icons\\loader-circle.png")
+    scanNotice.icon:SetTexture(LOADER_TEXTURE)
     scanNotice.icon:SetVertexColor(unpackColor(PALETTE.pink))
     scanNotice.label = scanNotice:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     scanNotice.label:SetPoint("LEFT", scanNotice.icon, "RIGHT", 10, 0)
@@ -3319,6 +3499,7 @@ function UI.AlignToRightOf(frame)
 end
 
 function UI.SelectPrimaryTab(tabId)
+    local previousTabId = UI.selectedTab
     tabId = normalizeTabId(tabId)
     if not tabId then
         return nil, "primary tab must be roster, mainsalts, or bank"
@@ -3365,6 +3546,11 @@ function UI.SelectPrimaryTab(tabId)
     end
     UI.frame.selectedTab = selectedIndex
     UI.selectedTab = tabId
+    if tabId == "mainsalts" and previousTabId ~= "mainsalts"
+        and type(RGMS.MainsAlts) == "table"
+        and type(RGMS.MainsAlts.RequestGuildNotes) == "function" then
+        RGMS.MainsAlts.RequestGuildNotes()
+    end
     local selectedView = UI.frame.views[tabId]
     if UI.frame:IsShown() then
         refreshVisibleReport(selectedView, tabId)
@@ -3552,34 +3738,137 @@ function UI.OpenCharacterNote(identity, displayName, note, hasNote)
         end
     end
 
+    if type(RGMS.MainsAlts) ~= "table"
+        or type(RGMS.MainsAlts.OpenCharacterNotes) ~= "function" then
+        return nil, "live guild notes are unavailable"
+    end
+    local model, modelError = RGMS.MainsAlts.OpenCharacterNotes(
+        identity,
+        displayName,
+        note
+    )
+    if not model then
+        if type(RGMS.PortalState) == "table" then
+            RGMS.PortalState:closeNote()
+        end
+        return nil, modelError
+    end
     local editor = UI.frame.notesEditor
     editor.characterIdentity = identity
     editor.displayName = displayName
-    editor.noteExists = hasNote == true
-    editor.character:SetText("Editing note for " .. displayName)
-    editor.editBox:SetText(type(note) == "string" and note or "")
-    editor.editBox:SetCursorPosition(0)
-    editor.saveButton:SetEnabled(true)
-    editor.deleteButton:SetEnabled(editor.noteExists)
-    if type(editor.editBox.SetEnabled) == "function" then
-        editor.editBox:SetEnabled(true)
-    elseif type(editor.editBox.Enable) == "function" then
-        editor.editBox:Enable()
-    end
+    editor.character:SetText("Editing notes for " .. displayName)
+    UI.SetCharacterNoteState(model)
     editor:Show()
     UI.frame.modalDimmer:Show()
     editor.editBox:SetFocus()
     return true
 end
 
-function UI.CloseCharacterNoteEditor()
+function UI.CloseCharacterNoteEditor(skipController)
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
+    end
+    if not skipController
+        and type(RGMS.MainsAlts) == "table"
+        and type(RGMS.MainsAlts.CloseCharacterNotes) == "function" then
+        RGMS.MainsAlts.CloseCharacterNotes()
     end
     UI.frame.notesEditor:Hide()
     UI.frame.modalDimmer:Hide()
     if type(RGMS.PortalState) == "table" then
         RGMS.PortalState:closeNote()
+    end
+    return true
+end
+
+function UI.SetCharacterNoteState(model)
+    if not UI.frame or type(model) ~= "table" then
+        return nil, "character note state is unavailable"
+    end
+    local editor = UI.frame.notesEditor
+    editor.model = model
+    editor.characterIdentity = model.identity
+    editor.displayName = model.displayName
+    editor.character:SetText("Editing notes for " .. model.displayName)
+    editor.settingState = true
+    for key, field in pairs(editor.fields) do
+        local value = type(model.drafts) == "table" and model.drafts[key] or ""
+        if field.editBox:GetText() ~= value then
+            field.editBox:SetText(value)
+            field.editBox:SetCursorPosition(0)
+        end
+    end
+    editor.settingState = false
+
+    local fieldY = -78
+    local function positionField(field)
+        field:ClearAllPoints()
+        field:SetPoint("TOPLEFT", editor, "TOPLEFT", 20, fieldY)
+        field:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -20, fieldY)
+        fieldY = fieldY - field:GetHeight() - 8
+    end
+    editor.fields.officerNote:SetShown(model.officerVisible == true)
+    if model.officerVisible then
+        positionField(editor.fields.officerNote)
+    end
+    editor.fields.publicNote:SetShown(model.publicVisible == true)
+    if model.publicVisible then
+        positionField(editor.fields.publicNote)
+    end
+    editor.fields.privateNote:Show()
+    positionField(editor.fields.privateNote)
+    editor:SetHeight(330
+        + (model.publicVisible and 120 or 0)
+        + (model.officerVisible and 120 or 0))
+
+    editor.guildOverlay:ClearAllPoints()
+    editor.guildOverlay:SetPoint(
+        "TOPLEFT",
+        model.officerVisible and editor.fields.officerNote
+            or editor.fields.publicNote,
+        "TOPLEFT",
+        0,
+        0
+    )
+    editor.guildOverlay:SetPoint(
+        "BOTTOMRIGHT",
+        editor.fields.publicNote,
+        "BOTTOMRIGHT",
+        0,
+        0
+    )
+
+    setEditBoxEnabled(editor.fields.privateNote.editBox, not model.saving)
+    setEditBoxEnabled(editor.fields.publicNote.editBox,
+        model.publicEditable == true and not model.loading and not model.saving)
+    setEditBoxEnabled(editor.fields.officerNote.editBox,
+        model.officerEditable == true and not model.loading and not model.saving)
+    editor.saveButton:SetEnabled(model.saveEnabled == true)
+    editor.cancelButton:SetEnabled(not model.saving)
+    editor.closeButton:SetEnabled(true)
+
+    local status = model.error or ""
+    if model.status == "failed" and model.confirmed then
+        status = status
+            .. " Latest confirmed Public: “" .. tostring(model.confirmed.publicNote or "")
+            .. "”."
+        if model.officerVisible then
+            status = status
+                .. " Officer: “" .. tostring(model.confirmed.officerNote or "") .. "”."
+        end
+    end
+    editor.status:SetText(status)
+
+    editor.guildOverlay:SetShown(model.loading or model.loadFailed)
+    editor.guildOverlay.spinning = model.loading == true
+    editor.guildOverlay.icon:SetShown(model.loading == true)
+    editor.guildOverlay.message:SetText(
+        model.loadFailed and "Unable to load guild notes" or "Loading guild notes…"
+    )
+    editor.operationOverlay:SetShown(model.saving == true)
+    if model.saving then
+        editor.operationOverlay:SetFrameLevel(editor:GetFrameLevel() + 20)
+        editor.closeButton:SetFrameLevel(editor:GetFrameLevel() + 22)
     end
     return true
 end
@@ -3618,7 +3907,7 @@ function UI.SetMainsAltsReport(report)
     local editor = UI.frame.notesEditor
     if editor:IsShown()
         and not availableCharacters[editor.characterIdentity] then
-        editor:Hide()
+        UI.CloseCharacterNoteEditor()
     end
     applyMainsAltsSearch(view, false, true)
     return true
@@ -4049,10 +4338,23 @@ function UI.ShowTooltip(owner, title, body)
         return false
     end
     local tooltip = UI.frame.ownedTooltip
+    local hasTitle = type(title) == "string" and title ~= ""
     tooltip.owner = owner
     tooltip.title:SetText(tostring(title or ""))
+    tooltip.title:SetShown(hasTitle)
     tooltip.body:SetText(tostring(body or ""))
-    tooltip:SetHeight(math.max(44, tooltip.body:GetStringHeight() + 34))
+    tooltip.body:ClearAllPoints()
+    if hasTitle then
+        tooltip.body:SetPoint("TOPLEFT", tooltip.title, "BOTTOMLEFT", 0, -5)
+        tooltip.body:SetPoint("TOPRIGHT", tooltip.title, "BOTTOMRIGHT", 0, -5)
+    else
+        tooltip.body:SetPoint("TOPLEFT", tooltip, "TOPLEFT", 10, -8)
+        tooltip.body:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", -10, -8)
+    end
+    tooltip:SetHeight(math.max(
+        44,
+        tooltip.body:GetStringHeight() + (hasTitle and 34 or 16)
+    ))
     tooltip:ClearAllPoints()
     tooltip:SetPoint("BOTTOMLEFT", owner, "TOPRIGHT", 8, 8)
     tooltip:Show()
@@ -4090,6 +4392,10 @@ function UI.Show(tabId)
     end
 
     UI.frame:Show()
+    if not wasShown and type(RGMS.MainsAlts) == "table"
+        and type(RGMS.MainsAlts.RequestGuildNotes) == "function" then
+        RGMS.MainsAlts.RequestGuildNotes()
+    end
     return true
 end
 

@@ -136,14 +136,57 @@ function MainsAlts.SaveCharacterNote(identity, value)
     return publishNote(identity, trimmed ~= "" and trimmed or nil)
 end
 
-function MainsAlts.DeleteCharacterNote(identity)
-    if scanInProgress() then
-        return nil, "character notes are disabled during a roster scan"
+function MainsAlts.OpenCharacterNotes(identity, displayName, privateNote)
+    if type(RGMS.LiveGuildNotes) ~= "table"
+        or type(RGMS.LiveGuildNotes.Open) ~= "function" then
+        return nil, "live guild notes are unavailable"
     end
-    if not characterExists(identity) then
-        return nil, "roster character is unavailable"
+    return RGMS.LiveGuildNotes:Open(identity, displayName, privateNote)
+end
+
+function MainsAlts.SetCharacterNoteDraft(kind, value)
+    if type(RGMS.LiveGuildNotes) ~= "table"
+        or type(RGMS.LiveGuildNotes.SetDraft) ~= "function" then
+        return nil, "live guild notes are unavailable"
     end
-    return publishNote(identity, nil)
+    return RGMS.LiveGuildNotes:SetDraft(kind, value)
+end
+
+function MainsAlts.SaveCharacterNotes()
+    if type(RGMS.LiveGuildNotes) ~= "table"
+        or type(RGMS.LiveGuildNotes.Save) ~= "function" then
+        return nil, "live guild notes are unavailable"
+    end
+    return RGMS.LiveGuildNotes:Save()
+end
+
+function MainsAlts.CloseCharacterNotes()
+    if type(RGMS.LiveGuildNotes) == "table"
+        and type(RGMS.LiveGuildNotes.Close) == "function" then
+        return RGMS.LiveGuildNotes:Close()
+    end
+    return true
+end
+
+function MainsAlts.RequestGuildNotes()
+    if type(RGMS.LiveGuildNotes) == "table"
+        and type(RGMS.LiveGuildNotes.EnsureLoaded) == "function" then
+        return RGMS.LiveGuildNotes:EnsureLoaded()
+    end
+    return nil, "live guild notes are unavailable"
+end
+
+function MainsAlts.RefreshGuildNotes()
+    if type(RGMS.LiveGuildNotes) ~= "table"
+        or type(RGMS.LiveGuildNotes.OnRosterUpdated) ~= "function" then
+        return nil, "live guild notes are unavailable"
+    end
+    local refreshed, reason = RGMS.LiveGuildNotes:OnRosterUpdated()
+    if refreshed == false and reason == "incomplete"
+        and type(RGMS.LiveGuildNotes.RequestLoad) == "function" then
+        RGMS.LiveGuildNotes:RequestLoad()
+    end
+    return refreshed, reason
 end
 
 function MainsAlts.CreateOrAssignTag(identity, value)
@@ -329,6 +372,21 @@ function MainsAlts.RefreshStatus()
             "Mains/Alts report unavailable: " .. tostring(reportError)
         )
         return
+    end
+    if type(RGMS.LiveGuildNotes) == "table"
+        and type(RGMS.LiveGuildNotes.HasActiveNote) == "function" then
+        local function applyLiveNoteState(character)
+            character.hasNote = RGMS.LiveGuildNotes:HasActiveNote(
+                character.identity,
+                character.note
+            )
+        end
+        for _, row in ipairs(report.rows) do
+            applyLiveNoteState(row)
+            for _, alt in ipairs(row.alts or {}) do
+                applyLiveNoteState(alt)
+            end
+        end
     end
     RGMS.UI.SetMainsAltsReport(report)
 

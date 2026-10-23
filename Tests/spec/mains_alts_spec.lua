@@ -67,6 +67,7 @@ local function newHarness(options)
             end,
         },
         MainsAltsTags = tags,
+        LiveGuildNotes = options.liveNotes,
         AccountDataState = { model = { original = true } },
         ActiveGuildIdentity = { name = "Guild" },
         AccountData = {
@@ -173,6 +174,81 @@ return {
         test.assert_false(calls.available)
         test.assert_nil(calls.report)
         test.assert_matches(calls.status.value, "corrupt roster")
+    end),
+
+    test.case("live visible guild notes participate in row note indicators", function()
+        local controller, calls = newHarness({
+            members = { { name = "Main", realm = "Area52" } },
+            rows = {
+                {
+                    identity = "main-area52",
+                    note = "",
+                    hasNote = false,
+                    alts = {},
+                },
+            },
+            liveNotes = {
+                HasActiveNote = function(_, identity, privateNote)
+                    return identity == "main-area52" and privateNote == ""
+                end,
+            },
+        })
+
+        controller.RefreshStatus()
+
+        test.assert_true(calls.report.rows[1].hasNote)
+    end),
+
+    test.case("successful roster scans can refresh the live guild-note cache", function()
+        local refreshed = 0
+        local controller = newHarness({
+            liveNotes = {
+                OnRosterUpdated = function()
+                    refreshed = refreshed + 1
+                    return true
+                end,
+            },
+        })
+
+        test.assert_true(controller.RefreshGuildNotes())
+        test.assert_equal(refreshed, 1)
+    end),
+
+    test.case("UI note requests ensure a cache without forcing a refresh", function()
+        local ensured = 0
+        local controller = newHarness({
+            liveNotes = {
+                EnsureLoaded = function()
+                    ensured = ensured + 1
+                    return true, "cached"
+                end,
+            },
+        })
+
+        local loaded, reason = controller.RequestGuildNotes()
+        test.assert_true(loaded)
+        test.assert_equal(reason, "cached")
+        test.assert_equal(ensured, 1)
+    end),
+
+    test.case("incomplete scan note data requests a follow-up roster load", function()
+        local requests = 0
+        local controller = newHarness({
+            liveNotes = {
+                OnRosterUpdated = function()
+                    return false, "incomplete"
+                end,
+                RequestLoad = function()
+                    requests = requests + 1
+                    return true
+                end,
+            },
+        })
+
+        local refreshed, reason = controller.RefreshGuildNotes()
+        test.assert_false(refreshed)
+        test.assert_equal(reason, "incomplete")
+        test.assert_equal(requests, 1)
     end),
 
     test.case("grouping publishes only the replacement groups and completes the UI state", function()
@@ -339,19 +415,6 @@ return {
         test.assert_nil(calls.noteReplaces[2].note)
     end),
 
-    test.case("character note deletion changes only the note entry", function()
-        local controller, calls = newHarness({
-            members = { { name = "Main", realm = "Area52" } },
-            groups = { ["Main-Area52"] = { "Alt-Area52" } },
-        })
-
-        test.assert_true(controller.DeleteCharacterNote("main-area52"))
-
-        test.assert_nil(calls.noteReplaces[1].note)
-        test.assert_nil(calls.replace)
-        test.assert_nil(calls.groupApply)
-    end),
-
     test.case("character note changes reject scans unknown characters and oversized text", function()
         local scanningController, scanningCalls = newHarness({
             scanning = true,
@@ -361,13 +424,8 @@ return {
             "main-area52",
             "note"
         )
-        local deleted, deleteError = scanningController.DeleteCharacterNote(
-            "main-area52"
-        )
         test.assert_nil(saved)
         test.assert_matches(saveError, "disabled")
-        test.assert_nil(deleted)
-        test.assert_matches(deleteError, "disabled")
         test.assert_nil(scanningCalls.noteReplaces)
 
         local controller, calls = newHarness({
