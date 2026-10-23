@@ -6,11 +6,12 @@ local _, RGMS = ...
 
 local Portal = {}
 
-Portal.VIEWS = { "roster", "mainsalts", "bank" }
+Portal.VIEWS = { "roster", "mainsalts", "bank", "tags" }
 Portal.NAVIGATION = {
     { id = "roster", label = "Roster" },
     { id = "mainsalts", label = "Mains/Alts" },
     { id = "bank", label = "Guild Bank" },
+    { id = "tags", label = "Tags" },
 }
 
 Portal.PALETTE = {
@@ -34,10 +35,11 @@ local VALID_VIEW = {
     roster = true,
     mainsalts = true,
     bank = true,
+    tags = true,
 }
 
 local function copyScrollPositions()
-    return { roster = 0, mainsalts = 0, bank = 0 }
+    return { roster = 0, mainsalts = 0, bank = 0, tags = 0 }
 end
 
 local function numericIndex(option)
@@ -82,6 +84,8 @@ function Portal.contextControls(view)
         return { primary = "Group Toons", search = "character", close = true }
     elseif view == "bank" then
         return { dropdown = "bankTab", primary = "Refresh", close = true }
+    elseif view == "tags" then
+        return { close = true }
     end
     return nil
 end

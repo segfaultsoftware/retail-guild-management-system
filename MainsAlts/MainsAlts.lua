@@ -3,6 +3,9 @@ local _, RGMS = ...
 local MainsAlts = RGMS.MainsAlts or {}
 
 local function scanInProgress()
+    if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
+        return true
+    end
     return type(RGMS.Roster) == "table"
         and type(RGMS.Roster.IsScanInProgress) == "function"
         and RGMS.Roster.IsScanInProgress()
@@ -112,6 +115,7 @@ local function publishTags(tags)
         RGMS.DB.tags = guildOrError.tags
     end
     MainsAlts.RefreshStatus()
+    MainsAlts.RefreshTags()
     return true
 end
 
@@ -255,6 +259,30 @@ function MainsAlts.ToggleCharacterTag(identity, name)
         return nil, publishError
     end
     return true, assignedOrError
+end
+
+function MainsAlts.DeleteTag(name)
+    if scanInProgress() then
+        return nil, "character tags are disabled during an active scan"
+    end
+    if type(RGMS.MainsAltsTags) ~= "table"
+        or type(RGMS.MainsAltsTags.deleteDefinition) ~= "function"
+        or type(RGMS.DB) ~= "table" then
+        return nil, "character tags are unavailable"
+    end
+
+    local tags, deleteError = RGMS.MainsAltsTags.deleteDefinition(
+        RGMS.DB.tags,
+        name
+    )
+    if not tags then
+        return nil, deleteError
+    end
+    local published, publishError = publishTags(tags)
+    if not published then
+        return nil, publishError
+    end
+    return true
 end
 
 function MainsAlts.GroupSelected(selectedIdentities)
@@ -404,6 +432,49 @@ function MainsAlts.RefreshStatus()
                 #RGMS.DB.roster.members == 1 and "" or "s")
         )
     end
+end
+
+function MainsAlts.RefreshTags()
+    if type(RGMS.UI) ~= "table"
+        or type(RGMS.UI.SetViewStatus) ~= "function" then
+        return
+    end
+
+    local available = type(RGMS.Roster) ~= "table"
+        or type(RGMS.Roster.IsAvailable) ~= "function"
+        or RGMS.Roster.IsAvailable()
+    if not available then
+        RGMS.UI.SetViewContent("tags", "Not in a guild")
+        RGMS.UI.SetViewStatus("tags", "Not in a guild")
+        return
+    end
+
+    if type(RGMS.MainsAltsTags) ~= "table"
+        or type(RGMS.MainsAltsTags.buildCatalog) ~= "function"
+        or type(RGMS.DB) ~= "table"
+        or type(RGMS.UI.SetTagsReport) ~= "function" then
+        RGMS.UI.SetViewStatus("tags", "Tag catalog unavailable")
+        return
+    end
+
+    local report, reportError = RGMS.MainsAltsTags.buildCatalog(
+        RGMS.DB.tags,
+        RGMS.DB.roster
+    )
+    if not report then
+        RGMS.UI.SetViewStatus(
+            "tags",
+            "Tag catalog unavailable: " .. tostring(reportError)
+        )
+        return
+    end
+
+    RGMS.UI.SetTagsReport(report)
+    RGMS.UI.SetViewStatus(
+        "tags",
+        string.format("%d tag%s", #report.rows, #report.rows == 1 and "" or "s")
+    )
+    return true
 end
 
 RGMS.MainsAlts = MainsAlts

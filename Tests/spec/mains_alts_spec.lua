@@ -4,7 +4,8 @@ local tags = require("MainsAlts.Tags")
 local function newHarness(options)
     options = options or {}
     local calls = {}
-    local rgms = {
+    local rgms
+    rgms = {
         DB = {
             roster = { members = options.members or {} },
             mainAltGroups = options.groups or {},
@@ -20,6 +21,9 @@ local function newHarness(options)
             IsAvailable = function() return options.available ~= false end,
             IsScanInProgress = function() return options.scanning == true end,
         },
+        IsScanLocked = function()
+            return options.scanLocked == true
+        end,
         MainsAltsReport = {
             build = function()
                 if options.reportError then
@@ -95,11 +99,18 @@ local function newHarness(options)
                     identity = identity,
                     tags = replacementTags,
                 }
+                if options.tagReplaceError then
+                    return nil, options.tagReplaceError
+                end
+                calls.pendingTags = replacementTags
                 return { publishedTags = true }, { tags = replacementTags }
             end,
         },
         ActivateCurrentGuild = function()
             calls.activated = true
+            if calls.pendingTags then
+                rgms.DB.tags = calls.pendingTags
+            end
         end,
         UI = {
             SetMainsAltsAvailable = function(value)
@@ -107,6 +118,9 @@ local function newHarness(options)
             end,
             SetMainsAltsReport = function(value)
                 calls.report = value
+            end,
+            SetTagsReport = function(value)
+                calls.tagsReport = value
             end,
             CompleteMainsAltsGrouping = function(value)
                 calls.completedMain = value
@@ -511,5 +525,62 @@ return {
         test.assert_nil(long)
         test.assert_matches(longError, "32")
         test.assert_nil(calls.tagReplaces)
+    end),
+
+    test.case("tag deletion publishes full cleanup and refreshes both tag consumers", function()
+        local controller, calls, rgms = newHarness({
+            members = { { name = "Visible", realm = "Area52" } },
+            tags = {
+                definitions = { me = true, raid = true },
+                assignments = {
+                    ["visible-area52"] = { me = true, raid = true },
+                    ["retained-area52"] = { raid = true },
+                },
+            },
+        })
+
+        local deleted, deleteError = controller.DeleteTag("raid")
+
+        test.assert_true(deleted, deleteError)
+        test.assert_nil(calls.tagReplaces[1].tags.definitions.raid)
+        test.assert_nil(calls.tagReplaces[1].tags.assignments["visible-area52"].raid)
+        test.assert_nil(calls.tagReplaces[1].tags.assignments["retained-area52"])
+        test.assert_not_nil(calls.report)
+        test.assert_not_nil(calls.tagsReport)
+        test.assert_equal(#calls.tagsReport.rows, 1)
+        test.assert_equal(calls.tagsReport.rows[1].name, "me")
+        test.assert_equal(rgms.AccountDataState.model, { publishedTags = true })
+    end),
+
+    test.case("tag deletion is scan-locked and storage failures remain atomic", function()
+        local locked, lockedCalls = newHarness({
+            scanLocked = true,
+            tags = {
+                definitions = { me = true, raid = true },
+                assignments = { ["main-area52"] = { raid = true } },
+            },
+        })
+        local deleted, lockedError = locked.DeleteTag("raid")
+        test.assert_nil(deleted)
+        test.assert_matches(lockedError, "disabled")
+        test.assert_nil(lockedCalls.tagReplaces)
+
+        local originalTags = {
+            definitions = { me = true, raid = true },
+            assignments = { ["retained-area52"] = { raid = true } },
+        }
+        local controller, calls, rgms = newHarness({
+            tags = originalTags,
+            tagReplaceError = "write rejected",
+        })
+        local originalModel = rgms.AccountDataState.model
+        local failed, failure = controller.DeleteTag("raid")
+        test.assert_nil(failed)
+        test.assert_equal(failure, "write rejected")
+        test.assert_true(rgms.DB.tags.definitions.raid)
+        test.assert_true(rgms.DB.tags.assignments["retained-area52"].raid)
+        test.assert_true(rgms.AccountDataState.model == originalModel)
+        test.assert_nil(calls.report)
+        test.assert_nil(calls.tagsReport)
     end),
 }

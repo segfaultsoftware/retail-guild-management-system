@@ -107,6 +107,76 @@ function Tags.assignedTo(state, identity)
     return names
 end
 
+function Tags.buildCatalog(state, roster)
+    local valid, validationError = Tags.validate(state)
+    if not valid then
+        return nil, validationError
+    end
+    if type(roster) ~= "table" or type(roster.members) ~= "table" then
+        return nil, "tag catalog roster is invalid"
+    end
+
+    local visibleCharacters = {}
+    for _, member in ipairs(roster.members) do
+        if type(member) ~= "table"
+            or type(member.name) ~= "string" or member.name == ""
+            or type(member.realm) ~= "string" or member.realm == "" then
+            return nil, "tag catalog roster member is invalid"
+        end
+        visibleCharacters[Names.identity(member.name, member.realm)] =
+            Names.displayName(member.name, member.realm)
+    end
+
+    local charactersByTag = {}
+    for identity, assigned in pairs(state.assignments) do
+        local displayName = visibleCharacters[identity]
+        if displayName then
+            for name in pairs(assigned) do
+                local characters = charactersByTag[name] or {}
+                characters[#characters + 1] = displayName
+                charactersByTag[name] = characters
+            end
+        end
+    end
+
+    local rows = {}
+    for _, name in ipairs(Tags.sortedDefinitions(state)) do
+        local characters = charactersByTag[name] or {}
+        table.sort(characters)
+        rows[#rows + 1] = {
+            name = name,
+            characters = characters,
+            characterCount = #characters,
+            characterPreview = table.concat(characters, ", "),
+            immutable = name == Tags.DEFAULT_TAG,
+        }
+    end
+    return { rows = rows }
+end
+
+function Tags.deleteDefinition(state, name)
+    local valid, validationError = Tags.validate(state)
+    if not valid then
+        return nil, validationError
+    end
+    if name == Tags.DEFAULT_TAG then
+        return nil, "the me tag is immutable"
+    end
+    if type(name) ~= "string" or state.definitions[name] ~= true then
+        return nil, "tag definition is unavailable"
+    end
+
+    local replacement = copyState(state)
+    replacement.definitions[name] = nil
+    for identity, assigned in pairs(replacement.assignments) do
+        assigned[name] = nil
+        if next(assigned) == nil then
+            replacement.assignments[identity] = nil
+        end
+    end
+    return replacement
+end
+
 function Tags.resolveAndAssign(state, identity, input)
     local valid, validationError = Tags.validate(state)
     if not valid then
