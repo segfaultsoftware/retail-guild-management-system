@@ -5,14 +5,10 @@ All notable user-visible changes to RGMS are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.0.4
 
 ### Added
 
-- Automated final-release publication to CurseForge from the verified GitHub
-  ZIP, with stored Retail metadata, preflight checks, retry-safe job boundaries,
-  provenance summaries, and documented token setup and manual recovery; all
-  valid SemVer prereleases remain GitHub-only.
 - Added Retail-style filled guild-master and outlined officer crown icons to
   matching character rows in the Mains/Alts view.
 
