@@ -148,6 +148,14 @@ local function createRetailApi()
             end
             seenNames[displayName] = true
 
+            local leadershipRole
+            if info.role == Enum.ClubRoleIdentifier.Owner
+                or info.role == Enum.ClubRoleIdentifier.Leader then
+                leadershipRole = "guild-master"
+            elseif info.role == Enum.ClubRoleIdentifier.Moderator then
+                leadershipRole = "officer"
+            end
+
             local lastOnline
             if info.lastOnlineHour ~= nil then
                 if type(info.lastOnlineYear) ~= "number"
@@ -174,6 +182,7 @@ local function createRetailApi()
                 level = info.level,
                 classId = info.classID,
                 classFileName = classInfo.classFile,
+                leadershipRole = leadershipRole,
                 isOnline = info.lastOnlineHour == nil,
                 lastOnline = lastOnline,
                 observedAt = copyTimestamp(scannedAt),

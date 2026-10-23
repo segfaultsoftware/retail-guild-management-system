@@ -5,6 +5,7 @@ local GLOBAL_NAMES = {
     "C_Club",
     "C_CreatureInfo",
     "C_GuildInfo",
+    "Enum",
     "GetCurrentRegion",
     "GetGuildInfo",
     "GetNormalizedRealmName",
@@ -56,6 +57,7 @@ local function withRetailStubs(callback)
                     guid = "Player-0000-00000101",
                     guildRank = "Guild Master",
                     guildRankOrder = 1,
+                    role = 1,
                     level = 80,
                     classID = 1,
                 }
@@ -65,6 +67,7 @@ local function withRetailStubs(callback)
                 guid = "Player-0000-00000202",
                 guildRank = "Member",
                 guildRankOrder = 2,
+                role = 2,
                 level = 80,
                 classID = 8,
                 lastOnlineYear = 0,
@@ -80,6 +83,13 @@ local function withRetailStubs(callback)
                 classFile = classId == 1 and "WARRIOR" or "MAGE",
             }
         end,
+    }
+    Enum = {
+        ClubRoleIdentifier = {
+            Owner = 1,
+            Moderator = 2,
+            Leader = 3,
+        },
     }
     IsInGuild = function()
         return true
@@ -155,6 +165,7 @@ return {
             test.assert_equal(snapshot.members[1].displayName, "Ada-ExampleRealm")
             test.assert_equal(snapshot.members[1].rankName, "Member")
             test.assert_equal(snapshot.members[1].rankIndex, 2)
+            test.assert_equal(snapshot.members[1].leadershipRole, "officer")
             test.assert_equal(snapshot.members[1].lastOnline, {
                 years = 0,
                 months = 1,
@@ -163,6 +174,7 @@ return {
             })
             test.assert_false(snapshot.members[1].isOnline)
             test.assert_true(snapshot.members[2].isOnline)
+            test.assert_equal(snapshot.members[2].leadershipRole, "guild-master")
             test.assert_nil(snapshot.members[2].lastOnline)
         end)
     end),

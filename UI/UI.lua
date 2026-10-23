@@ -94,6 +94,8 @@ local MAINS_ALTS_NOTE_SIZE = 16
 local MAINS_ALTS_NOTE_GAP = 4
 local MAINS_ALTS_TAG_WIDTH = 24
 local MAINS_ALTS_TAG_SIZE = 16
+local MAINS_ALTS_RANK_ICON_SIZE = 16
+local MAINS_ALTS_RANK_ICON_GAP = 4
 local MAINS_ALTS_SCROLL_DURATION = 0
 local MAINS_ALTS_WHEEL_ROWS = 3
 -- The legacy ScrollFrame is retained for exact pixel anchors and existing styling;
@@ -111,6 +113,8 @@ local CHARACTER_NOTE_LIMIT = 5500
 local GUILD_NOTE_LIMIT = 31
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
 local CHARACTER_TAG_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\tag.png"
+local GUILD_MASTER_TEXTURE = "Interface\\GroupFrame\\UI-Group-LeaderIcon"
+local OFFICER_TEXTURE = "Interface\\GroupFrame\\UI-Group-AssistantIcon"
 local MISSING_WARNING_SIZE = 16
 local MISSING_WARNING_GAP = 4
 local MISSING_WARNING_TEXTURE = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew"
@@ -649,11 +653,15 @@ local function layoutMainsAltsLines(view, availableWidth)
         line.frame:SetWidth(availableWidth)
         line.checkbox:ClearAllPoints()
         line.name:ClearAllPoints()
+        line.rankIcon:ClearAllPoints()
         line.expandButton:ClearAllPoints()
         line.promoteButton:ClearAllPoints()
         line.removeButton:ClearAllPoints()
         line.noteButton:ClearAllPoints()
         line.tagButton:ClearAllPoints()
+        local rankIconWidth = line.leadershipRole
+            and MAINS_ALTS_RANK_ICON_SIZE + MAINS_ALTS_RANK_ICON_GAP
+            or 0
         if line.isAlt then
             line.name:SetPoint(
                 "LEFT",
@@ -666,12 +674,20 @@ local function layoutMainsAltsLines(view, availableWidth)
                 1,
                 availableWidth
                     - MAINS_ALTS_CHARACTER_LEFT - MAINS_ALTS_EXPAND_WIDTH
+                    - rankIconWidth
                     - MAINS_ALTS_TAG_WIDTH - 56 - 168 - 12
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.rankIcon:SetPoint(
+                "LEFT",
+                line.name,
+                "RIGHT",
+                MAINS_ALTS_RANK_ICON_GAP,
+                0
+            )
             line.tagButton:SetPoint("CENTER", line.frame, "RIGHT", -236, 0)
             line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
             line.removeButton:SetPoint("RIGHT", line.frame, "RIGHT", -4, 0)
@@ -710,12 +726,20 @@ local function layoutMainsAltsLines(view, availableWidth)
                 availableWidth
                     - MAINS_ALTS_CHARACTER_LEFT - MAINS_ALTS_EXPAND_WIDTH
                     - MAINS_ALTS_CONTROL_GAP
+                    - rankIconWidth
                     - MAINS_ALTS_TAG_WIDTH - 56 - 168 - 12
             )
             local nameWidth = type(line.name.GetStringWidth) == "function"
                 and line.name:GetStringWidth() + 2
                 or maximumNameWidth
             line.name:SetWidth(math.min(maximumNameWidth, nameWidth))
+            line.rankIcon:SetPoint(
+                "LEFT",
+                line.name,
+                "RIGHT",
+                MAINS_ALTS_RANK_ICON_GAP,
+                0
+            )
             line.tagButton:SetPoint("CENTER", line.frame, "RIGHT", -236, 0)
             line.noteButton:SetPoint("CENTER", line.frame, "RIGHT", -196, 0)
         end
@@ -1191,6 +1215,9 @@ local function acquireMainsAltsLine(view, index)
     if type(name.SetWordWrap) == "function" then
         name:SetWordWrap(false)
     end
+    local rankIcon = frame:CreateTexture(nil, "ARTWORK")
+    rankIcon:SetSize(MAINS_ALTS_RANK_ICON_SIZE, MAINS_ALTS_RANK_ICON_SIZE)
+    rankIcon:Hide()
     local expandButton = CreateFrame("Button", nil, frame)
     expandButton:SetSize(MAINS_ALTS_EXPAND_WIDTH, 16)
     local expandIcon = expandButton:CreateTexture(nil, "ARTWORK")
@@ -1232,6 +1259,7 @@ local function acquireMainsAltsLine(view, index)
         background = background,
         checkbox = checkbox,
         name = name,
+        rankIcon = rankIcon,
         expandButton = expandButton,
         promoteButton = promoteButton,
         removeButton = removeButton,
@@ -1352,7 +1380,17 @@ local function bindMainsAltsLine(view, line, row, rowIndex)
     ] == true
     line.hasNote = character.hasNote == true
     line.tags = character.tags or {}
+    line.leadershipRole = character.leadershipRole
     setCharacterNameColor(line.name, character.classFileName)
+    if line.leadershipRole == "guild-master" then
+        line.rankIcon:SetTexture(GUILD_MASTER_TEXTURE)
+        line.rankIcon:Show()
+    elseif line.leadershipRole == "officer" then
+        line.rankIcon:SetTexture(OFFICER_TEXTURE)
+        line.rankIcon:Show()
+    else
+        line.rankIcon:Hide()
+    end
     line.frame:ClearAllPoints()
     line.frame:SetPoint("TOPLEFT", view.scrollChild, "TOPLEFT", 4, -row.offset)
     line.frame:SetHeight(MAINS_ALTS_ROW_HEIGHT)
