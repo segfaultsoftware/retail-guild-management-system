@@ -1,6 +1,7 @@
 Set-StrictMode -Version Latest
 
 $script:ReleaseVersionPattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+$script:CurseForgeRetailGameVersionTypeId = 517L
 
 function Test-RgmsReleaseVersion {
     param([Parameter(Mandatory)][string]$Version)
@@ -67,30 +68,15 @@ function Get-RgmsChangelogSection {
 
 function Resolve-CurseForgeRetailGameVersion {
     param(
-        [Parameter(Mandatory)][object[]]$VersionTypes,
         [Parameter(Mandatory)][object[]]$GameVersions,
         [Parameter(Mandatory)][string]$RetailVersion
     )
 
-    $retailTypeNames = @('retail', 'wow retail', 'world of warcraft retail')
-    $retailTypeSlugs = @('retail', 'wow-retail', 'wow_retail')
-    $retailTypes = @(
-        $VersionTypes | Where-Object {
-            $name = if ($null -ne $_.name) { ([string]$_.name).ToLowerInvariant() } else { '' }
-            $slug = if ($null -ne $_.slug) { ([string]$_.slug).ToLowerInvariant() } else { '' }
-            $retailTypeNames -contains $name -or $retailTypeSlugs -contains $slug
-        }
-    )
-    if ($retailTypes.Count -ne 1 -or $null -eq $retailTypes[0].id) {
-        throw "CurseForge must return exactly one Retail game-version type; found $($retailTypes.Count)."
-    }
-
-    $retailTypeId = [long]$retailTypes[0].id
     $matches = @(
         $GameVersions | Where-Object {
             ([string]$_.name) -ceq $RetailVersion -and
             $null -ne $_.gameVersionTypeID -and
-            ([long]$_.gameVersionTypeID) -eq $retailTypeId
+            ([long]$_.gameVersionTypeID) -eq $script:CurseForgeRetailGameVersionTypeId
         }
     )
     if ($matches.Count -ne 1 -or $null -eq $matches[0].id) {

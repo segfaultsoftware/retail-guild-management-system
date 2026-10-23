@@ -186,10 +186,8 @@ jobs:
 
           $headers = @{ 'X-Api-Token' = $env:CURSEFORGE_API_TOKEN }
           $baseUri = 'https://wow.curseforge.com/api/game'
-          $versionTypes = @(Invoke-RestMethod -Uri "$baseUri/version-types" -Headers $headers)
           $gameVersions = @(Invoke-RestMethod -Uri "$baseUri/versions" -Headers $headers)
           $gameVersionId = Resolve-CurseForgeRetailGameVersion `
-            -VersionTypes $versionTypes `
             -GameVersions $gameVersions `
             -RetailVersion $retailGameVersion
           "game_version_id=$gameVersionId" >> $env:GITHUB_OUTPUT
