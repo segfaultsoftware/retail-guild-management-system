@@ -20,6 +20,10 @@ jobs:
           sudo apt-get install --yes lua5.1
       - name: Run test suite
         run: lua5.1 Tests/run.lua
+      - name: Test release automation
+        run: |
+          pwsh -NoProfile -File ./Tests/release_workflow_tests.ps1
+          bash ./Tests/prepare_release_tests.sh
       - name: Build and validate a reproducible package
         shell: pwsh
         run: |

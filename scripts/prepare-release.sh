@@ -18,10 +18,10 @@ Required:
   --interface NUMBER      Retail interface reported by GetBuildInfo().
   -h, --help              Show this help.
 
-The script runs only on a clean main branch. It updates the Version and
-Interface fields in RGMS.toc and promotes CHANGELOG.md's Unreleased content to
-the requested version. It never builds, commits, pushes, tags, or publishes a
-release.
+The script runs only on a clean main branch. It updates the Version, Interface,
+and X-RGMS-Retail-Version fields in RGMS.toc and promotes CHANGELOG.md's
+Unreleased content to the requested version. It never builds, commits, pushes,
+tags, or publishes a release.
 EOF
 }
 
@@ -65,9 +65,9 @@ done
 [[ -n "$retail_version" ]] || fail "--retail-version is required"
 [[ -n "$interface_number" ]] || fail "--interface is required"
 
-release_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$'
+release_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
 [[ "$version" =~ $release_pattern ]] || \
-    fail "version must be X.Y.Z or X.Y.Z-rc.N"
+    fail "version must be X.Y.Z or X.Y.Z-prerelease without build metadata"
 [[ "$interface_number" =~ ^[0-9]+$ ]] || \
     fail "interface must be numeric"
 [[ "$retail_version" != *$'\n'* && "$retail_version" != *$'\r'* ]] || \
@@ -129,8 +129,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-awk -v version="$version" -v interface_number="$interface_number" '
-    BEGIN { version_count = 0; interface_count = 0 }
+awk -v version="$version" -v interface_number="$interface_number" -v retail_version="$retail_version" '
+    BEGIN { version_count = 0; interface_count = 0; retail_version_count = 0 }
     /^## Version:/ {
         print "## Version: " version
         version_count += 1
@@ -141,14 +141,19 @@ awk -v version="$version" -v interface_number="$interface_number" '
         interface_count += 1
         next
     }
+    /^## X-RGMS-Retail-Version:/ {
+        print "## X-RGMS-Retail-Version: " retail_version
+        retail_version_count += 1
+        next
+    }
     { print }
     END {
-        if (version_count != 1 || interface_count != 1) {
+        if (version_count != 1 || interface_count != 1 || retail_version_count != 1) {
             exit 42
         }
     }
 ' RGMS.toc > "$manifest_replacement" || \
-    fail "RGMS.toc must contain exactly one Interface and one Version field"
+    fail "RGMS.toc must contain exactly one Interface, Version, and X-RGMS-Retail-Version field"
 
 awk -v version="$version" '
     BEGIN {

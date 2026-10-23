@@ -102,17 +102,19 @@ from the tested Retail client:
 ```text
 bash ./scripts/prepare-release.sh \
   --version 1.1.0 \
-  --retail-version "12.1.0 (build 12345)" \
+  --retail-version "12.1.5" \
   --interface 120100
 ```
 
-The command updates `RGMS.toc` and promotes the `CHANGELOG.md` Unreleased
+The command stores the complete tested Retail version in `RGMS.toc`, updates
+the addon version and interface, and promotes the `CHANGELOG.md` Unreleased
 section to the target version. After committing and pushing those changes,
 dispatch **Create Release** from `main` with the version and full main-tip SHA.
-The workflow runs the complete Lua suite, builds and retains the canonical ZIP,
-tags the commit, and publishes the GitHub release with that ZIP attached. See
-[`docs/RELEASING.md`](docs/RELEASING.md) for the complete procedure and manual
-CurseForge upload steps.
+The workflow tests and retains one canonical ZIP, publishes and verifies it on
+GitHub, and automatically submits exact final releases to CurseForge.
+Prereleases remain GitHub-only. See [`docs/RELEASING.md`](docs/RELEASING.md)
+for one-time token setup, the complete procedure, retry behavior, and the
+manual fallback.
 
 ## Current exclusions
 
@@ -130,7 +132,7 @@ or partially supported features.
   schema, migrations, validation, and recovery behavior.
 - [`CHANGELOG.md`](CHANGELOG.md) records user-visible changes.
 - [`docs/RELEASING.md`](docs/RELEASING.md) covers versioning, deterministic
-  packaging, automated GitHub releases, and manual CurseForge uploads.
+  packaging, automated GitHub and CurseForge releases, and recovery steps.
 
 ## License
 

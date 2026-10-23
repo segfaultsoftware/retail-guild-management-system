@@ -3,6 +3,8 @@
 ## Notes: Guild roster and bank data for the RGMS application.
 ## Author: RGMS contributors
 ## Version: 1.0.3
+## X-RGMS-Retail-Version: 12.1.5
+## X-Curse-Project-ID: 1741733
 ## SavedVariables: RGMSAccountDB
 ## SavedVariablesPerCharacter: RGMSCharacterDB
 

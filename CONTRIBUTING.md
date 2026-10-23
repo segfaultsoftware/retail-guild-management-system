@@ -190,7 +190,10 @@ redistribution permission.
 
 User-visible changes belong under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md).
 Do not create or move release tags manually. The **Create Release** workflow
-builds the verified package, creates the matching `vX.Y.Z` or `vX.Y.Z-rc.N`
-tag, and publishes the GitHub release; its version must match `RGMS.toc` and the
-promoted changelog section. Maintainers should use the complete
-[`docs/RELEASING.md`](docs/RELEASING.md) runbook.
+builds the verified package, creates the matching `v<version>` tag, and
+publishes the GitHub release; exact `X.Y.Z` finals then submit the same verified
+ZIP to CurseForge, while all SemVer prereleases remain GitHub-only. The version
+and stored Retail build must match `RGMS.toc` and the promoted changelog
+section. Maintainers should use the complete
+[`docs/RELEASING.md`](docs/RELEASING.md) runbook, including its repository
+secret setup and failed-job retry procedure.
