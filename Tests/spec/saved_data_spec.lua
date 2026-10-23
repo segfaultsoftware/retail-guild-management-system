@@ -26,6 +26,7 @@ return {
 
     test.case("round-trip-shaped current data is restored without aliasing input", function()
         local original = fixtures.saved_model()
+        original.roster.members[1].leadershipRole = "officer"
         local state = savedData.load(original)
 
         test.assert_true(state.enabled)
@@ -35,6 +36,22 @@ return {
         state.model.ui.windowPosition.x = 999
         test.assert_equal(original.roster.members[1].name, "Aeloria")
         test.assert_equal(original.ui.windowPosition.x, 120)
+    end),
+
+    test.case("roster leadership roles accept only supported Retail roles", function()
+        local guildMaster = fixtures.saved_model()
+        guildMaster.roster.members[1].leadershipRole = "guild-master"
+        test.assert_true(savedData.validate(guildMaster))
+
+        local officer = fixtures.saved_model()
+        officer.roster.members[1].leadershipRole = "officer"
+        test.assert_true(savedData.validate(officer))
+
+        local invalid = fixtures.saved_model()
+        invalid.roster.members[1].leadershipRole = "member"
+        local valid, validationError = savedData.validate(invalid)
+        test.assert_nil(valid)
+        test.assert_matches(validationError, "leadershipRole")
     end),
 
     test.case("schema version seven adds optional per-character dropdown selections", function()

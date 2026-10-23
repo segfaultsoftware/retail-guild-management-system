@@ -7,6 +7,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Added Retail-style filled guild-master and outlined officer crown icons to
+  matching character rows in the Mains/Alts view.
+
 ### Changed
 
 - Combined Private, Public, and permission-eligible Officer Notes in one

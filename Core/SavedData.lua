@@ -327,6 +327,7 @@ local function validateRosterMember(
         level = true,
         classId = true,
         classFileName = true,
+        leadershipRole = true,
         isOnline = true,
         lastOnline = true,
         observedAt = true,
@@ -362,6 +363,11 @@ local function validateRosterMember(
         if not valid then
             return nil, validationError
         end
+    end
+    if value.leadershipRole ~= nil
+        and value.leadershipRole ~= "guild-master"
+        and value.leadershipRole ~= "officer" then
+        return nil, path .. ".leadershipRole must be guild-master or officer"
     end
     valid, validationError = requireBoolean(value.isOnline, path .. ".isOnline")
     if not valid then

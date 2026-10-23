@@ -684,6 +684,7 @@ return {
                     identity = "main-area52",
                     displayName = "Main-Area52",
                     classFileName = "WARRIOR",
+                    leadershipRole = "guild-master",
                     note = "Main note",
                     hasNote = true,
                     altCount = 2,
@@ -692,6 +693,7 @@ return {
                             identity = "alta-area52",
                             displayName = "AltA-Area52",
                             classFileName = "DRUID",
+                            leadershipRole = "officer",
                             note = "",
                             hasNote = false,
                         },
@@ -727,6 +729,11 @@ return {
         test.assert_equal(view.groupButton.text, "Group Toons")
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
+        test.assert_true(view.mainsAltsLines[1].rankIcon:IsShown())
+        test.assert_equal(
+            view.mainsAltsLines[1].rankIcon.texture,
+            "Interface\\GroupFrame\\UI-Group-LeaderIcon"
+        )
         test.assert_equal(view.mainsAltsLines[1].name.textColor, {
             0.78, 0.61, 0.43, 1,
         })
@@ -771,6 +778,12 @@ return {
 
         view.mainsAltsLines[1].expandButton.scripts.OnClick()
         test.assert_equal(view.mainsAltsLines[2].name.text, "AltA-Area52")
+        test.assert_true(view.mainsAltsLines[2].rankIcon:IsShown())
+        test.assert_equal(
+            view.mainsAltsLines[2].rankIcon.texture,
+            "Interface\\GroupFrame\\UI-Group-AssistantIcon"
+        )
+        test.assert_false(view.mainsAltsLines[3].rankIcon:IsShown())
         test.assert_equal(view.mainsAltsLines[2].name.textColor, {
             1, 0.49, 0.04, 1,
         })
