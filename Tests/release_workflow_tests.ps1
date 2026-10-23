@@ -78,13 +78,16 @@ Assert-Equal $false $metadata.isMarkedForManualRelease 'Manual-release flag is i
 Assert-Equal 13001L $metadata.gameVersions[0] 'Game-version ID is incorrect.'
 Assert-Equal 'markdown' $metadata.changelogType 'Changelog type is incorrect.'
 Assert-Equal 'libdbicon-1-0' $metadata.relations.projects[0].slug 'Embedded library slug is incorrect.'
-Assert-Equal '15552' $metadata.relations.projects[0].projectID 'Embedded library project ID is incorrect.'
+Assert-Equal 15552 $metadata.relations.projects[0].projectID 'Embedded library project ID is incorrect.'
+Assert-True ($metadata.relations.projects[0].projectID -is [int]) 'Embedded library project ID must serialize as a JSON integer.'
 Assert-Equal 'embeddedLibrary' $metadata.relations.projects[0].type 'Embedded library relationship is incorrect.'
 Assert-Throws { New-CurseForgeReleaseMetadata '1.2.3-beta.2' 'changes' 13001 } 'Prerelease metadata construction must be rejected.'
 
 Assert-Equal 20402L (Get-CurseForgeUploadedFileId '{"id":20402}') 'Numeric upload file ID was not accepted.'
 Assert-Throws { Get-CurseForgeUploadedFileId '{"id":"20402"}' } 'String upload file IDs must be rejected.'
 Assert-Throws { Get-CurseForgeUploadedFileId '{"status":"ok"}' } 'Missing upload file IDs must be rejected.'
+Assert-Equal 'CurseForge API error 1003: Missing field `file`.' (Get-CurseForgeApiErrorMessage '{"errorCode":1003,"errorMessage":"Missing field `file`."}') 'Structured API failures must preserve their code and message.'
+Assert-Equal 'CurseForge returned an error response that was not valid JSON.' (Get-CurseForgeApiErrorMessage '<html>Error</html>') 'Non-JSON API failures must be reported safely.'
 $guidance = Get-CurseForgeUploadFailureGuidance
 Assert-True ($guidance.Contains('Re-run failed jobs')) 'Failure guidance must explain the retry control.'
 Assert-True ($guidance.Contains('Files dashboard')) 'Failure guidance must cover ambiguous upload outcomes.'
@@ -101,5 +104,6 @@ Assert-Equal 2 ([regex]::Matches($workflow, [regex]::Escape('secrets.CURSEFORGE_
 Assert-Equal 2 ([regex]::Matches($workflow, "if: needs\.validate\.outputs\.is_final == 'true'").Count) 'Both CurseForge jobs must skip prereleases.'
 Assert-True ($workflow.Contains('gh release download "$RELEASE_TAG" --pattern "$ARTIFACT_NAME" --dir .release/github')) 'CurseForge publication must download the GitHub release asset.'
 Assert-True ($workflow.Contains("-SkipHttpErrorCheck`n")) 'The upload path must inspect the HTTP response without retrying it.'
+Assert-True ($workflow.Contains('CurseForge upload failed: $failureReason')) 'Upload failures must preserve the underlying safe API error.'
 
 Write-Output "$script:Passed release workflow tests: $script:Passed passed, 0 failed"

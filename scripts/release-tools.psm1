@@ -149,7 +149,7 @@ function New-CurseForgeReleaseMetadata {
             projects = @(
                 [ordered]@{
                     slug = 'libdbicon-1-0'
-                    projectID = '15552'
+                    projectID = 15552
                     type = 'embeddedLibrary'
                 }
             )
@@ -175,6 +175,24 @@ function Get-CurseForgeUploadedFileId {
     return $fileId
 }
 
+function Get-CurseForgeApiErrorMessage {
+    param([Parameter(Mandatory)][string]$ResponseBody)
+
+    try {
+        $response = $ResponseBody | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return 'CurseForge returned an error response that was not valid JSON.'
+    }
+
+    $errorCode = if ($null -ne $response.errorCode) { [string]$response.errorCode } else { 'unknown' }
+    $errorMessage = if ([string]::IsNullOrWhiteSpace([string]$response.errorMessage)) {
+        'No error message was provided.'
+    } else {
+        ([string]$response.errorMessage).Trim()
+    }
+    return "CurseForge API error $errorCode`: $errorMessage"
+}
+
 function Get-CurseForgeUploadFailureGuidance {
     return 'The GitHub tag and release remain intact. Use Re-run failed jobs to retry only the CurseForge job. If the request timed out or its outcome is unclear, first check the CurseForge Files dashboard for the same RGMS display name; the author Upload API does not document an idempotency key or a safe duplicate-upload check.'
 }
@@ -188,5 +206,6 @@ Export-ModuleMember -Function @(
     'Resolve-CurseForgeRetailGameVersion',
     'New-CurseForgeReleaseMetadata',
     'Get-CurseForgeUploadedFileId',
+    'Get-CurseForgeApiErrorMessage',
     'Get-CurseForgeUploadFailureGuidance'
 )

@@ -430,11 +430,13 @@ jobs:
               -TimeoutSec 300 `
               -SkipHttpErrorCheck
             if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
-              throw "CurseForge returned HTTP $($response.StatusCode)."
+              $apiError = Get-CurseForgeApiErrorMessage $response.Content
+              throw "CurseForge returned HTTP $($response.StatusCode). $apiError"
             }
             $fileId = Get-CurseForgeUploadedFileId $response.Content
           } catch {
-            throw "CurseForge upload failed. $guidance"
+            $failureReason = $_.Exception.Message
+            throw "CurseForge upload failed: $failureReason $guidance"
           }
 
           $fileUrl = "https://www.curseforge.com/wow/addons/retailguildmanagementsystem/files/$fileId"
