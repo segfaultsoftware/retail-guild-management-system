@@ -229,6 +229,22 @@ local function newRegion(parent)
         self.vertexColor = { red, green, blue, alpha }
     end
 
+    function region:SetAlpha(alpha)
+        self.alpha = alpha
+    end
+
+    function region:SetAtlas(atlas)
+        self.atlas = atlas
+    end
+
+    function region:SetWordWrap(enabled)
+        self.wordWrap = enabled == true
+    end
+
+    function region:SetMaxLines(maximum)
+        self.maxLines = maximum
+    end
+
     function region:SetDrawLayer(drawLayer, sublevel)
         self.drawLayer = drawLayer
         self.sublevel = sublevel
@@ -399,6 +415,9 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local noteIdentity
     local tagAssignments = {}
     local tagToggles = {}
+    local tagDeleteRequests = {}
+    local tagRefreshRequests = 0
+    local shownPopup
     local tooltip = {
         lines = {},
         shown = false,
@@ -438,6 +457,17 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         WARRIOR = { r = 0.78, g = 0.61, b = 0.43 },
     }
     UISpecialFrames = {}
+    ACCEPT = "Accept"
+    CANCEL = "Cancel"
+    StaticPopupDialogs = {}
+    StaticPopup_Show = function(key, text, _, data)
+        shownPopup = {
+            key = key,
+            text = text,
+            data = data,
+        }
+        return newRegion(UIParent)
+    end
     MenuUtil = {}
     CreateFont = function(name)
         local font = newRegion()
@@ -571,6 +601,14 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 }
                 return true
             end,
+            RefreshTags = function()
+                tagRefreshRequests = tagRefreshRequests + 1
+                return true
+            end,
+            DeleteTag = function(name)
+                tagDeleteRequests[#tagDeleteRequests + 1] = name
+                return true
+            end,
         },
     }
     local chunk = assert(loadfile("UI/UI.lua"))
@@ -601,6 +639,13 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         end,
         tagAssignments = tagAssignments,
         tagToggles = tagToggles,
+        tagDeleteRequests = tagDeleteRequests,
+        tagRefreshRequests = function()
+            return tagRefreshRequests
+        end,
+        shownPopup = function()
+            return shownPopup
+        end,
         tooltip = tooltip,
         modifiedItemClicks = modifiedItemClicks,
         ui = ui,
@@ -620,8 +665,10 @@ return {
         test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 0)
         test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 1)
         test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 0)
-        test.assert_equal(frame.numTabs, 3)
+        test.assert_equal(frame.numTabs, 4)
         test.assert_equal(frame.tabs[2].label.text, "Mains/Alts")
+        test.assert_equal(frame.tabs[3].label.text, "Guild Bank")
+        test.assert_equal(frame.tabs[4].label.text, "Tags")
         test.assert_nil(frame.tabs[2].text)
         test.assert_equal(frame.views.roster.rankDropdown.parent, frame.views.roster)
         test.assert_equal(frame.views.bank.bankDropdown.parent, frame.views.bank)
@@ -652,6 +699,11 @@ return {
         )
         test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
         test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
+        test.assert_equal(frame.views.tags.text.text, "No tags yet")
+        test.assert_equal(frame.views.tags.status.text, "No tags yet")
+        test.assert_nil(frame.views.tags.refreshButton)
+        test.assert_nil(frame.views.tags.groupButton)
+        test.assert_nil(frame.views.tags.mainsAltsSearchBox)
     end),
 
     test.case("primary tabs content status and close behavior use the public API", function()
@@ -673,6 +725,89 @@ return {
 
         harness.frame().closeButton.scripts.OnClick()
         test.assert_false(harness.ui.IsShown())
+    end),
+
+    test.case("Tags renders a fixed-header catalog with previews and delete confirmation", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show()
+        local rows = {
+            {
+                name = "me",
+                characterPreview = "Main-Area52",
+                characterCount = 1,
+                immutable = true,
+            },
+            {
+                name = "raid",
+                characterPreview = "Alpha-Area52, Zeta-Area52",
+                characterCount = 2,
+                immutable = false,
+            },
+        }
+        for index = 3, 24 do
+            rows[index] = {
+                name = string.format("tag%02d", index),
+                characterPreview = string.rep("VeryLongCharacter-Area52, ", 10),
+                characterCount = 10,
+                immutable = false,
+            }
+        end
+
+        test.assert_true(harness.ui.SetTagsReport({ rows = rows }))
+        test.assert_true(harness.ui.SelectPrimaryTab("tags"))
+
+        local view = harness.frame().views.tags
+        test.assert_equal(harness.ui.selectedTab, "tags")
+        test.assert_equal(harness.tagRefreshRequests(), 1)
+        test.assert_true(view.tagHeader.frame:IsShown())
+        test.assert_equal(view.tagHeader.frame.parent, view)
+        test.assert_equal(view.tagHeader.name.text, "Tag")
+        test.assert_equal(view.tagHeader.preview.text, "")
+        test.assert_equal(view.tagHeader.delete.text, "")
+        test.assert_equal(view.tagRows[1].frame.parent, view.scrollChild)
+        test.assert_equal(view.tagRows[2].preview.text,
+            "Alpha-Area52, Zeta-Area52")
+        test.assert_false(view.tagRows[2].preview.wordWrap)
+        test.assert_equal(view.tagRows[2].preview.maxLines, 1)
+        test.assert_nil(view.tagRows[2].previewHitbox)
+        test.assert_true(view.scrollFrame.ScrollBar:IsShown())
+        test.assert_equal(view.tagRows[1].deleteIcon.atlas, "common-icon-delete")
+        test.assert_false(view.tagRows[1].deleteButton:IsEnabled())
+        test.assert_false(view.tagRows[1].deleteEnabled)
+        test.assert_equal(view.tagRows[1].deleteButton.alpha, 0.45)
+
+        test.assert_true(view.tagRows[2].deleteButton:IsEnabled())
+        test.assert_true(view.tagRows[2].deleteEnabled)
+        view.tagRows[2].deleteButton.scripts.OnClick()
+        local popup = harness.shownPopup()
+        test.assert_equal(popup.key, "RGMS_CONFIRM_TAG_DELETE")
+        test.assert_equal(
+            popup.text,
+            "Delete tag 'raid'? This will remove it from 2 characters and cannot be undone."
+        )
+        test.assert_equal(#harness.tagDeleteRequests, 0)
+        StaticPopupDialogs[popup.key].OnCancel(nil, popup.data)
+        test.assert_equal(#harness.tagDeleteRequests, 0)
+        StaticPopupDialogs[popup.key].OnAccept(nil, popup.data)
+        test.assert_equal(harness.tagDeleteRequests, { "raid" })
+
+        harness.ui.RequestTagDeletion({
+            name = "solo",
+            characterCount = 1,
+            immutable = false,
+        })
+        test.assert_equal(
+            harness.shownPopup().text,
+            "Delete tag 'solo'? This will remove it from 1 character and cannot be undone."
+        )
+
+        harness.ui.SetGlobalScanLock(true)
+        test.assert_false(view.tagRows[2].deleteButton:IsEnabled())
+        test.assert_false(view.tagRows[2].deleteEnabled)
+        local requested, reason = harness.ui.RequestTagDeletion(rows[2])
+        test.assert_nil(requested)
+        test.assert_equal(reason, "scan-locked")
     end),
 
     test.case("Mains/Alts rows expand transiently and disable during roster scans", function()
@@ -2727,7 +2862,7 @@ return {
         test.assert_equal(notice.rotation, 2.5)
         test.assert_equal(notice.icon.rotation, 2.5)
         test.assert_false(harness.frame().notesEditor:IsShown())
-        for _, tabId in ipairs({ "roster", "mainsalts", "bank" }) do
+        for _, tabId in ipairs({ "roster", "mainsalts", "bank", "tags" }) do
             test.assert_nil(harness.frame().views[tabId].spinner)
         end
         local selected, reason = harness.ui.SelectPrimaryTab("bank")

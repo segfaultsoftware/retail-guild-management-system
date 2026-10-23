@@ -53,4 +53,63 @@ return {
         test.assert_true(reconciled.definitions.raid)
         test.assert_true(reconciled.definitions.me)
     end),
+
+    test.case("tag catalog sorts definitions and roster-visible character previews", function()
+        local catalog = assert(tags.buildCatalog({
+            definitions = { me = true, raid = true, bench = true },
+            assignments = {
+                ["zeta-area52"] = { raid = true },
+                ["alpha-area52"] = { raid = true, me = true },
+                ["retained-area52"] = { bench = true, raid = true },
+            },
+        }, {
+            members = {
+                { name = "Zeta", realm = "Area52" },
+                { name = "Alpha", realm = "Area52" },
+                { name = "Unused", realm = "Area52" },
+            },
+        }))
+
+        test.assert_equal(catalog.rows[1], {
+            name = "bench",
+            characters = {},
+            characterCount = 0,
+            characterPreview = "",
+            immutable = false,
+        })
+        test.assert_equal(catalog.rows[2].name, "me")
+        test.assert_true(catalog.rows[2].immutable)
+        test.assert_equal(catalog.rows[2].characterPreview, "Alpha-Area52")
+        test.assert_equal(catalog.rows[3].characters, {
+            "Alpha-Area52",
+            "Zeta-Area52",
+        })
+        test.assert_equal(catalog.rows[3].characterPreview,
+            "Alpha-Area52, Zeta-Area52")
+    end),
+
+    test.case("tag deletion removes every assignment without mutating the source", function()
+        local state = {
+            definitions = { me = true, raid = true, bench = true },
+            assignments = {
+                ["visible-area52"] = { me = true, raid = true },
+                ["retained-area52"] = { raid = true },
+                ["bench-area52"] = { bench = true },
+            },
+        }
+
+        local deleted = assert(tags.deleteDefinition(state, "raid"))
+
+        test.assert_nil(deleted.definitions.raid)
+        test.assert_true(deleted.assignments["visible-area52"].me)
+        test.assert_nil(deleted.assignments["visible-area52"].raid)
+        test.assert_nil(deleted.assignments["retained-area52"])
+        test.assert_true(deleted.assignments["bench-area52"].bench)
+        test.assert_true(state.definitions.raid)
+        test.assert_true(state.assignments["retained-area52"].raid)
+
+        local immutable, immutableError = tags.deleteDefinition(state, "me")
+        test.assert_nil(immutable)
+        test.assert_matches(immutableError, "immutable")
+    end),
 }

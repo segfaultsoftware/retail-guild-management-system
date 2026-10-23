@@ -30,6 +30,7 @@ return {
         test.assert_equal(portal.contextControls("bank"), {
             dropdown = "bankTab", primary = "Refresh", close = true,
         })
+        test.assert_equal(portal.contextControls("tags"), { close = true })
     end),
 
     test.case("every open selects roster and every close resets session scrolling", function()
@@ -44,7 +45,12 @@ return {
 
         state:closeWindow()
         test.assert_equal(state:openWindow(), "roster")
-        test.assert_equal(state.scroll, { roster = 0, mainsalts = 0, bank = 0 })
+        test.assert_equal(state.scroll, {
+            roster = 0,
+            mainsalts = 0,
+            bank = 0,
+            tags = 0,
+        })
     end),
 
     test.case("option changes reset only the affected table", function()
@@ -52,7 +58,12 @@ return {
         state.scroll.roster = 12
         state.scroll.bank = 34
         test.assert_true(state:selectionChanged("bank"))
-        test.assert_equal(state.scroll, { roster = 12, mainsalts = 0, bank = 0 })
+        test.assert_equal(state.scroll, {
+            roster = 12,
+            mainsalts = 0,
+            bank = 0,
+            tags = 0,
+        })
     end),
 
     test.case("global scan lock rejects mutation and discards a note draft", function()

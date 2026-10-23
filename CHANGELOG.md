@@ -7,6 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Added a fourth Tags tab with an alphabetized active-guild catalog,
+  roster-visible character previews, immutable `me` handling, and confirmed
+  atomic deletion of custom tags and all of their assignments.
+
 ## 1.0.6
 
 ### Added
