@@ -54,7 +54,8 @@ local function characterExists(identity)
     end
 
     for _, member in ipairs(RGMS.DB.roster.members) do
-        if RGMS.RosterNames.identity(member.name, member.realm) == identity then
+        if member.isMissing ~= true
+            and RGMS.RosterNames.identity(member.name, member.realm) == identity then
             return true
         end
     end
@@ -426,10 +427,16 @@ function MainsAlts.RefreshStatus()
     elseif #report.rows == 0 then
         RGMS.UI.SetViewStatus("mainsalts", "No roster data yet")
     else
+        local visibleCount = 0
+        for _, member in ipairs(RGMS.DB.roster.members) do
+            if member.isMissing ~= true then
+                visibleCount = visibleCount + 1
+            end
+        end
         RGMS.UI.SetViewStatus(
             "mainsalts",
-            string.format("%d roster character%s", #RGMS.DB.roster.members,
-                #RGMS.DB.roster.members == 1 and "" or "s")
+            string.format("%d roster character%s", visibleCount,
+                visibleCount == 1 and "" or "s")
         )
     end
 end

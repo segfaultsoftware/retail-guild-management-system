@@ -44,27 +44,48 @@ return {
             },
         }))
 
-        test.assert_equal(#result.rows, 3)
-        test.assert_equal(result.rows[1].displayName, "Alpha-Area52")
-        test.assert_true(result.rows[1].isMissing)
-        test.assert_false(result.rows[1].hasNote)
-        test.assert_equal(result.rows[2].displayName, "Alpha-Zulu")
-        test.assert_equal(result.rows[3].displayName, "Main-Area52")
-        test.assert_equal(result.rows[3].classFileName, "WARRIOR")
-        test.assert_equal(result.rows[3].leadershipRole, "guild-master")
+        test.assert_equal(#result.rows, 2)
+        test.assert_equal(result.rows[1].displayName, "Alpha-Zulu")
+        test.assert_equal(result.rows[2].displayName, "Main-Area52")
+        test.assert_equal(result.rows[2].classFileName, "WARRIOR")
+        test.assert_equal(result.rows[2].leadershipRole, "guild-master")
         test.assert_equal(result.tagCatalog, { "me", "raid" })
-        test.assert_equal(result.rows[3].tags, { "me", "raid" })
-        test.assert_true(result.rows[3].hasNote)
-        test.assert_equal(result.rows[3].note, "Main note")
-        test.assert_equal(result.rows[3].altCount, 2)
-        test.assert_equal(result.rows[3].alts[1].displayName, "Alt-Area52")
-        test.assert_equal(result.rows[3].alts[1].classFileName, "DRUID")
-        test.assert_equal(result.rows[3].alts[1].leadershipRole, "officer")
-        test.assert_equal(result.rows[3].alts[1].tags, { "me" })
-        test.assert_true(result.rows[3].alts[1].hasNote)
-        test.assert_equal(result.rows[3].alts[1].note, "Alt note")
-        test.assert_equal(result.rows[3].alts[2].displayName, "Zulu-Area52")
-        test.assert_false(result.rows[3].alts[2].hasNote)
+        test.assert_equal(result.rows[2].tags, { "me", "raid" })
+        test.assert_true(result.rows[2].hasNote)
+        test.assert_equal(result.rows[2].note, "Main note")
+        test.assert_equal(result.rows[2].altCount, 2)
+        test.assert_equal(result.rows[2].alts[1].displayName, "Alt-Area52")
+        test.assert_equal(result.rows[2].alts[1].classFileName, "DRUID")
+        test.assert_equal(result.rows[2].alts[1].leadershipRole, "officer")
+        test.assert_equal(result.rows[2].alts[1].tags, { "me" })
+        test.assert_true(result.rows[2].alts[1].hasNote)
+        test.assert_equal(result.rows[2].alts[1].note, "Alt note")
+        test.assert_equal(result.rows[2].alts[2].displayName, "Zulu-Area52")
+        test.assert_false(result.rows[2].alts[2].hasNote)
+    end),
+
+    test.case("Mains/Alts hides missing group members without deleting saved groups", function()
+        local dataset = {
+            members = {
+                member("MissingMain", "Area52", { isMissing = true }),
+                member("VisibleAlt", "Area52"),
+                member("VisibleMain", "Area52"),
+                member("MissingAlt", "Area52", { isMissing = true }),
+            },
+        }
+        local groups = {
+            ["MissingMain-Area52"] = { "VisibleAlt-Area52" },
+            ["VisibleMain-Area52"] = { "MissingAlt-Area52" },
+        }
+
+        local result = assert(report.build(dataset, groups))
+
+        test.assert_equal(#result.rows, 2)
+        test.assert_equal(result.rows[1].displayName, "VisibleAlt-Area52")
+        test.assert_equal(result.rows[2].displayName, "VisibleMain-Area52")
+        test.assert_equal(result.rows[2].altCount, 0)
+        test.assert_equal(groups["MissingMain-Area52"], { "VisibleAlt-Area52" })
+        test.assert_equal(groups["VisibleMain-Area52"], { "MissingAlt-Area52" })
     end),
 
     test.case("Mains/Alts report excludes stale group members without losing roster members", function()

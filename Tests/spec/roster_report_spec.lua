@@ -105,7 +105,7 @@ return {
         test.assert_equal(bracketByName.DayTwentyOne, 4)
         test.assert_equal(bracketByName.Unknown, 4)
         test.assert_equal(bracketByName.VeryOldCurrent, 4)
-        test.assert_equal(bracketByName.RetainedMissing, 2)
+        test.assert_nil(bracketByName.RetainedMissing)
     end),
 
     test.case("rows expose display fields and sort by tenure then character name", function()
@@ -125,7 +125,7 @@ return {
         test.assert_equal(rows[3].lastOnlineText, "Online")
     end),
 
-    test.case("missing rows expose their last-appeared date without mutating observations", function()
+    test.case("missing rows are excluded without mutating retained observations", function()
         local dataset = comprehensiveDataset()
         local missingMember
         local currentMember
@@ -146,13 +146,8 @@ return {
             end
         end
 
-        test.assert_true(renderedByName.RetainedMissing.isMissing)
-        test.assert_equal(
-            renderedByName.RetainedMissing.missingLastSeenDate,
-            "2024-05-22"
-        )
-        test.assert_false(renderedByName.DayZero.isMissing)
-        test.assert_nil(renderedByName.DayZero.missingLastSeenDate)
+        test.assert_nil(renderedByName.RetainedMissing)
+        test.assert_nil(renderedByName.DayZero.isMissing)
         test.assert_equal(missingMember.lastSeenDate, "2024-05-22")
         test.assert_nil(missingMember.missingLastSeenDate)
         test.assert_equal(currentMember.lastSeenDate, "2024-06-01")

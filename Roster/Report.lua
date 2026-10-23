@@ -180,36 +180,33 @@ function Report.build(dataset, currentDate, dateTime)
     end
 
     for _, member in ipairs(dataset.members) do
-        local projectedRank = ranksByIndex[member.rankIndex]
-        if projectedRank == nil then
-            return nil, "roster member refers to an unavailable rank"
-        end
+        if member.isMissing ~= true then
+            local projectedRank = ranksByIndex[member.rankIndex]
+            if projectedRank == nil then
+                return nil, "roster member refers to an unavailable rank"
+            end
 
-        local tenureDays, tenureError = differenceOrZero(
-            member.rankTenureStartDate,
-            currentDate,
-            dateTime
-        )
-        if tenureDays == nil then
-            return nil, tenureError
+            local tenureDays, tenureError = differenceOrZero(
+                member.rankTenureStartDate,
+                currentDate,
+                dateTime
+            )
+            if tenureDays == nil then
+                return nil, tenureError
+            end
+            local ageDays, lastOnlineText = approximateLastOnline(
+                member,
+                elapsedDays
+            )
+            local group = projectedRank.groups[groupIndexForAge(ageDays)]
+            group.members[#group.members + 1] = {
+                name = member.name,
+                displayName = Names.displayName(member.name, member.realm),
+                classFileName = member.classFileName,
+                lastOnlineText = lastOnlineText,
+                tenureDays = tenureDays,
+            }
         end
-        local ageDays, lastOnlineText = approximateLastOnline(
-            member,
-            elapsedDays
-        )
-        local group = projectedRank.groups[groupIndexForAge(ageDays)]
-        local projectedMember = {
-            name = member.name,
-            displayName = Names.displayName(member.name, member.realm),
-            classFileName = member.classFileName,
-            lastOnlineText = lastOnlineText,
-            tenureDays = tenureDays,
-            isMissing = member.isMissing == true,
-        }
-        if projectedMember.isMissing then
-            projectedMember.missingLastSeenDate = member.lastSeenDate
-        end
-        group.members[#group.members + 1] = projectedMember
     end
 
     for _, rank in ipairs(result.ranks) do

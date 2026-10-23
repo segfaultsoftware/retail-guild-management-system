@@ -68,7 +68,8 @@ local function hasSelectedTags(selectedTags)
 end
 
 function Search.characterMatches(character, query, selectedTags)
-    return Search.matches(character.name, query)
+    return character.isMissing ~= true
+        and Search.matches(character.name, query)
         and matchesTags(character, selectedTags)
 end
 
@@ -80,7 +81,13 @@ function Search.filter(report, query, selectedTags)
     local normalized = Search.normalize(query)
     selectedTags = type(selectedTags) == "table" and selectedTags or {}
     if normalized == "" and not hasSelectedTags(selectedTags) then
-        return { rows = report.rows }, {}, normalized, {}
+        local visibleRows = {}
+        for _, row in ipairs(report.rows) do
+            if row.isMissing ~= true then
+                visibleRows[#visibleRows + 1] = row
+            end
+        end
+        return { rows = visibleRows }, {}, normalized, {}
     end
 
     local rows = {}
@@ -102,7 +109,7 @@ function Search.filter(report, query, selectedTags)
             end
         end
 
-        if groupMatches then
+        if groupMatches and row.isMissing ~= true then
             rows[#rows + 1] = row
             if (row.altCount or 0) > 0 then
                 expanded[row.identity] = true

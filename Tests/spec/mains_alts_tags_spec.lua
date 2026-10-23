@@ -67,6 +67,7 @@ return {
                 { name = "Zeta", realm = "Area52" },
                 { name = "Alpha", realm = "Area52" },
                 { name = "Unused", realm = "Area52" },
+                { name = "Retained", realm = "Area52", isMissing = true },
             },
         }))
 

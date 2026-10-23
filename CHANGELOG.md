@@ -13,6 +13,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   roster-visible character previews, immutable `me` handling, and confirmed
   atomic deletion of custom tags and all of their assignments.
 
+### Changed
+
+- Hidden roster members from the Roster, Mains/Alts, Tags, and character
+  searches as soon as a successful scan marks them missing, while retaining
+  their saved records for the existing 21-day recovery period.
+
 ## 1.0.6
 
 ### Added

@@ -73,12 +73,14 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
             return nil, "Mains/Alts roster member is invalid"
         end
 
-        local character = projectCharacter(member, savedNotes, savedTags)
-        if charactersByIdentity[character.identity] then
-            return nil, "Mains/Alts roster contains a duplicate character"
+        if member.isMissing ~= true then
+            local character = projectCharacter(member, savedNotes, savedTags)
+            if charactersByIdentity[character.identity] then
+                return nil, "Mains/Alts roster contains a duplicate character"
+            end
+            characters[#characters + 1] = character
+            charactersByIdentity[character.identity] = character
         end
-        characters[#characters + 1] = character
-        charactersByIdentity[character.identity] = character
     end
 
     local groupDefinitions = {}

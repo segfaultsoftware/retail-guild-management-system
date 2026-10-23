@@ -123,8 +123,10 @@ function Tags.buildCatalog(state, roster)
             or type(member.realm) ~= "string" or member.realm == "" then
             return nil, "tag catalog roster member is invalid"
         end
-        visibleCharacters[Names.identity(member.name, member.realm)] =
-            Names.displayName(member.name, member.realm)
+        if member.isMissing ~= true then
+            visibleCharacters[Names.identity(member.name, member.realm)] =
+                Names.displayName(member.name, member.realm)
+        end
     end
 
     local charactersByTag = {}

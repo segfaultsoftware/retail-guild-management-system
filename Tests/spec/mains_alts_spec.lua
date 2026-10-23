@@ -144,7 +144,7 @@ end
 return {
     test.case("Mains/Alts status renders the roster projection while guilded", function()
         local controller, calls = newHarness({
-            members = { {}, {} },
+            members = { {}, {}, { isMissing = true } },
             rows = { { displayName = "Main-Area52" } },
         })
 
@@ -458,6 +458,30 @@ return {
         test.assert_nil(oversized)
         test.assert_matches(oversizedError, "5500")
         test.assert_nil(calls.noteReplaces)
+    end),
+
+    test.case("missing characters cannot be edited while their records are retained", function()
+        local controller, calls = newHarness({
+            members = {
+                { name = "Missing", realm = "Area52", isMissing = true },
+            },
+        })
+
+        local saved, saveError = controller.SaveCharacterNote(
+            "missing-area52",
+            "note"
+        )
+        local tagged, tagError = controller.CreateOrAssignTag(
+            "missing-area52",
+            "raid"
+        )
+
+        test.assert_nil(saved)
+        test.assert_matches(saveError, "unavailable")
+        test.assert_nil(tagged)
+        test.assert_matches(tagError, "unavailable")
+        test.assert_nil(calls.noteReplaces)
+        test.assert_nil(calls.tagReplaces)
     end),
 
     test.case("character tags normalize deduplicate toggle and refresh immediately", function()

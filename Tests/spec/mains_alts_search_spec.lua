@@ -53,13 +53,11 @@ return {
             [matchingAlt.identity] = true,
         })
         test.assert_equal(search.filter(report, "main").rows, { group })
-        test.assert_equal(search.filter(report, "m").rows, {
-            group,
-            retainedMissing,
-        })
+        test.assert_equal(search.filter(report, "m").rows, { group })
 
         local missing = search.filter(report, "mm")
-        test.assert_equal(missing.rows, { retainedMissing })
+        test.assert_equal(missing.rows, {})
+        test.assert_equal(search.filter(report, "").rows, { first, group })
     end),
 
     test.case("Mains/Alts search ignores realms notes and unmatched rows", function()
