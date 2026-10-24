@@ -1880,7 +1880,7 @@ local function createMainsAltsSearch(view)
     placeholder:SetPoint("LEFT", editBox, "LEFT", 10, 0)
     placeholder:SetPoint("RIGHT", editBox, "RIGHT", -32, 0)
     placeholder:SetJustifyH("LEFT")
-    placeholder:SetText("Search characters…")
+    placeholder:SetText("Search...")
     setFont(placeholder, FONT_REGULAR, 12)
     setTextColor(placeholder, PALETTE.secondary)
 

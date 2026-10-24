@@ -60,14 +60,30 @@ return {
         test.assert_equal(search.filter(report, "").rows, { first, group })
     end),
 
-    test.case("ByName search ignores realms notes and unmatched rows", function()
+    test.case("ByName search checks private and eligible live notes but not realms", function()
         local realmOnly = character("Hero", "Searchrealm")
         local noteOnly = character("Other", "Area52", { note = "search note" })
-        local report = { rows = { realmOnly, noteOnly } }
+        local publicOnly = character("Public")
+        publicOnly.searchableNotes = { "current public value" }
+        local officerOnly = character("Officer")
+        officerOnly.searchableNotes = { "visible officer value" }
+        local report = { rows = { realmOnly, noteOnly, publicOnly, officerOnly } }
 
-        test.assert_equal(search.filter(report, "search").rows, {})
+        test.assert_equal(search.filter(report, "search").rows, { noteOnly })
+        test.assert_equal(search.filter(report, "cpv").rows, { publicOnly })
+        test.assert_equal(search.filter(report, "vov").rows, { officerOnly })
         test.assert_equal(search.filter(report, "zzz").rows, {})
         test.assert_equal(search.filter(report, "").rows, report.rows)
+    end),
+
+    test.case("ByName search requires one field to contain the complete query", function()
+        local split = character("Alpha", "Area52", { note = "Charlie" })
+        split.searchableNotes = { "Echo" }
+        local complete = character("Other", "Area52", { note = "AxxC" })
+        local report = { rows = { split, complete } }
+
+        test.assert_equal(search.filter(report, "ac").rows, { complete })
+        test.assert_equal(search.filter(report, "pe").rows, {})
     end),
 
     test.case("tag filters use same-character AND semantics with name search", function()
@@ -82,6 +98,7 @@ return {
         local solo = character("NamedSolo", "Area52", {
             tags = { "healer", "raid" },
         })
+        group.searchableNotes = { "named clue" }
         local report = { rows = { group, solo } }
 
         test.assert_equal(search.filter(report, "", {

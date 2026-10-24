@@ -157,6 +157,42 @@ return {
         test.assert_false(model.officerVisible)
         test.assert_false(model.officerEditable)
         test.assert_false(controller:HasActiveNote("main-area52", ""))
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), { "   " })
+    end),
+
+    test.case("searchable live notes are confirmed permission-gated cache values", function()
+        local controller, _, state = newHarness()
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {})
+
+        state.bumpRevision()
+        load(controller)
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "public",
+            "officer",
+        })
+
+        controller:Open("main-area52", "Main-Area52", "committed private")
+        test.assert_true(controller:SetDraft("publicNote", "unsaved public draft"))
+        test.assert_true(controller:SetDraft("privateNote", "unsaved private draft"))
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "public",
+            "officer",
+        })
+
+        state.updateServer("public", "new confirmed public")
+        test.assert_true(controller:OnRosterUpdated())
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "new confirmed public",
+            "officer",
+        })
+
+        state.permissions.viewOfficer = false
+        state.permissions.editOfficer = false
+        state.bumpRevision()
+        test.assert_true(controller:OnRosterUpdated())
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "new confirmed public",
+        })
     end),
 
     test.case("Retail mode exposes guild notes as read-only", function()
@@ -183,6 +219,7 @@ return {
         test.assert_false(model.saveEnabled)
         test.assert_true(controller:HasActiveNote("main-area52", " private "))
         test.assert_false(controller:HasActiveNote("main-area52", ""))
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {})
 
         controller:OnRosterUpdated()
         controller:Update(1)
@@ -192,6 +229,7 @@ return {
         test.assert_true(model.loadFailed)
         test.assert_false(model.saveEnabled)
         test.assert_equal(model.error, "Unable to load guild notes")
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {})
 
         state.setIncomplete(false)
         state.server["main-area52"] = nil

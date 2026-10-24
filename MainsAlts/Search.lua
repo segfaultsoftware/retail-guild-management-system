@@ -42,6 +42,19 @@ function Search.matches(name, query)
     return true
 end
 
+local function matchesText(character, query)
+    if Search.matches(character.name, query)
+        or Search.matches(character.note, query) then
+        return true
+    end
+    for _, note in ipairs(character.searchableNotes or {}) do
+        if Search.matches(note, query) then
+            return true
+        end
+    end
+    return false
+end
+
 local function matchesTags(character, selectedTags)
     if type(selectedTags) ~= "table" then
         return true
@@ -69,7 +82,7 @@ end
 
 function Search.characterMatches(character, query, selectedTags)
     return character.isMissing ~= true
-        and Search.matches(character.name, query)
+        and matchesText(character, query)
         and matchesTags(character, selectedTags)
 end
 
