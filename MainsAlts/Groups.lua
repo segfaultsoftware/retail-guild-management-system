@@ -10,7 +10,7 @@ local Names = type(RGMS) == "table"
 
 local function copyGroups(savedGroups)
     if type(savedGroups) ~= "table" then
-        return nil, "Mains/Alts groups must be a table"
+        return nil, "ByName groups must be a table"
     end
 
     local copy = {}
@@ -19,7 +19,7 @@ local function copyGroups(savedGroups)
     for mainDisplayName, altDisplayNames in pairs(savedGroups) do
         if type(mainDisplayName) ~= "string" or mainDisplayName == ""
             or type(altDisplayNames) ~= "table" then
-            return nil, "Mains/Alts group is invalid"
+            return nil, "ByName group is invalid"
         end
 
         local mainName, mainRealm = Names.splitDisplayName(mainDisplayName)
@@ -34,7 +34,7 @@ local function copyGroups(savedGroups)
         copy[mainDisplayName] = alts
         for index, altDisplayName in ipairs(altDisplayNames) do
             if type(altDisplayName) ~= "string" or altDisplayName == "" then
-                return nil, "Mains/Alts group alt is invalid"
+                return nil, "ByName group alt is invalid"
             end
             local altName, altRealm = Names.splitDisplayName(altDisplayName)
             local altIdentity = Names.identity(altName, altRealm)
@@ -87,7 +87,7 @@ end
 
 local function buildRosterCharacters(dataset)
     if type(dataset) ~= "table" or type(dataset.members) ~= "table" then
-        return nil, "Mains/Alts roster dataset is invalid"
+        return nil, "ByName roster dataset is invalid"
     end
 
     local byIdentity = {}
@@ -95,11 +95,11 @@ local function buildRosterCharacters(dataset)
         if type(member) ~= "table"
             or type(member.name) ~= "string" or member.name == ""
             or type(member.realm) ~= "string" or member.realm == "" then
-            return nil, "Mains/Alts roster member is invalid"
+            return nil, "ByName roster member is invalid"
         end
         local identity = Names.identity(member.name, member.realm)
         if byIdentity[identity] then
-            return nil, "Mains/Alts roster contains a duplicate character"
+            return nil, "ByName roster contains a duplicate character"
         end
         byIdentity[identity] = {
             identity = identity,

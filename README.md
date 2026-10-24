@@ -10,9 +10,10 @@ migration sources remain per character. It does not send data anywhere.
 
 - Scans the guild roster once after login and on demand, then groups members by
   configured guild rank.
-- Shows and manages roster-backed main/alt groups in a dedicated tab, including
-  retained missing members, with expandable groups and no separate scan. Every
-  roster character can also keep an account-wide, per-guild note.
+- Opens Roster in its grouped character presentation, where officers can manage
+  main/alt groups, search characters, filter tags, and keep account-wide,
+  per-guild notes. **By rank** switches the same tab to rank-and-tenure cohorts;
+  both presentations share the roster scan and exclude retained missing records.
 - Tracks how long a member has remained at the same numeric rank and retains a
   recently missing member with a warning for up to 21 Pacific calendar days.
 - Preserves joins, departures, and numeric rank changes as independently

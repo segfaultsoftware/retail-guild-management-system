@@ -21,7 +21,7 @@ local function publishGroups(groups)
         or type(RGMS.AccountData.replaceMainAltGroups) ~= "function"
         or type(RGMS.AccountDataState) ~= "table"
         or type(RGMS.ActiveGuildIdentity) ~= "table" then
-        return nil, "Mains/Alts account storage is unavailable"
+        return nil, "Roster ByName account storage is unavailable"
     end
 
     local replacement, guildOrError = RGMS.AccountData.replaceMainAltGroups(
@@ -293,7 +293,7 @@ function MainsAlts.GroupSelected(selectedIdentities)
     if type(RGMS.DB) ~= "table"
         or type(RGMS.MainsAltsGroups) ~= "table"
         or type(RGMS.MainsAltsGroups.apply) ~= "function" then
-        return nil, "Mains/Alts grouping is unavailable"
+        return nil, "Roster ByName grouping is unavailable"
     end
 
     local groups, mainIdentity = RGMS.MainsAltsGroups.apply(
@@ -323,7 +323,7 @@ local function changeAltGroup(methodName, altIdentity)
     if type(RGMS.DB) ~= "table"
         or type(RGMS.MainsAltsGroups) ~= "table"
         or type(RGMS.MainsAltsGroups[methodName]) ~= "function" then
-        return nil, "Mains/Alts group changes are unavailable"
+        return nil, "Roster ByName group changes are unavailable"
     end
 
     local groups, mainIdentityOrError, groupRemains = RGMS.MainsAltsGroups[methodName](
@@ -382,7 +382,7 @@ function MainsAlts.RefreshStatus()
         if type(RGMS.UI.SetMainsAltsAvailable) == "function" then
             RGMS.UI.SetMainsAltsAvailable(false)
         end
-        RGMS.UI.SetViewStatus("mainsalts", "Mains/Alts report unavailable")
+        RGMS.UI.SetViewStatus("mainsalts", "Roster report unavailable")
         return
     end
 
@@ -398,7 +398,7 @@ function MainsAlts.RefreshStatus()
         end
         RGMS.UI.SetViewStatus(
             "mainsalts",
-            "Mains/Alts report unavailable: " .. tostring(reportError)
+            "Roster report unavailable: " .. tostring(reportError)
         )
         return
     end

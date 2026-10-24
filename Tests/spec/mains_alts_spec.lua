@@ -142,7 +142,7 @@ local function newHarness(options)
 end
 
 return {
-    test.case("Mains/Alts status renders the roster projection while guilded", function()
+    test.case("ByName status renders the roster projection while guilded", function()
         local controller, calls = newHarness({
             members = { {}, {}, { isMissing = true } },
             rows = { { displayName = "Main-Area52" } },
@@ -158,7 +158,7 @@ return {
         })
     end),
 
-    test.case("Mains/Alts status is empty and disabled while guildless", function()
+    test.case("ByName status is empty and disabled while guildless", function()
         local controller, calls = newHarness({ available = false })
 
         controller.RefreshStatus()
@@ -172,7 +172,7 @@ return {
         test.assert_equal(calls.status.value, "Not in a guild")
     end),
 
-    test.case("Mains/Alts status identifies an active roster scan", function()
+    test.case("ByName status identifies an active roster scan", function()
         local controller, calls = newHarness({ scanning = true })
 
         controller.RefreshStatus()
@@ -180,7 +180,7 @@ return {
         test.assert_equal(calls.status.value, "Roster scan in progress")
     end),
 
-    test.case("Mains/Alts status disables controls for a corrupt report", function()
+    test.case("ByName status disables controls for a corrupt report", function()
         local controller, calls = newHarness({ reportError = "corrupt roster" })
 
         controller.RefreshStatus()

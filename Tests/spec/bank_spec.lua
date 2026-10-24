@@ -262,8 +262,7 @@ return {
         test.assert_equal(harness.actions[#harness.actions], {
             action = "status",
             tabId = "bank",
-            status = "Guild bank closed. Last scan: 2024-06-01 05:34 PT\n"
-                .. "Tab last accessible: 2024-05-31 23:45 PT",
+            status = "Guild bank closed. Last scan: 2024-06-01 05:34 PT",
         })
         harness.restore()
     end),

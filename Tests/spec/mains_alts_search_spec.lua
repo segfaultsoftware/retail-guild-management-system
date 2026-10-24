@@ -17,7 +17,7 @@ local function character(name, realm, options)
 end
 
 return {
-    test.case("Mains/Alts search normalizes spaces and case for ordered matching", function()
+    test.case("ByName search normalizes spaces and case for ordered matching", function()
         test.assert_equal(search.normalize(" M T V S "), "mtvs")
         test.assert_true(search.matches("Mountvesuvius", "mtvs"))
         test.assert_true(search.matches("Mountvesuvius", "MTVS"))
@@ -26,7 +26,7 @@ return {
         test.assert_false(search.matches("Café", "e"))
     end),
 
-    test.case("Mains/Alts search keeps full matching groups in report order", function()
+    test.case("ByName search keeps full matching groups in report order", function()
         local matchingAlt = character("Mountvesuvius")
         local first = character("Alpha")
         local group = character("Main", "Area52", {
@@ -60,7 +60,7 @@ return {
         test.assert_equal(search.filter(report, "").rows, { first, group })
     end),
 
-    test.case("Mains/Alts search ignores realms notes and unmatched rows", function()
+    test.case("ByName search ignores realms notes and unmatched rows", function()
         local realmOnly = character("Hero", "Searchrealm")
         local noteOnly = character("Other", "Area52", { note = "search note" })
         local report = { rows = { realmOnly, noteOnly } }

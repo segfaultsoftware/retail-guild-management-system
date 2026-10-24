@@ -268,17 +268,6 @@ function Bank.RefreshStatus()
             scannedAt.unixSeconds
         )
     end
-    local lastAccessible
-    if builtReport and type(builtReport.tabs) == "table" then
-        local savedIndex = type(RGMS.DB.ui) == "table"
-            and RGMS.DB.ui.selectedBankTabIndex
-            or nil
-        local selected = type(RGMS.Portal) == "table"
-            and RGMS.Portal.resolveSelection(builtReport.tabs, savedIndex, true)
-            or builtReport.tabs[1]
-        lastAccessible = selected and selected.lastAccessibleText or nil
-    end
-
     if Bank.IsScanInProgress() then
         local status = "Scanning..."
         if lastSuccessful then
@@ -293,7 +282,7 @@ function Bank.RefreshStatus()
     local status
     if lastSuccessful then
         status = type(RGMS.Portal) == "table"
-            and RGMS.Portal.bankTimestamp(lastSuccessful, lastAccessible)
+            and RGMS.Portal.bankTimestamp(lastSuccessful)
             or ("Last successful scan: " .. lastSuccessful)
     else
         status = "No bank scan yet"

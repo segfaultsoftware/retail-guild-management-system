@@ -22,10 +22,11 @@ return {
 
     test.case("context controls are view-specific", function()
         test.assert_equal(portal.contextControls("roster"), {
-            dropdown = "rank", primary = "Refresh", close = true,
+            primary = "Group Toons", search = "character",
+            tags = "Tags...", byRank = false, close = true,
         })
-        test.assert_equal(portal.contextControls("mainsalts"), {
-            primary = "Group Toons", search = "character", close = true,
+        test.assert_equal(portal.contextControls("roster", "ByTenure"), {
+            dropdown = "rank", byRank = true, primary = "Refresh", close = true,
         })
         test.assert_equal(portal.contextControls("bank"), {
             dropdown = "bankTab", primary = "Refresh", close = true,
@@ -39,15 +40,17 @@ return {
         test.assert_true(state:selectView("bank"))
         test.assert_equal(state:setScroll("bank", 91), 91)
         test.assert_true(state:selectView("roster"))
-        test.assert_equal(state:setScroll("roster", 42), 42)
+        test.assert_equal(state:setScroll("roster", 42, "ByName"), 42)
+        test.assert_true(state:selectRosterMode("ByTenure"))
+        test.assert_equal(state:setScroll("roster", 17), 17)
         test.assert_true(state:selectView("bank"))
         test.assert_equal(state.scroll.bank, 91)
 
         state:closeWindow()
         test.assert_equal(state:openWindow(), "roster")
+        test.assert_equal(state.rosterMode, "ByName")
         test.assert_equal(state.scroll, {
-            roster = 0,
-            mainsalts = 0,
+            roster = { ByName = 0, ByTenure = 0 },
             bank = 0,
             tags = 0,
         })
@@ -55,15 +58,17 @@ return {
 
     test.case("option changes reset only the affected table", function()
         local state = portal.create()
-        state.scroll.roster = 12
+        state.scroll.roster.ByName = 12
+        state.scroll.roster.ByTenure = 56
         state.scroll.bank = 34
         test.assert_true(state:selectionChanged("bank"))
         test.assert_equal(state.scroll, {
-            roster = 12,
-            mainsalts = 0,
+            roster = { ByName = 12, ByTenure = 56 },
             bank = 0,
             tags = 0,
         })
+        test.assert_true(state:selectionChanged("roster"))
+        test.assert_equal(state.scroll.roster, { ByName = 12, ByTenure = 0 })
     end),
 
     test.case("global scan lock rejects mutation and discards a note draft", function()
@@ -92,9 +97,10 @@ return {
         test.assert_false(state:canDrag())
     end),
 
-    test.case("operational status takes priority and bank timestamps combine", function()
+    test.case("operational status takes priority over the last bank scan", function()
         local timestamp = portal.bankTimestamp("Monday", "Sunday")
-        test.assert_equal(timestamp, "Last scan: Monday\nTab last accessible: Sunday")
+        test.assert_equal(timestamp, "Last scan: Monday")
+        test.assert_nil(portal.bankTimestamp(nil, "Sunday"))
         test.assert_equal(portal.status("Scanning...", timestamp), "Scanning...")
         test.assert_equal(portal.status(nil, timestamp), timestamp)
     end),

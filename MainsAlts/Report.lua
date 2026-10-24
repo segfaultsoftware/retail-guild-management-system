@@ -1,4 +1,4 @@
--- Pure Mains/Alts projection. The saved roster is the only source of
+-- Pure Roster ByName projection. The saved roster is the only source of
 -- characters; saved groups only determine which of those characters nest
 -- beneath a main.
 
@@ -47,13 +47,13 @@ end
 
 function Report.build(dataset, savedGroups, savedNotes, savedTags)
     if type(dataset) ~= "table" or type(dataset.members) ~= "table" then
-        return nil, "Mains/Alts roster dataset is invalid"
+        return nil, "ByName roster dataset is invalid"
     end
     if savedGroups ~= nil and type(savedGroups) ~= "table" then
-        return nil, "Mains/Alts groups must be a table"
+        return nil, "ByName groups must be a table"
     end
     if savedNotes ~= nil and type(savedNotes) ~= "table" then
-        return nil, "Mains/Alts character notes must be a table"
+        return nil, "ByName character notes must be a table"
     end
     savedNotes = savedNotes or {}
     savedTags = savedTags or Tags.newState()
@@ -70,13 +70,13 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
             or member.name == ""
             or type(member.realm) ~= "string"
             or member.realm == "" then
-            return nil, "Mains/Alts roster member is invalid"
+            return nil, "ByName roster member is invalid"
         end
 
         if member.isMissing ~= true then
             local character = projectCharacter(member, savedNotes, savedTags)
             if charactersByIdentity[character.identity] then
-                return nil, "Mains/Alts roster contains a duplicate character"
+                return nil, "ByName roster contains a duplicate character"
             end
             characters[#characters + 1] = character
             charactersByIdentity[character.identity] = character
@@ -87,7 +87,7 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
     for mainDisplayName, altDisplayNames in pairs(savedGroups or {}) do
         if type(mainDisplayName) ~= "string"
             or type(altDisplayNames) ~= "table" then
-            return nil, "Mains/Alts group is invalid"
+            return nil, "ByName group is invalid"
         end
         local mainName, mainRealm = Names.splitDisplayName(mainDisplayName)
         local main = charactersByIdentity[Names.identity(mainName, mainRealm)]
@@ -110,7 +110,7 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
             local seenAlts = {}
             for _, altDisplayName in ipairs(definition.altDisplayNames) do
                 if type(altDisplayName) ~= "string" then
-                    return nil, "Mains/Alts group alt is invalid"
+                    return nil, "ByName group alt is invalid"
                 end
                 local altName, altRealm = Names.splitDisplayName(altDisplayName)
                 local alt = charactersByIdentity[Names.identity(altName, altRealm)]

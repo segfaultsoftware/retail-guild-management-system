@@ -1,4 +1,4 @@
--- Pure ordered-subsequence filtering for the Mains/Alts report. fzy-lua
+-- Pure ordered-subsequence filtering for the Roster ByName report. fzy-lua
 -- primarily adds scoring and ranking, while lua-bk-tree adds edit-distance
 -- lookup. Search here deliberately needs neither, so a small linear matcher
 -- keeps the required report order without adding a third-party dependency.
@@ -75,7 +75,7 @@ end
 
 function Search.filter(report, query, selectedTags)
     if type(report) ~= "table" or type(report.rows) ~= "table" then
-        return nil, nil, "Mains/Alts search requires report rows"
+        return nil, nil, "ByName search requires report rows"
     end
 
     local normalized = Search.normalize(query)

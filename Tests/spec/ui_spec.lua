@@ -94,6 +94,10 @@ local function newRegion(parent)
         self.height = height
     end
 
+    function region:SetJustifyV(justifyV)
+        self.justifyV = justifyV
+    end
+
     function region:GetWidth()
         return self.width
     end
@@ -404,7 +408,6 @@ local function newRegion(parent)
         "SetClampedToScreen",
         "SetClampRectInsets",
         "SetBackdrop",
-        "SetJustifyV",
         "SetMultiLine",
     }
     for _, methodName in ipairs(noOpMethods) do
@@ -701,10 +704,10 @@ return {
         test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 0)
         test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 1)
         test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 0)
-        test.assert_equal(frame.numTabs, 4)
-        test.assert_equal(frame.tabs[2].label.text, "Mains/Alts")
-        test.assert_equal(frame.tabs[3].label.text, "Guild Bank")
-        test.assert_equal(frame.tabs[4].label.text, "Tags")
+        test.assert_equal(frame.numTabs, 3)
+        test.assert_equal(frame.tabs[1].label.text, "Roster")
+        test.assert_equal(frame.tabs[2].label.text, "Guild Bank")
+        test.assert_equal(frame.tabs[3].label.text, "Tags")
         test.assert_nil(frame.tabs[2].text)
         test.assert_equal(frame.views.roster.rankDropdown.parent, frame.views.roster)
         test.assert_equal(frame.views.bank.bankDropdown.parent, frame.views.bank)
@@ -721,8 +724,8 @@ return {
         test.assert_equal(frame.views.mainsalts.status.text, "No roster data yet")
         local searchBox = frame.views.mainsalts.mainsAltsSearchBox
         test.assert_equal(searchBox:GetWidth(), 252)
-        test.assert_equal(searchBox.relativeTo, frame.views.mainsalts.groupButton)
-        test.assert_equal(searchBox.x, 8)
+        test.assert_equal(searchBox.relativeTo, frame)
+        test.assert_equal(searchBox.x, 64)
         test.assert_false(searchBox.autoFocus)
         test.assert_nil(searchBox.maxLetters)
         test.assert_equal(
@@ -731,8 +734,38 @@ return {
         )
         test.assert_equal(
             frame.views.mainsalts.mainsAltsTagFilterButton.label.text,
-            "Filter tags..."
+            "Tags..."
         )
+        test.assert_equal(
+            frame.views.mainsalts.mainsAltsTagFilterButton.relativeTo,
+            searchBox
+        )
+        test.assert_equal(
+            frame.views.mainsalts.groupButton.relativeTo,
+            frame.views.mainsalts.mainsAltsTagFilterButton
+        )
+        test.assert_equal(frame.views.mainsalts.groupButton.x, 8)
+        test.assert_equal(frame.views.mainsalts.byRankCheckbox.label.text, "By rank")
+        test.assert_false(frame.views.mainsalts.byRankCheckbox:GetChecked())
+        test.assert_true(frame.views.roster.byRankCheckbox:GetChecked())
+        test.assert_equal(
+            frame.views.mainsalts.byRankCheckbox.relativeTo,
+            frame.views.mainsalts.status
+        )
+        test.assert_equal(frame.views.mainsalts.byRankCheckbox.point, "RIGHT")
+        test.assert_equal(frame.views.mainsalts.byRankCheckbox.relativePoint, "LEFT")
+        test.assert_equal(frame.views.mainsalts.byRankCheckbox.x, -8)
+        test.assert_equal(
+            frame.views.roster.byRankCheckbox.relativeTo,
+            frame.views.roster.status
+        )
+        test.assert_equal(frame.views.bank.status.points[2].x, -96)
+        test.assert_equal(
+            frame.views.bank.status.points[2].x,
+            frame.views.roster.status.points[2].x
+        )
+        test.assert_equal(frame.views.bank.status.height, 40)
+        test.assert_equal(frame.views.bank.status.justifyV, "MIDDLE")
         test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
         test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
         test.assert_equal(frame.views.tags.text.text, "No tags yet")
@@ -891,7 +924,8 @@ return {
         test.assert_true(harness.ui.Show("roster"))
         test.assert_true(harness.ui.IsShown())
         test.assert_equal(harness.ui.selectedTab, "roster")
-        test.assert_true(harness.frame().views.roster:IsShown())
+        test.assert_true(harness.frame().views.mainsalts:IsShown())
+        test.assert_false(harness.frame().views.roster:IsShown())
         test.assert_false(harness.frame().views.bank:IsShown())
 
         test.assert_true(harness.ui.SetViewContent("bank", "Updated bank content"))
@@ -903,6 +937,97 @@ return {
 
         harness.frame().closeButton.scripts.OnClick()
         test.assert_false(harness.ui.IsShown())
+    end),
+
+    test.case("Roster switches ByName and ByTenure in place with session-only state", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.SetRosterReport({ ranks = { rosterRank(3, "Officer") } })
+        local report = mainsAltsReport(20)
+        report.tagCatalog = { "raid" }
+        for _, row in ipairs(report.rows) do
+            row.name = row.displayName
+            row.tags = { "raid" }
+        end
+        harness.ui.SetMainsAltsReport(report)
+        harness.ui.SetViewStatus("roster", "20 roster characters")
+        harness.ui.Show()
+
+        local frame = harness.frame()
+        local byName = frame.views.mainsalts
+        local byTenure = frame.views.roster
+        byName.scrollFrame:SetHeight(72)
+        test.assert_equal(harness.ui.selectedTab, "roster")
+        test.assert_true(byName:IsShown())
+        test.assert_false(byTenure:IsShown())
+        test.assert_true(byName.groupButton:IsShown())
+        test.assert_true(byName.mainsAltsSearchBox:IsShown())
+        test.assert_true(byName.mainsAltsTagFilterButton:IsShown())
+        test.assert_true(byName.refreshButton:IsShown())
+        test.assert_equal(byName.status.text, "20 roster characters")
+        test.assert_equal(byTenure.status.text, "20 roster characters")
+
+        byName.mainsAltsSearchBox:SetText("char")
+        byName.mainsAltsTagFilters.raid = true
+        byName.expandedMainsAlts["char01-area52"] = true
+        byName.mainsAltsSelections["char01-area52"] = true
+        byName.scrollFrame:SetVerticalScroll(48)
+        byName.mainsAltsTagFilterButton.scripts.OnClick()
+        test.assert_true(byName.mainsAltsTagFilter:IsShown())
+
+        test.assert_true(harness.ui.SelectRosterMode("ByTenure"))
+        test.assert_equal(harness.ui.rosterScroll.ByName, 48)
+        test.assert_false(byName:IsShown())
+        test.assert_true(byTenure:IsShown())
+        test.assert_false(byName.mainsAltsTagFilter:IsShown())
+        test.assert_equal(byName.mainsAltsSearchBox:GetText(), "char")
+        test.assert_true(byName.mainsAltsTagFilters.raid)
+        test.assert_true(byName.expandedMainsAlts["char01-area52"])
+        test.assert_true(byName.mainsAltsSelections["char01-area52"])
+        test.assert_true(byTenure.rankDropdown:IsShown())
+        test.assert_true(byTenure.byRankCheckbox:GetChecked())
+        test.assert_true(byTenure.refreshButton:IsShown())
+        byTenure.refreshButton.scripts.OnClick()
+        test.assert_equal(harness.refreshRequests(), 1)
+        test.assert_equal(harness.ui.rosterMode, "ByTenure")
+
+        byTenure.scrollFrame:SetVerticalScroll(30)
+        test.assert_true(harness.ui.SelectPrimaryTab("bank"))
+        test.assert_true(harness.ui.SelectPrimaryTab("roster"))
+        test.assert_true(byTenure:IsShown())
+        test.assert_equal(byTenure.scrollFrame:GetVerticalScroll(), 30)
+        test.assert_equal(harness.ui.rosterScroll.ByName, 48)
+        test.assert_true(byName.mainsAltsTableHeight > byName.scrollFrame:GetHeight())
+
+        test.assert_true(harness.ui.SelectRosterMode("ByName"))
+        test.assert_equal(byName.scrollFrame:GetVerticalScroll(), 48)
+        test.assert_true(byName.mainsAltsTagFilters.raid)
+        test.assert_true(harness.ui.OpenCharacterNote(
+            report.rows[1].identity,
+            report.rows[1].displayName,
+            ""
+        ))
+        local switched, reason = harness.ui.SelectRosterMode("ByTenure")
+        test.assert_nil(switched)
+        test.assert_equal(reason, "modal-open")
+        harness.ui.CloseCharacterNoteEditor()
+
+        harness.ui.SetMainsAltsAvailable(false)
+        test.assert_false(byName.byRankCheckbox:IsEnabled())
+        test.assert_false(byTenure.byRankCheckbox:IsEnabled())
+        harness.ui.SetMainsAltsAvailable(true)
+        harness.ui.SetRosterScanInProgress(true)
+        test.assert_false(byName.byRankCheckbox:IsEnabled())
+        test.assert_equal(harness.ui.rosterMode, "ByName")
+        harness.ui.SetRosterScanInProgress(false)
+
+        harness.ui.Hide()
+        harness.ui.Show()
+        test.assert_true(byName:IsShown())
+        test.assert_false(byName.byRankCheckbox:GetChecked())
+        test.assert_equal(byName.mainsAltsSearchBox:GetText(), "")
+        test.assert_nil(next(byName.mainsAltsTagFilters))
+        test.assert_equal(byName.scrollFrame:GetVerticalScroll(), 0)
     end),
 
     test.case("Tags renders a fixed-header catalog with previews and delete confirmation", function()
@@ -988,7 +1113,7 @@ return {
         test.assert_equal(reason, "scan-locked")
     end),
 
-    test.case("Mains/Alts rows expand transiently and disable during roster scans", function()
+    test.case("ByName rows expand transiently and disable during roster scans", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local report = {
@@ -1038,7 +1163,7 @@ return {
         test.assert_true(harness.ui.SetMainsAltsReport(report))
         test.assert_true(harness.ui.Show("mainsalts"))
         local view = harness.frame().views.mainsalts
-        test.assert_nil(view.refreshButton)
+        test.assert_true(view.refreshButton ~= nil)
         test.assert_equal(view.groupButton.text, "Group Toons")
         test.assert_false(view.groupButton:IsEnabled())
         test.assert_equal(view.mainsAltsLines[1].name.text, "Main-Area52 (+2)")
@@ -1161,7 +1286,7 @@ return {
         test.assert_false(view.mainsAltsLinePool[4].frame:IsShown())
     end),
 
-    test.case("Mains/Alts recycles a bounded row pool for very large guilds", function()
+    test.case("ByName recycles a bounded row pool for very large guilds", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local view = harness.frame().views.mainsalts
@@ -1198,7 +1323,7 @@ return {
         test.assert_true(view.mainsAltsSelections["char151-area52"])
     end),
 
-    test.case("Mains/Alts search filters full groups and preserves hidden selections", function()
+    test.case("ByName search filters full groups and preserves hidden selections", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show()
@@ -1296,7 +1421,7 @@ return {
         test.assert_true(view.mainsAltsLines[2].checkbox:GetChecked())
     end),
 
-    test.case("Mains/Alts search follows keyboard lifecycle report and lock rules", function()
+    test.case("ByName search follows keyboard lifecycle report and lock rules", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show()
@@ -1365,18 +1490,19 @@ return {
         test.assert_nil(next(view.expandedMainsAlts))
 
         view.mainsAltsSearchBox:SetText("solo")
+        harness.ui.SelectRosterMode("ByTenure")
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "solo")
+        harness.ui.SelectPrimaryTab("bank")
         harness.ui.SelectPrimaryTab("roster")
-        test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
-        test.assert_nil(next(view.expandedMainsAlts))
+        test.assert_equal(view.mainsAltsSearchBox:GetText(), "solo")
 
-        harness.ui.SelectPrimaryTab("mainsalts")
-        view.mainsAltsSearchBox:SetText("solo")
+        harness.ui.SelectRosterMode("ByName")
         test.assert_nil(harness.database.ui.mainsAltsSearchQuery)
         harness.ui.Hide()
         test.assert_equal(view.mainsAltsSearchBox:GetText(), "")
     end),
 
-    test.case("Mains/Alts tag icons edit filter intersect and follow transient lifecycle", function()
+    test.case("ByName tag icons edit filter intersect and follow transient lifecycle", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show()
@@ -1498,7 +1624,7 @@ return {
         )
         test.assert_equal(
             view.mainsAltsTagFilterButton.label.text,
-            "Filter tags... (1)"
+            "Tags... (1)"
         )
         local filterTextHistory = view.mainsAltsTagFilterButton.label.textHistory
         test.assert_equal(
@@ -1507,7 +1633,7 @@ return {
         )
         test.assert_equal(
             filterTextHistory[#filterTextHistory],
-            "Filter tags... (1)"
+            "Tags... (1)"
         )
         test.assert_equal(view.mainsAltsLines[1].identity, "main-area52")
         test.assert_equal(view.mainsAltsLines[2].identity, "raidalt-area52")
@@ -1652,12 +1778,13 @@ return {
         test.assert_true(view.mainsAltsTagFilter:IsShown())
         view.mainsAltsTagDismissLayer.scripts.OnClick()
         test.assert_false(view.mainsAltsTagFilter:IsShown())
-        harness.ui.SelectPrimaryTab("roster")
-        test.assert_nil(next(view.mainsAltsTagFilters))
-        test.assert_equal(view.mainsAltsTagFilterButton.label.text, "Filter tags...")
+        harness.ui.SelectRosterMode("ByTenure")
+        test.assert_true(view.mainsAltsTagFilters.raid)
+        harness.ui.SelectRosterMode("ByName")
+        test.assert_equal(view.mainsAltsTagFilterButton.label.text, "Tags... (1)")
     end),
 
-    test.case("Mains/Alts mutation scrolling waits for the final report and jumps to a clamped row", function()
+    test.case("ByName mutation scrolling waits for the final report and jumps to a clamped row", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show("mainsalts")
@@ -1687,7 +1814,7 @@ return {
         test.assert_equal(view.scrollChild:GetHeight(), 248)
     end),
 
-    test.case("Mains/Alts ordinary renders preserve main ungrouped and expanded-alt anchors", function()
+    test.case("ByName ordinary renders preserve main ungrouped and expanded-alt anchors", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local view = harness.frame().views.mainsalts
@@ -1751,7 +1878,7 @@ return {
         test.assert_equal(view.mainsAltsLines[3].identity, "alta-area52")
     end),
 
-    test.case("Mains/Alts toggles keep the clicked main at the same visible row", function()
+    test.case("ByName toggles keep the clicked main at the same visible row", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local view = harness.frame().views.mainsalts
@@ -1803,7 +1930,7 @@ return {
         test.assert_equal(view.mainsAltsLines[3].offset - 56, relativeOffset)
     end),
 
-    test.case("Mains/Alts target scrolling is immediate and lifecycle input remains stable", function()
+    test.case("ByName target scrolling is immediate and lifecycle input remains stable", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show("mainsalts")
@@ -1837,10 +1964,10 @@ return {
         test.assert_equal(view.scrollFrame:GetVerticalScroll(), 25)
 
         start("char08-area52")
-        harness.ui.SelectPrimaryTab("roster")
+        harness.ui.SelectRosterMode("ByTenure")
         test.assert_nil(view.mainsAltsScrollAnimation)
         test.assert_nil(view.pendingMainsAltsScrollTarget)
-        harness.ui.SelectPrimaryTab("mainsalts")
+        harness.ui.SelectRosterMode("ByName")
 
         start("char08-area52")
         harness.ui.SetRosterScanInProgress(true)
@@ -1858,7 +1985,7 @@ return {
         test.assert_equal(view.scrollFrame:GetVerticalScroll(), 0)
     end),
 
-    test.case("Mains/Alts missing mutation targets are cleared silently", function()
+    test.case("ByName missing mutation targets are cleared silently", function()
         local harness = newHarness()
         harness.ui.Initialize()
         harness.ui.Show("mainsalts")
@@ -2491,7 +2618,7 @@ return {
         test.assert_false(view.scrollFrame.ScrollBar:IsShown())
     end),
 
-    test.case("Mains/Alts scrollbar appears only when character rows overflow", function()
+    test.case("ByName scrollbar appears only when character rows overflow", function()
         local harness = newHarness()
         harness.ui.Initialize()
         local view = harness.frame().views.mainsalts
@@ -2812,7 +2939,7 @@ return {
 
         local selected, message = harness.ui.SelectPrimaryTab("settings")
         test.assert_nil(selected)
-        test.assert_matches(message, "mainsalts")
+        test.assert_equal(message, "primary tab must be roster, bank, or tags")
         test.assert_equal(harness.ui.selectedTab, "roster")
     end),
 
@@ -2879,6 +3006,7 @@ return {
         local bankLabelCalls = frame.views.bank.bankDropdown.label.setTextCalls
 
         test.assert_true(harness.ui.Show())
+        test.assert_true(harness.ui.SelectRosterMode("ByTenure"))
         test.assert_equal(frame.views.roster.rankDropdown.label.text, "Officer")
         test.assert_equal(frame.views.roster.rosterLines[1].primary.text, "This Week")
         test.assert_equal(

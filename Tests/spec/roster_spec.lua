@@ -71,7 +71,11 @@ return {
         local dataset = {
             scannedAt = { unixSeconds = 100 },
             ranks = {},
-            members = {},
+            members = {
+                { isMissing = false },
+                { isMissing = true },
+                {},
+            },
         }
         local harness = newHarness({
             database = { roster = dataset },
@@ -97,7 +101,7 @@ return {
             {
                 action = "status",
                 tabId = "roster",
-                status = "Last successful update: 2024-06-01 05:34 PT",
+                status = "2 roster characters",
             },
         })
         harness.restore()

@@ -40,10 +40,10 @@ local function CreateFrame(frameType, name, parent, template)
     return frame
 end
 
-local TAB_ORDER = { "roster", "mainsalts", "bank", "tags" }
+local TAB_ORDER = { "roster", "bank", "tags" }
+local ALL_VIEW_IDS = { "roster", "mainsalts", "bank", "tags" }
 local TAB_TITLES = {
     roster = "Roster",
-    mainsalts = "Mains/Alts",
     bank = "Guild Bank",
     tags = "Tags",
 }
@@ -107,6 +107,8 @@ local MAINS_ALTS_SEARCH_WIDTH = 252
 local MAINS_ALTS_SEARCH_HEIGHT = 32
 local MAINS_ALTS_FILTER_WIDTH = 124
 local MAINS_ALTS_FILTER_HEIGHT = 28
+local BY_RANK_CHECKBOX_SIZE = 18
+local BY_RANK_CONTROL_WIDTH = 88
 -- Keep tag management on RGMS's established fixed-header ScrollFrame pattern.
 -- External table libraries add their own styling and selection model, while
 -- the native modern ScrollBox wrappers do not improve this small three-column
@@ -363,6 +365,7 @@ local closeMainsAltsTagFilter
 local refreshMainsAltsTagEditor
 local refreshMainsAltsTagFilter
 local updateMainsAltsTagFilterAppearance
+local updateRosterModeControls
 
 local function attachTruncationTooltip(parent, textRegion)
     local hitbox = CreateFrame("Button", nil, parent)
@@ -418,10 +421,47 @@ local function normalizeTabId(tabId)
     end
 
     tabId = string.lower(tabId)
-    if TAB_TITLES[tabId] then
+    if TAB_TITLES[tabId] or tabId == "mainsalts" then
         return tabId
     end
     return nil
+end
+
+local function activeRosterMode()
+    if type(RGMS.PortalState) == "table"
+        and RGMS.PortalState.rosterMode == "ByTenure" then
+        return "ByTenure"
+    end
+    if UI.rosterMode == "ByTenure" then
+        return "ByTenure"
+    end
+    return "ByName"
+end
+
+local function rosterModeView(mode)
+    if not UI.frame then
+        return nil
+    end
+    return mode == "ByTenure"
+        and UI.frame.views.roster
+        or UI.frame.views.mainsalts
+end
+
+local function setRosterModeScroll(mode, offset)
+    offset = math.max(0, tonumber(offset) or 0)
+    if type(RGMS.PortalState) == "table" then
+        RGMS.PortalState:setScroll("roster", offset, mode)
+    else
+        UI.rosterScroll = UI.rosterScroll or { ByName = 0, ByTenure = 0 }
+        UI.rosterScroll[mode] = offset
+    end
+end
+
+local function getRosterModeScroll(mode)
+    if type(RGMS.PortalState) == "table" then
+        return RGMS.PortalState.scroll.roster[mode] or 0
+    end
+    return UI.rosterScroll and UI.rosterScroll[mode] or 0
 end
 
 local function getScreenSize()
@@ -1696,7 +1736,8 @@ local function renderMainsAlts(view, resolvePendingTarget, preferredAnchor)
         view.pendingMainsAltsScrollTarget = nil
         local targetLine = findMainsAltsRow(view, targetIdentity, true)
         if targetLine
-            and UI.selectedTab == "mainsalts"
+            and UI.selectedTab == "roster"
+            and activeRosterMode() == "ByName"
             and UI.frame:IsShown()
             and view:IsShown()
             and view.mainsAltsAvailable ~= false then
@@ -1829,7 +1870,7 @@ end
 local function createMainsAltsSearch(view)
     local editBox = CreateFrame("EditBox", nil, view, "BackdropTemplate")
     editBox:SetSize(MAINS_ALTS_SEARCH_WIDTH, MAINS_ALTS_SEARCH_HEIGHT)
-    editBox:SetPoint("TOPLEFT", view.groupButton, "TOPRIGHT", CONTROL_GAP, 0)
+    editBox:SetPoint("TOPLEFT", view:GetParent(), "TOPLEFT", 64, -12)
     editBox:SetAutoFocus(false)
     editBox:SetJustifyH("LEFT")
     if type(editBox.SetTextInsets) == "function" then
@@ -1861,7 +1902,7 @@ local function createMainsAltsSearch(view)
     end)
     clearButton:SetScript("OnEnter", function(button)
         button.icon:SetVertexColor(unpackColor(PALETTE.pinkHover))
-        showOwnedTooltip(button, "Clear search", "Show every Mains/Alts character.")
+        showOwnedTooltip(button, "Clear search", "Show every Roster character.")
     end)
     clearButton:SetScript("OnLeave", function(button)
         button.icon:SetVertexColor(unpackColor(
@@ -2057,8 +2098,8 @@ updateMainsAltsTagFilterAppearance = function(view)
         end
     end
     local label = count > 0
-        and ("Filter tags... (" .. count .. ")")
-        or "Filter tags..."
+        and ("Tags... (" .. count .. ")")
+        or "Tags..."
     view.mainsAltsTagFilterButton.label:SetText("")
     view.mainsAltsTagFilterButton.label:SetText(label)
     styleTagCapsule(
@@ -2790,10 +2831,17 @@ end
 
 local function refreshVisibleReport(view, tabId)
     if tabId == "roster" then
-        local rank = findRosterRank(view, view.selectedRankIndex)
-        if rank then
-            updateDropdownLabel(view.rankDropdown, rank, "No ranks", true)
-            renderRosterRank(view, rank, true)
+        if activeRosterMode() == "ByTenure" then
+            local rank = findRosterRank(view, view.selectedRankIndex)
+            if rank then
+                updateDropdownLabel(view.rankDropdown, rank, "No ranks", true)
+                renderRosterRank(view, rank, true)
+            end
+        else
+            local byNameView = UI.frame.views.mainsalts
+            if type(byNameView.mainsAltsReport) == "table" then
+                renderMainsAlts(byNameView)
+            end
         end
     elseif tabId == "bank" then
         local tab = findBankTab(view, view.selectedBankTabIndex)
@@ -2808,6 +2856,43 @@ local function refreshVisibleReport(view, tabId)
     end
 end
 
+local function createByRankControl(view, checked, relativeTo, point, relativePoint, x, y)
+    local control = CreateFrame("CheckButton", nil, view, "BackdropTemplate")
+    control:SetSize(BY_RANK_CONTROL_WIDTH, 32)
+    control:SetPoint(point, relativeTo, relativePoint, x, y)
+
+    control.box = CreateFrame("Frame", nil, control, "BackdropTemplate")
+    control.box:SetSize(BY_RANK_CHECKBOX_SIZE, BY_RANK_CHECKBOX_SIZE)
+    control.box:SetPoint("LEFT", control, "LEFT", 0, 0)
+    flatBackdrop(control.box, PALETTE.control, PALETTE.border)
+    control.check = control.box:CreateTexture(nil, "ARTWORK")
+    control.check:SetAllPoints(control.box)
+    control.check:SetTexture(CHECK_TEXTURE)
+    control.check:SetShown(checked == true)
+
+    control.label = control:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    control.label:SetPoint("LEFT", control.box, "RIGHT", 6, 0)
+    control.label:SetJustifyH("LEFT")
+    control.label:SetText("By rank")
+    setFont(control.label, FONT_SEMIBOLD, 12)
+    setTextColor(control.label, PALETTE.text)
+    control:SetChecked(checked == true)
+    control:SetScript("OnClick", function(button)
+        local selected, reason = UI.SelectRosterMode(
+            button:GetChecked() and "ByTenure" or "ByName"
+        )
+        if not selected then
+            button:SetChecked(activeRosterMode() == "ByTenure")
+            button.check:SetShown(button:GetChecked())
+            if reason and reason ~= "modal-open" and type(RGMS.Print) == "function" then
+                RGMS.Print("Could not change the Roster presentation: " .. tostring(reason) .. ".")
+            end
+        end
+    end)
+    view.byRankCheckbox = control
+    return control
+end
+
 local function createView(parent, tabId)
     local view = CreateFrame("Frame", nil, parent)
     view:SetPoint("TOPLEFT", SIDEBAR_WIDTH + CONTENT_PADDING, -HEADER_HEIGHT - CONTENT_PADDING)
@@ -2815,12 +2900,18 @@ local function createView(parent, tabId)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     local statusY = tabId == "bank" and -8 or -20
-    view.status:SetPoint("TOPLEFT", parent, "TOPLEFT", tabId == "mainsalts" and 576 or 280, statusY)
+    view.status:SetPoint(
+        "TOPLEFT",
+        parent,
+        "TOPLEFT",
+        (tabId == "mainsalts" or tabId == "roster") and 680 or 280,
+        statusY
+    )
     view.status:SetPoint(
         "TOPRIGHT",
         parent,
         "TOPRIGHT",
-        (tabId == "mainsalts" or tabId == "tags") and -56 or -148,
+        (tabId == "mainsalts" or tabId == "roster" or tabId == "bank" or tabId == "tags") and -96 or -148,
         statusY
     )
     if tabId == "bank" then
@@ -2842,7 +2933,7 @@ local function createView(parent, tabId)
         hideOwnedTooltip(button)
     end)
 
-    if tabId == "roster" or tabId == "bank" then
+    if tabId == "roster" or tabId == "mainsalts" or tabId == "bank" then
         view.refreshButton = CreateFrame("Button", nil, view)
         view.refreshButton:SetSize(32, 32)
         view.refreshButton:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -56, -12)
@@ -2850,12 +2941,12 @@ local function createView(parent, tabId)
         view.refreshButton.icon:SetSize(18, 18)
         view.refreshButton.icon:SetPoint("CENTER", view.refreshButton, "CENTER", 0, 0)
         view.refreshButton.icon:SetTexture(REFRESH_TEXTURE)
-        setRefreshButtonEnabled(view.refreshButton, tabId == "roster")
+        setRefreshButtonEnabled(view.refreshButton, tabId ~= "bank")
         view.refreshButton:SetScript("OnEnter", function(button)
             if button:IsEnabled() then
                 setTextureColor(button.icon, PALETTE.pinkHover)
             end
-            local body = tabId == "roster"
+            local body = (tabId == "roster" or tabId == "mainsalts")
                 and "Refresh the guild roster."
                 or "Refresh the guild bank."
             showOwnedTooltip(button, "Refresh", body)
@@ -2877,7 +2968,7 @@ local function createView(parent, tabId)
                 setTextureColor(button.icon, PALETTE.pinkHover)
             end
         end)
-        if tabId == "roster" then
+        if tabId == "roster" or tabId == "mainsalts" then
             view.rosterAvailable = true
             view.rosterScanInProgress = false
             view.refreshButton:SetScript("OnClick", function()
@@ -2915,6 +3006,15 @@ local function createView(parent, tabId)
             return view.rosterReport and view.rosterReport.ranks or {}
         end)
         view.rankDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 64, -12)
+        createByRankControl(
+            view,
+            true,
+            view.status,
+            "RIGHT",
+            "LEFT",
+            -CONTROL_GAP,
+            0
+        )
         view.rankScrollFrame:SetScript("OnSizeChanged", function()
             refreshRankScrollChild(view)
         end)
@@ -2928,7 +3028,6 @@ local function createView(parent, tabId)
         view.expandedMainsAlts = {}
         view.groupButton = CreateFrame("Button", nil, view, "UIPanelButtonTemplate")
         view.groupButton:SetSize(112, 32)
-        view.groupButton:SetPoint("TOPLEFT", parent, "TOPLEFT", 64, -12)
         view.groupButton:SetText("Group Toons")
         styleButton(view.groupButton, "primary", 32)
         view.groupButton:SetEnabled(false)
@@ -2950,6 +3049,22 @@ local function createView(parent, tabId)
             end
         end)
         createMainsAltsSearch(view)
+        view.groupButton:SetPoint(
+            "LEFT",
+            view.mainsAltsTagFilterButton,
+            "RIGHT",
+            CONTROL_GAP,
+            0
+        )
+        createByRankControl(
+            view,
+            false,
+            view.status,
+            "RIGHT",
+            "LEFT",
+            -CONTROL_GAP,
+            0
+        )
         createMainsAltsHeader(view)
     elseif tabId == "bank" then
         view.bankTabScrollFrame = CreateFrame(
@@ -3759,6 +3874,11 @@ local function createWindow()
         end)
         frame.tabs[index] = tab
         frame.views[tabId] = createView(frame, tabId)
+        if tabId == "roster" then
+            frame.views.mainsalts = createView(frame, "mainsalts")
+            frame.views.roster.byNameView = frame.views.mainsalts
+            frame.views.roster.byTenureView = frame.views.roster
+        end
     end
 
     frame.numTabs = #TAB_ORDER
@@ -3817,6 +3937,8 @@ local function createWindow()
     frame:SetScript("OnHide", function()
         local mainsAltsView = frame.views.mainsalts
         cancelMainsAltsScrollWork(mainsAltsView)
+        clearMainsAltsFilters(mainsAltsView, false)
+        mainsAltsView.mainsAltsSelections = {}
         if type(UI.CollapseMainsAltsGroups) == "function" then
             UI.CollapseMainsAltsGroups()
         end
@@ -3824,6 +3946,11 @@ local function createWindow()
         frame.views.roster.scrollFrame:SetVerticalScroll(0)
         frame.views.bank.scrollFrame:SetVerticalScroll(0)
         frame.views.tags.scrollFrame:SetVerticalScroll(0)
+        if type(RGMS.PortalState) == "table" then
+            RGMS.PortalState.rosterMode = "ByName"
+        end
+        UI.rosterMode = "ByName"
+        UI.rosterScroll = { ByName = 0, ByTenure = 0 }
         UI.SelectPrimaryTab("roster")
         if type(RGMS.PortalState) == "table" then
             RGMS.PortalState:closeWindow()
@@ -3846,6 +3973,8 @@ function UI.Initialize()
 
     UI.frame = createWindow()
     UI.selectedTab = "roster"
+    UI.rosterMode = "ByName"
+    UI.rosterScroll = { ByName = 0, ByTenure = 0 }
 
     local savedPosition
     if type(RGMS.DB) == "table" and type(RGMS.DB.ui) == "table" then
@@ -3870,6 +3999,7 @@ function UI.Initialize()
         refreshRankScrollChild(UI.frame.views[tabId])
         refreshBankTabScrollChild(UI.frame.views[tabId])
     end
+    refreshScrollChild(UI.frame.views.mainsalts)
 
     if type(UISpecialFrames) == "table" then
         table.insert(UISpecialFrames, "RGMSMainFrame")
@@ -3939,9 +4069,15 @@ end
 
 function UI.SelectPrimaryTab(tabId)
     local previousTabId = UI.selectedTab
+    if type(tabId) == "string" and string.lower(tabId) == "mainsalts" then
+        tabId = "roster"
+        if UI.frame then
+            UI.SelectRosterMode("ByName")
+        end
+    end
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster, mainsalts, bank, or tags"
+        return nil, "primary tab must be roster, bank, or tags"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -3950,23 +4086,30 @@ function UI.SelectPrimaryTab(tabId)
         return nil, "scan-locked"
     end
 
-    if UI.selectedTab and UI.frame.views[UI.selectedTab]
-        and type(RGMS.PortalState) == "table" then
-        RGMS.PortalState.scroll[UI.selectedTab] = UI.frame.views[UI.selectedTab].scrollFrame:GetVerticalScroll()
+    if UI.selectedTab and UI.frame.views[UI.selectedTab] then
+        if UI.selectedTab == "roster" then
+            setRosterModeScroll(
+                activeRosterMode(),
+                rosterModeView(activeRosterMode()).scrollFrame:GetVerticalScroll()
+            )
+        elseif type(RGMS.PortalState) == "table" then
+            RGMS.PortalState.scroll[UI.selectedTab] = UI.frame.views[UI.selectedTab].scrollFrame:GetVerticalScroll()
+        end
     end
     if type(RGMS.PortalState) == "table" then
         RGMS.PortalState.selectedView = tabId
     end
 
-    if UI.selectedTab == "mainsalts" and tabId ~= "mainsalts" then
-        local mainsAltsView = UI.frame.views.mainsalts
-        clearMainsAltsFilters(mainsAltsView, false)
-        cancelMainsAltsScrollWork(mainsAltsView)
-    end
     for _, currentTabId in ipairs(TAB_ORDER) do
         local selected = currentTabId == tabId
-        UI.frame.views[currentTabId]:SetShown(selected)
+        if currentTabId ~= "roster" then
+            UI.frame.views[currentTabId]:SetShown(selected)
+        end
     end
+    local rosterSelected = tabId == "roster"
+    local mode = activeRosterMode()
+    UI.frame.views.roster:SetShown(rosterSelected and mode == "ByTenure")
+    UI.frame.views.mainsalts:SetShown(rosterSelected and mode == "ByName")
     local selectedIndex
     for index, currentTabId in ipairs(TAB_ORDER) do
         if currentTabId == tabId then
@@ -3985,19 +4128,22 @@ function UI.SelectPrimaryTab(tabId)
     end
     UI.frame.selectedTab = selectedIndex
     UI.selectedTab = tabId
-    if tabId == "mainsalts" and previousTabId ~= "mainsalts"
+    if tabId == "roster" and mode == "ByName" and previousTabId ~= "roster"
         and type(RGMS.MainsAlts) == "table"
         and type(RGMS.MainsAlts.RequestGuildNotes) == "function" then
         RGMS.MainsAlts.RequestGuildNotes()
     end
-    local selectedView = UI.frame.views[tabId]
+    local selectedView = tabId == "roster" and rosterModeView(mode)
+        or UI.frame.views[tabId]
     if UI.frame:IsShown() then
         refreshVisibleReport(selectedView, tabId)
     end
-    local savedScroll = type(RGMS.PortalState) == "table"
-        and RGMS.PortalState.scroll[tabId]
-        or selectedView.scrollFrame:GetVerticalScroll()
-    if tabId == "mainsalts" then
+    local savedScroll = tabId == "roster"
+        and getRosterModeScroll(mode)
+        or (type(RGMS.PortalState) == "table"
+            and RGMS.PortalState.scroll[tabId]
+            or selectedView.scrollFrame:GetVerticalScroll())
+    if tabId == "roster" and mode == "ByName" then
         setMainsAltsScroll(selectedView, savedScroll or 0)
     else
         selectedView.scrollFrame:SetVerticalScroll(savedScroll or 0)
@@ -4005,10 +4151,61 @@ function UI.SelectPrimaryTab(tabId)
     return true
 end
 
+function UI.SelectRosterMode(mode)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if mode ~= "ByName" and mode ~= "ByTenure" then
+        return nil, "roster mode must be ByName or ByTenure"
+    end
+    if UI.frame.notesEditor:IsShown() then
+        return nil, "modal-open"
+    end
+    if UI.globalScanLocked == true and UI.frame:IsShown() then
+        return nil, "scan-locked"
+    end
+
+    local previousMode = activeRosterMode()
+    local previousView = rosterModeView(previousMode)
+    setRosterModeScroll(previousMode, previousView.scrollFrame:GetVerticalScroll())
+    if type(RGMS.PortalState) == "table" then
+        local selected, reason = RGMS.PortalState:selectRosterMode(mode)
+        if not selected then
+            return nil, reason
+        end
+    end
+    UI.rosterMode = mode
+
+    local byNameView = UI.frame.views.mainsalts
+    if mode == "ByTenure" then
+        UI.HideMainsAltsTagPreview()
+        closeMainsAltsTagEditor(byNameView)
+        closeMainsAltsTagFilter(byNameView)
+        cancelMainsAltsScrollWork(byNameView)
+    elseif type(RGMS.MainsAlts) == "table"
+        and type(RGMS.MainsAlts.RequestGuildNotes) == "function" then
+        RGMS.MainsAlts.RequestGuildNotes()
+    end
+
+    local rosterSelected = UI.selectedTab == "roster"
+    UI.frame.views.roster:SetShown(rosterSelected and mode == "ByTenure")
+    byNameView:SetShown(rosterSelected and mode == "ByName")
+    local selectedView = rosterModeView(mode)
+    local savedScroll = getRosterModeScroll(mode)
+    if mode == "ByName" then
+        setMainsAltsScroll(selectedView, savedScroll)
+    else
+        refreshVisibleReport(selectedView, "roster")
+        selectedView.scrollFrame:SetVerticalScroll(savedScroll)
+    end
+    updateRosterModeControls()
+    return true
+end
+
 function UI.SetViewContent(tabId, content)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster, mainsalts, bank, or tags"
+        return nil, "primary tab must be roster, bank, or tags"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -4022,6 +4219,15 @@ function UI.SetViewContent(tabId, content)
         end
         refreshRankScrollChild(view)
         view.text:Show()
+        local byNameView = UI.frame.views.mainsalts
+        cancelMainsAltsScrollWork(byNameView)
+        closeMainsAltsTagEditor(byNameView)
+        closeMainsAltsTagFilter(byNameView)
+        hideMainsAltsLines(byNameView)
+        byNameView.text:Show()
+        byNameView.text:SetText(tostring(content or ""))
+        byNameView.scrollFrame:SetVerticalScroll(0)
+        refreshScrollChild(byNameView)
     elseif tabId == "mainsalts" then
         cancelMainsAltsScrollWork(view)
         closeMainsAltsTagEditor(view)
@@ -4057,7 +4263,13 @@ function UI.SetViewStatus(tabId, status)
         return nil, "the RGMS window has not been initialized"
     end
 
-    UI.frame.views[tabId].status:SetText(tostring(status or ""))
+    local value = tostring(status or "")
+    UI.frame.views[tabId].status:SetText(value)
+    if tabId == "roster" then
+        UI.frame.views.mainsalts.status:SetText(value)
+    elseif tabId == "mainsalts" then
+        UI.frame.views.roster.status:SetText(value)
+    end
     return true
 end
 
@@ -4407,7 +4619,7 @@ function UI.SetMainsAltsReport(report)
         return nil, "the RGMS window has not been initialized"
     end
     if type(report) ~= "table" or type(report.rows) ~= "table" then
-        return nil, "Mains/Alts report must contain rows"
+        return nil, "ByName report must contain rows"
     end
 
     local view = UI.frame.views.mainsalts
@@ -4506,7 +4718,7 @@ function UI.ToggleMainsAltsGroup(identity)
 
     local view = UI.frame.views.mainsalts
     if not mainsAltsControlsEnabled(view) then
-        return nil, "Mains/Alts controls are disabled"
+        return nil, "Roster controls are disabled"
     end
     local row
     for _, candidate in ipairs(
@@ -4518,7 +4730,7 @@ function UI.ToggleMainsAltsGroup(identity)
         end
     end
     if not row then
-        return nil, "Mains/Alts group is unavailable"
+        return nil, "Roster group is unavailable"
     end
 
     local line = findMainsAltsRow(view, identity, true)
@@ -4575,10 +4787,7 @@ function UI.SelectBankTab(tabIndex)
         UI.SetViewStatus(
             "bank",
             type(RGMS.Portal) == "table"
-                and RGMS.Portal.bankTimestamp(
-                    view.bankReport.scannedAtText,
-                    tab.lastAccessibleText
-                )
+                and RGMS.Portal.bankTimestamp(view.bankReport.scannedAtText)
                 or ("Last successful scan: " .. view.bankReport.scannedAtText)
         )
     end
@@ -4674,6 +4883,30 @@ end
 local updateBankRefreshButton
 local updateRosterRefreshButton
 
+updateRosterModeControls = function()
+    if not UI.frame then
+        return
+    end
+    local byTenure = UI.frame.views.roster
+    local byName = UI.frame.views.mainsalts
+    local enabled = UI.dataEnabled ~= false
+        and UI.globalScanLocked ~= true
+        and byTenure.rosterAvailable ~= false
+        and byName.mainsAltsAvailable ~= false
+        and byTenure.rosterScanInProgress ~= true
+        and byName.mainsAltsScanInProgress ~= true
+    local checked = activeRosterMode() == "ByTenure"
+    for _, view in ipairs({ byName, byTenure }) do
+        local checkbox = view.byRankCheckbox
+        checkbox:SetEnabled(enabled)
+        checkbox:SetChecked(checked)
+        checkbox.check:SetShown(checked)
+        if type(checkbox.SetAlpha) == "function" then
+            checkbox:SetAlpha(enabled and 1 or 0.5)
+        end
+    end
+end
+
 function UI.SetGlobalScanLock(locked)
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -4698,7 +4931,7 @@ function UI.SetGlobalScanLock(locked)
     for _, tab in ipairs(UI.frame.tabs) do
         tab:SetEnabled(not UI.globalScanLocked)
     end
-    for _, tabId in ipairs(TAB_ORDER) do
+    for _, tabId in ipairs(ALL_VIEW_IDS) do
         local view = UI.frame.views[tabId]
         if type(view.scrollFrame.EnableMouse) == "function" then
             view.scrollFrame:EnableMouse(not UI.globalScanLocked)
@@ -4733,8 +4966,10 @@ function UI.SetGlobalScanLock(locked)
         end
     end
     updateRosterRefreshButton(UI.frame.views.roster)
+    updateRosterRefreshButton(UI.frame.views.mainsalts)
     updateBankRefreshButton(UI.frame.views.bank)
     updateMainsAltsControlState(UI.frame.views.mainsalts)
+    updateRosterModeControls()
     return true
 end
 
@@ -4752,6 +4987,7 @@ function UI.SetRosterScanInProgress(inProgress)
             and not view.rosterScanInProgress
     )
     local mainsAltsView = UI.frame.views.mainsalts
+    mainsAltsView.rosterScanInProgress = inProgress == true
     mainsAltsView.mainsAltsScanInProgress = inProgress == true
     if inProgress == true then
         cancelMainsAltsScrollWork(mainsAltsView)
@@ -4761,6 +4997,8 @@ function UI.SetRosterScanInProgress(inProgress)
         view.rosterScanInProgress
             or UI.frame.views.bank.bankScanInProgress == true
     )
+    updateRosterRefreshButton(mainsAltsView)
+    updateRosterModeControls()
     return true
 end
 
@@ -4792,6 +5030,10 @@ function UI.SetRosterAvailable(isAvailable)
     local view = UI.frame.views.roster
     view.rosterAvailable = isAvailable == true
     updateRosterRefreshButton(view)
+    local byNameView = UI.frame.views.mainsalts
+    byNameView.rosterAvailable = isAvailable == true
+    updateRosterRefreshButton(byNameView)
+    updateRosterModeControls()
     return true
 end
 
@@ -4808,6 +5050,7 @@ function UI.SetMainsAltsAvailable(isAvailable)
         closeMainsAltsTagFilter(view)
     end
     updateMainsAltsControlState(view)
+    updateRosterModeControls()
     return true
 end
 
@@ -4844,8 +5087,10 @@ function UI.SetDataState(enabled, state)
 
     UI.dataEnabled = enabled == true
     updateRosterRefreshButton(UI.frame.views.roster)
+    updateRosterRefreshButton(UI.frame.views.mainsalts)
     updateBankRefreshButton(UI.frame.views.bank)
     updateMainsAltsControlState(UI.frame.views.mainsalts)
+    updateRosterModeControls()
     for _, line in ipairs(UI.frame.views.tags.tagRows or {}) do
         updateTagDeleteButton(line)
     end

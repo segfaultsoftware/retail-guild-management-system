@@ -231,7 +231,7 @@ end
 
 function Tags.reconcile(dataset, state)
     if type(dataset) ~= "table" or type(dataset.members) ~= "table" then
-        return nil, "Mains/Alts roster dataset is invalid"
+        return nil, "ByName roster dataset is invalid"
     end
     local valid, validationError = Tags.validate(state)
     if not valid then
@@ -243,7 +243,7 @@ function Tags.reconcile(dataset, state)
         if type(member) ~= "table"
             or type(member.name) ~= "string" or member.name == ""
             or type(member.realm) ~= "string" or member.realm == "" then
-            return nil, "Mains/Alts roster member is invalid"
+            return nil, "ByName roster member is invalid"
         end
         available[Names.identity(member.name, member.realm)] = true
     end

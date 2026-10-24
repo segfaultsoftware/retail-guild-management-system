@@ -11,7 +11,7 @@ local function member(name, realm, overrides)
 end
 
 return {
-    test.case("Mains/Alts report projects roster-only grouped and ungrouped rows", function()
+    test.case("ByName projects roster-only grouped and ungrouped rows", function()
         local dataset = {
             members = {
                 member("Zulu", "Area52"),
@@ -64,7 +64,7 @@ return {
         test.assert_false(result.rows[2].alts[2].hasNote)
     end),
 
-    test.case("Mains/Alts hides missing group members without deleting saved groups", function()
+    test.case("ByName hides missing group members without deleting saved groups", function()
         local dataset = {
             members = {
                 member("MissingMain", "Area52", { isMissing = true }),
@@ -88,7 +88,7 @@ return {
         test.assert_equal(groups["VisibleMain-Area52"], { "MissingAlt-Area52" })
     end),
 
-    test.case("Mains/Alts report excludes stale group members without losing roster members", function()
+    test.case("ByName excludes stale group members without losing roster members", function()
         local dataset = {
             members = {
                 member("Main", "Area52"),
@@ -107,7 +107,7 @@ return {
         test.assert_equal(result.rows[2].displayName, "Solo-Area52")
     end),
 
-    test.case("Mains/Alts report rejects invalid roster input", function()
+    test.case("ByName rejects invalid roster input", function()
         local result, message = report.build({ members = { { name = "NoRealm" } } }, {})
 
         test.assert_nil(result)

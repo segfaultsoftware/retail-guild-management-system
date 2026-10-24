@@ -309,16 +309,31 @@ function Roster.RefreshStatus()
         return
     end
 
-    local status
-    if lastSuccessful then
-        status = "Last successful update: " .. lastSuccessful
-    else
-        status = "No roster data yet"
-    end
     if not available then
-        status = "Not in a guild. " .. status
+        local status = lastSuccessful
+            and "Not in a guild. Last successful update: " .. lastSuccessful
+            or "Not in a guild. No roster data yet"
+        RGMS.UI.SetViewStatus("roster", status)
+        return
     end
-    RGMS.UI.SetViewStatus("roster", status)
+
+    local currentCount = 0
+    for _, member in ipairs(
+        type(RGMS.DB) == "table"
+            and type(RGMS.DB.roster) == "table"
+            and type(RGMS.DB.roster.members) == "table"
+            and RGMS.DB.roster.members
+            or {}
+    ) do
+        if member.isMissing ~= true then
+            currentCount = currentCount + 1
+        end
+    end
+    RGMS.UI.SetViewStatus(
+        "roster",
+        string.format("%d roster character%s", currentCount,
+            currentCount == 1 and "" or "s")
+    )
 end
 
 local function scannerUnavailable(source)

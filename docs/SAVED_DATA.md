@@ -74,7 +74,7 @@ account-wide decision has been made for that dataset. `true` with empty
 collections and no scan timestamp is an intentional empty state, including a
 reset state; later migration code must not repopulate it from deprecated
 per-character observations. Main/alt groups, character notes, and tags are
-stored in the same guild partition. The Mains/Alts tab projects group
+stored in the same guild partition. Roster's ByName presentation projects group
 membership from this partition but limits its character population to the
 active guild's saved roster. `rosterObservation` stores the immediately prior
 complete API observation used only for news detection; unlike `roster`, it does

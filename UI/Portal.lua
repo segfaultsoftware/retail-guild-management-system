@@ -6,10 +6,9 @@ local _, RGMS = ...
 
 local Portal = {}
 
-Portal.VIEWS = { "roster", "mainsalts", "bank", "tags" }
+Portal.VIEWS = { "roster", "bank", "tags" }
 Portal.NAVIGATION = {
     { id = "roster", label = "Roster" },
-    { id = "mainsalts", label = "Mains/Alts" },
     { id = "bank", label = "Guild Bank" },
     { id = "tags", label = "Tags" },
 }
@@ -33,13 +32,16 @@ Portal.PALETTE = {
 
 local VALID_VIEW = {
     roster = true,
-    mainsalts = true,
     bank = true,
     tags = true,
 }
 
 local function copyScrollPositions()
-    return { roster = 0, mainsalts = 0, bank = 0, tags = 0 }
+    return {
+        roster = { ByName = 0, ByTenure = 0 },
+        bank = 0,
+        tags = 0,
+    }
 end
 
 local function numericIndex(option)
@@ -77,11 +79,23 @@ function Portal.dropdown(options, savedIndex, emptyLabel, lowestNumeric)
     }
 end
 
-function Portal.contextControls(view)
+function Portal.contextControls(view, rosterMode)
     if view == "roster" then
-        return { dropdown = "rank", primary = "Refresh", close = true }
-    elseif view == "mainsalts" then
-        return { primary = "Group Toons", search = "character", close = true }
+        if rosterMode == "ByTenure" then
+            return {
+                dropdown = "rank",
+                byRank = true,
+                primary = "Refresh",
+                close = true,
+            }
+        end
+        return {
+            primary = "Group Toons",
+            search = "character",
+            tags = "Tags...",
+            byRank = false,
+            close = true,
+        }
     elseif view == "bank" then
         return { dropdown = "bankTab", primary = "Refresh", close = true }
     elseif view == "tags" then
@@ -90,13 +104,9 @@ function Portal.contextControls(view)
     return nil
 end
 
-function Portal.bankTimestamp(lastScan, lastAccessible)
-    if lastScan and lastAccessible then
-        return "Last scan: " .. lastScan .. "\nTab last accessible: " .. lastAccessible
-    elseif lastScan then
+function Portal.bankTimestamp(lastScan)
+    if lastScan then
         return "Last scan: " .. lastScan
-    elseif lastAccessible then
-        return "Tab last accessible: " .. lastAccessible
     end
     return nil
 end
@@ -114,6 +124,7 @@ end
 function Portal.create()
     local controller = {
         selectedView = "roster",
+        rosterMode = "ByName",
         scroll = copyScrollPositions(),
         open = false,
         scanOwner = nil,
@@ -127,12 +138,14 @@ function Portal.create()
         end
         self.open = true
         self.selectedView = "roster"
+        self.rosterMode = "ByName"
         return self.selectedView
     end
 
     function controller:closeWindow()
         self.open = false
         self.selectedView = "roster"
+        self.rosterMode = "ByName"
         self.scroll = copyScrollPositions()
         self.modalOpen = false
         self.noteDraft = nil
@@ -149,22 +162,49 @@ function Portal.create()
         return true
     end
 
-    function controller:setScroll(view, offset)
+    function controller:selectRosterMode(mode)
+        if self.scanOwner ~= nil then
+            return nil, "scan-locked"
+        end
+        if self.modalOpen then
+            return nil, "modal-open"
+        end
+        if mode ~= "ByName" and mode ~= "ByTenure" then
+            return nil, "invalid-roster-mode"
+        end
+        self.rosterMode = mode
+        return true
+    end
+
+    function controller:setScroll(view, offset, rosterMode)
         if not VALID_VIEW[view] then
             return nil, "invalid-view"
         end
         if self.scanOwner ~= nil then
             return nil, "scan-locked"
         end
-        self.scroll[view] = math.max(0, tonumber(offset) or 0)
-        return self.scroll[view]
+        local normalized = math.max(0, tonumber(offset) or 0)
+        if view == "roster" then
+            rosterMode = rosterMode or self.rosterMode
+            if rosterMode ~= "ByName" and rosterMode ~= "ByTenure" then
+                return nil, "invalid-roster-mode"
+            end
+            self.scroll.roster[rosterMode] = normalized
+            return normalized
+        end
+        self.scroll[view] = normalized
+        return normalized
     end
 
     function controller:selectionChanged(view)
         if not VALID_VIEW[view] then
             return nil, "invalid-view"
         end
-        self.scroll[view] = 0
+        if view == "roster" then
+            self.scroll.roster.ByTenure = 0
+        else
+            self.scroll[view] = 0
+        end
         return true
     end
 

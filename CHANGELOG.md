@@ -7,6 +7,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Changed
+
+- Merged the former Roster and Mains/Alts tabs into one Roster workflow that
+  opens in the grouped ByName presentation and switches in place to the
+  rank-and-tenure ByTenure presentation with a **By rank** checkbox, preserving
+  per-mode session state and a shared refresh and roster-character count.
+
 ## 1.0.7
 
 ### Added
