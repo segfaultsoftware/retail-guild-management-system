@@ -1302,9 +1302,6 @@ local function acquireMainsAltsLine(view, index)
     if type(checkbox.SetCheckedTexture) == "function" then
         checkbox:SetCheckedTexture("Interface\\AddOns\\RGMS\\assets\\icons\\check.png")
     end
-    if type(checkbox.SetHighlightTexture) == "function" then
-        checkbox:SetHighlightTexture(WHITE_TEXTURE, "ADD")
-    end
     local name = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     name:SetJustifyH("LEFT")
     name:SetJustifyV("MIDDLE")

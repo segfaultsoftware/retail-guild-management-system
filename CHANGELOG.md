@@ -7,6 +7,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Fixed
+
+- Removed the white hover square from ByName character selection checkboxes.
+
 ### Changed
 
 - Merged the former Roster and Mains/Alts tabs into one Roster workflow that

@@ -300,6 +300,15 @@ local function newRegion(parent)
         self.checked = checked == true
     end
 
+    function region:SetCheckedTexture(texture)
+        self.checkedTexture = texture
+    end
+
+    function region:SetHighlightTexture(texture, blendMode)
+        self.highlightTexture = texture
+        self.highlightBlendMode = blendMode
+    end
+
     function region:GetChecked()
         return self.checked == true
     end
@@ -1188,6 +1197,7 @@ return {
         test.assert_true(view.mainsAltsLines[1].hasNote)
         test.assert_true(view.mainsAltsLines[1].checkbox:IsShown())
         test.assert_true(view.mainsAltsLines[2].checkbox:IsShown())
+        test.assert_nil(view.mainsAltsLines[1].checkbox.highlightTexture)
 
         view.mainsAltsLines[1].checkbox:SetChecked(true)
         view.mainsAltsLines[1].checkbox.scripts.OnClick(view.mainsAltsLines[1].checkbox)
