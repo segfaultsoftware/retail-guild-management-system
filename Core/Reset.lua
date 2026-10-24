@@ -116,7 +116,7 @@ function Reset.create(dependencies)
                 )
             else
                 dependencies.print(
-                    "Current guild roster, bank, groups, and notes reset; window position preserved."
+                    "Current guild roster, bank, groups, notes, and news reset; window position preserved."
                 )
             end
             return true
@@ -231,7 +231,7 @@ if type(RGMS) == "table" then
                 .. "The original data will be replaced." 
         else
             if type(RGMS.AccountData) == "table" then
-                message = "Reset the current guild's RGMS roster, bank, groups, and notes for this account? "
+                message = "Reset the current guild's RGMS roster, bank, groups, notes, and news for this account? "
                     .. "This cannot be undone."
             else
                 message = "Reset all RGMS roster and bank observations for this character? "

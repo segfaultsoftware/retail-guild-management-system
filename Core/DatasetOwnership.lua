@@ -202,6 +202,22 @@ function DatasetOwnership.create(dependencies)
                 return nil, guildOrError
             end
 
+            local newsCreated = false
+            if transaction.datasetName == "roster"
+                and transaction.snapshot ~= nil
+                and type(dependencies.applyRosterNews) == "function" then
+                local newsModel, createdOrError = dependencies.applyRosterNews(
+                    committedModel,
+                    transaction.guild,
+                    transaction.snapshot
+                )
+                if not newsModel then
+                    return nil, createdOrError
+                end
+                committedModel = newsModel
+                newsCreated = createdOrError == true
+            end
+
             local characterModel
             if type(dependencies.prepareCharacterCommit) == "function" then
                 local prepareError
@@ -219,7 +235,7 @@ function DatasetOwnership.create(dependencies)
                 characterModel
             )
             transaction.finished = true
-            return true, committedModel
+            return true, committedModel, newsCreated
         end
 
         local currentModel = dependencies.getSavedData()
@@ -312,6 +328,35 @@ if type(RGMS) == "table" then
                 return nil, "Mains/Alts tag reconciliation is unavailable"
             end
             return RGMS.MainsAltsTags.reconcile(dataset, tags)
+        end,
+        applyRosterNews = function(model, guildIdentity, snapshot)
+            if type(RGMS.RosterNews) ~= "table"
+                or type(RGMS.RosterNews.process) ~= "function" then
+                return nil, "roster news processing is unavailable"
+            end
+            local guild = RGMS.AccountData.findGuild(model, guildIdentity)
+            if not guild then
+                return nil, "current guild partition is unavailable"
+            end
+            local result, newsError = RGMS.RosterNews.process(
+                guild.rosterObservation,
+                guild.newsSets,
+                snapshot,
+                RGMS.DateTime
+            )
+            if not result then
+                return nil, newsError
+            end
+            local replacement, replaceError = RGMS.AccountData.replaceRosterNews(
+                model,
+                guildIdentity,
+                result.observation,
+                result.newsSets
+            )
+            if not replacement then
+                return nil, replaceError
+            end
+            return replacement, result.created
         end,
         print = RGMS.Print,
     })

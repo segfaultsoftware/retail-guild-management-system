@@ -163,8 +163,9 @@ function Scanner.create(dependencies)
             return self:FinishFailure(reduceError, "transaction-failure")
         end
         transaction.dataset = reducedDataset
+        transaction.snapshot = snapshot
 
-        local committed, commitResult = dependencies.ownership:finish(
+        local committed, commitResult, newsCreated = dependencies.ownership:finish(
             transaction,
             "success"
         )
@@ -176,7 +177,7 @@ function Scanner.create(dependencies)
         self.elapsed = 0
         self.source = nil
         if type(dependencies.completeSuccess) == "function" then
-            dependencies.completeSuccess()
+            dependencies.completeSuccess(newsCreated == true)
         end
         dependencies.refreshStatus()
         printMessage(string.format(

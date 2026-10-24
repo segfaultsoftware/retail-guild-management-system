@@ -344,6 +344,49 @@ function Roster.RequestAutomaticScan()
     return Roster.RequestScan("automatic")
 end
 
+function Roster.AcknowledgeNewsSet(setId)
+    if type(RGMS.AccountDataState) ~= "table"
+        or not RGMS.AccountDataState.enabled
+        or type(RGMS.ActiveGuildIdentity) ~= "table" then
+        return nil, "account guild data is unavailable"
+    end
+    local guild = RGMS.AccountData.findGuild(
+        RGMS.AccountDataState.model,
+        RGMS.ActiveGuildIdentity
+    )
+    if not guild then
+        return nil, "current guild partition is unavailable"
+    end
+    local newsSets, acknowledgeError = RGMS.RosterNews.acknowledge(
+        guild.newsSets,
+        setId
+    )
+    if not newsSets then
+        return nil, acknowledgeError
+    end
+    local model, replaceError = RGMS.AccountData.replaceRosterNews(
+        RGMS.AccountDataState.model,
+        RGMS.ActiveGuildIdentity,
+        guild.rosterObservation,
+        newsSets
+    )
+    if not model then
+        return nil, replaceError
+    end
+    RGMSAccountDB = model
+    RGMS.AccountDataState.model = model
+    RGMS.DB = RGMS.AccountData.view(
+        model,
+        RGMS.ActiveGuildIdentity,
+        RGMS.SavedDataState.model.ui
+    )
+    if type(RGMS.UI) == "table"
+        and type(RGMS.UI.SetNewsSets) == "function" then
+        RGMS.UI.SetNewsSets(RGMS.DB.newsSets)
+    end
+    return true
+end
+
 Roster.CreateRetailApi = createRetailApi
 RGMS.Roster = Roster
 
@@ -378,14 +421,14 @@ if type(Roster.Scanner) ~= "table"
             end
             Roster.RefreshStatus()
         end,
-        completeSuccess = function()
+        completeSuccess = function(newsCreated)
             if type(RGMS.MainsAlts) == "table"
                 and type(RGMS.MainsAlts.RefreshGuildNotes) == "function" then
                 RGMS.MainsAlts.RefreshGuildNotes()
             end
             if type(RGMS.UI) == "table"
                 and type(RGMS.UI.CompleteRosterScan) == "function" then
-                RGMS.UI.CompleteRosterScan()
+                RGMS.UI.CompleteRosterScan(newsCreated)
             end
         end,
         refreshStatus = Roster.RefreshStatus,

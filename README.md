@@ -15,6 +15,8 @@ migration sources remain per character. It does not send data anywhere.
   roster character can also keep an account-wide, per-guild note.
 - Tracks how long a member has remained at the same numeric rank and retains a
   recently missing member with a warning for up to 21 Pacific calendar days.
+- Preserves joins, departures, and numeric rank changes as independently
+  acknowledged per-scan News Sets in a right-side drawer.
 - Scans every purchased guild-bank tab that the character can access when the
   default guild-bank window opens or Bank **Refresh** is selected.
 - Shows bank contents by tab and tracks how long an item ID and stack count have
@@ -42,7 +44,7 @@ addon has been tested on that live Retail client build.
 | `/rgms help` | Print the supported command list. |
 | `/rgms debug` | Toggle verbose session-only diagnostic logging. |
 | `/rgms scanroster` | Start the same roster transaction as Roster **Refresh**. |
-| `/rgms reset` | Open a confirmation before clearing the current guild's roster, bank, groups, and notes; preserve the character's window position. |
+| `/rgms reset` | Open a confirmation before clearing the current guild's roster, bank, groups, notes, and news; preserve the character's window position. |
 
 Bank scans are started from the default guild-bank window and the Bank
 **Refresh** button. There is no bank scan slash command.

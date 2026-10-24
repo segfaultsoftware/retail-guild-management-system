@@ -9,7 +9,7 @@ local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
-AccountData.CURRENT_SCHEMA_VERSION = 4
+AccountData.CURRENT_SCHEMA_VERSION = 5
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -152,6 +152,142 @@ local function validateNotes(value, path)
     end)
 end
 
+local function validateDenseArray(value, path, validateValue)
+    if type(value) ~= "table" then
+        return nil, path .. " must be an array"
+    end
+    local count = 0
+    for key in pairs(value) do
+        if not isInteger(key) or key < 1 then
+            return nil, path .. " must contain only positive integer indexes"
+        end
+        count = count + 1
+    end
+    if count ~= #value then
+        return nil, path .. " must not contain gaps"
+    end
+    for index, item in ipairs(value) do
+        local valid, validationError = validateValue(item, path .. "[" .. index .. "]")
+        if not valid then
+            return nil, validationError
+        end
+    end
+    return true
+end
+
+local function validateRosterObservation(value, path)
+    if value == nil then
+        return true
+    end
+    if type(value) ~= "table" or type(value.scannedAt) ~= "table"
+        or type(value.members) ~= "table" then
+        return nil, path .. " must contain scannedAt and members"
+    end
+    for key in pairs(value) do
+        if key ~= "scannedAt" and key ~= "members" then
+            return nil, path .. " contains unexpected field " .. tostring(key)
+        end
+    end
+    if not isInteger(value.scannedAt.unixSeconds)
+        or type(value.scannedAt.iso8601) ~= "string" then
+        return nil, path .. ".scannedAt is invalid"
+    end
+    for key in pairs(value.scannedAt) do
+        if key ~= "unixSeconds" and key ~= "iso8601" then
+            return nil, path .. ".scannedAt contains unexpected field " .. tostring(key)
+        end
+    end
+    local seenIdentities = {}
+    return validateDenseArray(value.members, path .. ".members", function(member, memberPath)
+        if type(member) ~= "table" then
+            return nil, memberPath .. " must be a table"
+        end
+        for key in pairs(member) do
+            if key ~= "identity" and key ~= "name"
+                and key ~= "rankIndex" and key ~= "rankName" then
+                return nil, memberPath .. " contains unexpected field " .. tostring(key)
+            end
+        end
+        if type(member.identity) ~= "string" or member.identity == ""
+            or member.identity ~= string.lower(member.identity)
+            or type(member.name) ~= "string" or member.name == ""
+            or not isInteger(member.rankIndex)
+            or type(member.rankName) ~= "string" or member.rankName == "" then
+            return nil, memberPath .. " is invalid"
+        end
+        if seenIdentities[member.identity] then
+            return nil, memberPath .. ".identity must be unique"
+        end
+        seenIdentities[member.identity] = true
+        return true
+    end)
+end
+
+local function validateNewsSets(value, path)
+    local seenIds = {}
+    return validateDenseArray(value, path, function(set, setPath)
+        if type(set) ~= "table" then
+            return nil, setPath .. " must be a table"
+        end
+        for key in pairs(set) do
+            if key ~= "id" and key ~= "createdDate"
+                and key ~= "joiningMembers" and key ~= "leavingMembers"
+                and key ~= "rankChanges" then
+                return nil, setPath .. " contains unexpected field " .. tostring(key)
+            end
+        end
+        if type(set.id) ~= "string" or set.id == "" or seenIds[set.id] then
+            return nil, setPath .. ".id must be unique and non-empty"
+        end
+        seenIds[set.id] = true
+        if type(set.createdDate) ~= "string"
+            or not string.match(set.createdDate, "^%d%d%d%d%-%d%d%-%d%d$") then
+            return nil, setPath .. ".createdDate must use YYYY-MM-DD form"
+        end
+        local function validateName(name, namePath)
+            if type(name) ~= "string" or name == "" then
+                return nil, namePath .. " must be a non-empty string"
+            end
+            return true
+        end
+        local valid, validationError = validateDenseArray(
+            set.joiningMembers,
+            setPath .. ".joiningMembers",
+            validateName
+        )
+        if not valid then return nil, validationError end
+        valid, validationError = validateDenseArray(
+            set.leavingMembers,
+            setPath .. ".leavingMembers",
+            validateName
+        )
+        if not valid then return nil, validationError end
+        valid, validationError = validateDenseArray(
+            set.rankChanges,
+            setPath .. ".rankChanges",
+            function(change, changePath)
+                if type(change) ~= "table"
+                    or type(change.name) ~= "string" or change.name == ""
+                    or type(change.rankName) ~= "string" or change.rankName == "" then
+                    return nil, changePath .. " is invalid"
+                end
+                for key in pairs(change) do
+                    if key ~= "name" and key ~= "rankName" then
+                        return nil, changePath .. " contains unexpected field " .. tostring(key)
+                    end
+                end
+                return true
+            end
+        )
+        if not valid then return nil, validationError end
+        if #set.joiningMembers == 0 and #set.leavingMembers == 0
+            and #set.rankChanges == 0 then
+            return nil, setPath .. " must contain at least one change"
+        end
+        return true
+    end)
+end
+
 local function newTags()
     return {
         definitions = { me = true },
@@ -247,6 +383,8 @@ function AccountData.newGuild(identity)
         mainAltGroups = {},
         characterNotes = {},
         tags = newTags(),
+        rosterObservation = nil,
+        newsSets = {},
     }
 end
 
@@ -297,6 +435,8 @@ function AccountData.validate(model)
             mainAltGroups = true,
             characterNotes = true,
             tags = true,
+            rosterObservation = true,
+            newsSets = true,
         }
         for field in pairs(guild) do
             if not allowed[field] then
@@ -366,6 +506,20 @@ function AccountData.validate(model)
         valid, validationError = validateNotes(
             guild.characterNotes,
             "account data.guilds[" .. key .. "].characterNotes"
+        )
+        if not valid then
+            return nil, validationError
+        end
+        valid, validationError = validateRosterObservation(
+            guild.rosterObservation,
+            "account data.guilds[" .. key .. "].rosterObservation"
+        )
+        if not valid then
+            return nil, validationError
+        end
+        valid, validationError = validateNewsSets(
+            guild.newsSets,
+            "account data.guilds[" .. key .. "].newsSets"
         )
         if not valid then
             return nil, validationError
@@ -477,6 +631,28 @@ function AccountData.load(saved)
         end
         migratedFrom = migratedFrom or 3
         working.schemaVersion = 4
+    end
+    if working.schemaVersion == 4 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for _, guild in pairs(working.guilds) do
+            if type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild partitions must be tables",
+                    saved
+                )
+            end
+            guild.rosterObservation = nil
+            guild.newsSets = {}
+        end
+        migratedFrom = migratedFrom or 4
+        working.schemaVersion = 5
     end
     local valid, validationError = AccountData.validate(working)
     if not valid then
@@ -721,6 +897,49 @@ function AccountData.replaceCharacterTags(model, identity, tags)
     return replacement, guild, key
 end
 
+function AccountData.replaceRosterNews(model, identity, observation, newsSets)
+    local valid, validationError = AccountData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateRosterObservation(observation, "rosterObservation")
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateNewsSets(newsSets, "newsSets")
+    if not valid then
+        return nil, validationError
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+    local guild, key = AccountData.findGuild(replacement, identity)
+    if not guild then
+        local guildError
+        guild, guildError = AccountData.newGuild(identity)
+        if not guild then
+            return nil, guildError
+        end
+        replacement.guilds[key] = guild
+    end
+    guild.rosterObservation, copyError = deepCopy(observation)
+    if observation ~= nil and not guild.rosterObservation then
+        return nil, copyError
+    end
+    guild.newsSets, copyError = deepCopy(newsSets)
+    if not guild.newsSets then
+        return nil, copyError
+    end
+
+    valid, validationError = AccountData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+    return replacement, guild, key
+end
+
 function AccountData.resetGuild(model, identity)
     local valid, validationError = AccountData.validate(model)
     if not valid then
@@ -746,6 +965,8 @@ function AccountData.resetGuild(model, identity)
     guild.mainAltGroups = {}
     guild.characterNotes = {}
     guild.tags = newTags()
+    guild.rosterObservation = nil
+    guild.newsSets = {}
 
     valid, validationError = AccountData.validate(replacement)
     if not valid then
@@ -762,6 +983,7 @@ function AccountData.view(model, identity, ui)
         mainAltGroups = guild and guild.mainAltGroups or {},
         characterNotes = guild and guild.characterNotes or {},
         tags = guild and guild.tags or newTags(),
+        newsSets = guild and guild.newsSets or {},
         ui = ui or {},
     }
 end
