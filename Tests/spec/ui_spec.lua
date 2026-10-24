@@ -739,7 +739,7 @@ return {
         test.assert_nil(searchBox.maxLetters)
         test.assert_equal(
             frame.views.mainsalts.mainsAltsSearchPlaceholder.text,
-            "Search characters…"
+            "Search..."
         )
         test.assert_equal(
             frame.views.mainsalts.mainsAltsTagFilterButton.label.text,
@@ -1351,6 +1351,7 @@ return {
                             name = "OtherAlt",
                             identity = "otheralt-area52",
                             displayName = "OtherAlt-Area52",
+                            searchableNotes = { "secret identity" },
                         },
                         {
                             name = "Mountvesuvius",
@@ -1408,6 +1409,11 @@ return {
         test.assert_false(view.expandedMainsAlts["main-area52"] == true)
         view.mainsAltsSearchBox:SetText("MTVS")
         test.assert_true(view.expandedMainsAlts["main-area52"])
+
+        view.mainsAltsSearchBox:SetText("scid")
+        test.assert_false(view.mainsAltsLines[1].isFilterMatch)
+        test.assert_true(view.mainsAltsLines[2].isFilterMatch)
+        test.assert_false(view.mainsAltsLines[3].isFilterMatch)
 
         view.mainsAltsLines[1].checkbox:SetChecked(true)
         view.mainsAltsLines[1].checkbox.scripts.OnClick(

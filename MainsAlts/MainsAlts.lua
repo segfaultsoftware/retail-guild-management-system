@@ -417,6 +417,20 @@ function MainsAlts.RefreshStatus()
             end
         end
     end
+    if type(RGMS.LiveGuildNotes) == "table"
+        and type(RGMS.LiveGuildNotes.GetSearchableNotes) == "function" then
+        local function applyLiveSearchState(character)
+            character.searchableNotes = RGMS.LiveGuildNotes:GetSearchableNotes(
+                character.identity
+            )
+        end
+        for _, row in ipairs(report.rows) do
+            applyLiveSearchState(row)
+            for _, alt in ipairs(row.alts or {}) do
+                applyLiveSearchState(alt)
+            end
+        end
+    end
     RGMS.UI.SetMainsAltsReport(report)
 
     local scanning = type(RGMS.Roster) == "table"

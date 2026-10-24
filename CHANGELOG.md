@@ -7,6 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Extended the Roster By Name search to find characters through committed
+  Private Notes and confirmed permission-visible Public and Officer Notes,
+  while preserving per-character tag intersection and full-group context.
+
 ### Fixed
 
 - Removed the white hover square from ByName character selection checkboxes.

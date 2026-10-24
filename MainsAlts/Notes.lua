@@ -513,6 +513,21 @@ function Notes.create(dependencies)
             or (self.permissions.viewOfficer and hasText(member.officerNote))
     end
 
+    function controller:GetSearchableNotes(identity)
+        if not self.cacheLoaded then
+            return {}
+        end
+        local member = self.cache[identity]
+        if not member then
+            return {}
+        end
+        local notes = { member.publicNote }
+        if self.permissions.viewOfficer then
+            notes[#notes + 1] = member.officerNote
+        end
+        return notes
+    end
+
     function controller:Save()
         local editor = self.editor
         if not editor then

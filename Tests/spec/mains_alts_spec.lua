@@ -213,6 +213,37 @@ return {
         test.assert_true(calls.report.rows[1].hasNote)
     end),
 
+    test.case("live visible guild notes are attached only to transient reports", function()
+        local searchable = { "public", "visible officer" }
+        local controller, calls, rgms = newHarness({
+            members = { { name = "Main", realm = "Area52" } },
+            rows = {
+                {
+                    identity = "main-area52",
+                    note = "private",
+                    alts = {
+                        { identity = "alt-area52", note = "" },
+                    },
+                },
+            },
+            liveNotes = {
+                GetSearchableNotes = function(_, identity)
+                    if identity == "main-area52" then
+                        return searchable
+                    end
+                    return {}
+                end,
+            },
+        })
+
+        controller.RefreshStatus()
+
+        test.assert_equal(calls.report.rows[1].searchableNotes, searchable)
+        test.assert_equal(calls.report.rows[1].alts[1].searchableNotes, {})
+        test.assert_nil(rgms.DB.roster.members[1].searchableNotes)
+        test.assert_nil(rgms.DB.characterNotes["main-area52"])
+    end),
+
     test.case("successful roster scans can refresh the live guild-note cache", function()
         local refreshed = 0
         local controller = newHarness({
