@@ -13,9 +13,11 @@ Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
 Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 Core\Realm.lua
+Roster\Names.lua
 Core\DateTime.lua
 Core\SavedData.lua
 Core\AccountData.lua
+Roster\News.lua
 Core\RosterMigration.lua
 Core\BankMigration.lua
 UI\Layout.lua
@@ -26,7 +28,6 @@ Core\Reset.lua
 Core\DatasetOwnership.lua
 Core\Commands.lua
 MainsAlts\Search.lua
-Roster\Names.lua
 MainsAlts\Tags.lua
 MainsAlts\Notes.lua
 UI\UI.lua

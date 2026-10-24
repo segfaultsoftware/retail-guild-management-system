@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 4
+## Account-wide schema: version 5
 
 ```text
 {
-  schemaVersion = 4,
+  schemaVersion = 5,
   settings = {
     minimapPos = number,
   },
@@ -45,6 +45,8 @@ view and does not create, bind, replace, or erase an account guild partition.
           },
         },
       },
+      rosterObservation = RosterNewsObservation | nil,
+      newsSets = { RosterNewsSet, ... },
     },
   },
 }
@@ -57,7 +59,9 @@ Version 1 account data gains the default position of 225 degrees, and version 2
 renames `minimapAngle` to LibDBIcon's `minimapPos`. Version 3 data gains an
 empty-assignment tag catalog containing the required `me` definition. All
 migrations are copy-on-write, so the original table is left untouched if
-validation fails.
+validation fails. Version 4 data gains an empty News Set collection and no
+raw-observation baseline, so its first successful scan establishes the baseline
+without manufacturing historical news.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
@@ -72,7 +76,11 @@ reset state; later migration code must not repopulate it from deprecated
 per-character observations. Main/alt groups, character notes, and tags are
 stored in the same guild partition. The Mains/Alts tab projects group
 membership from this partition but limits its character population to the
-active guild's saved roster.
+active guild's saved roster. `rosterObservation` stores the immediately prior
+complete API observation used only for news detection; unlike `roster`, it does
+not retain absent members. `newsSets` stores immutable qualifying scan results
+newest first until acknowledgement or expiry after their 21st Pacific calendar
+day.
 
 Character-note keys use the same case-insensitive canonical character identity
 as the roster projection. Saved note text is trimmed, whitespace-only text is
@@ -114,6 +122,13 @@ logged-in character's matching deprecated bank; foreign-guild data is ignored.
 Once initialized, including as an intentional empty reset state, the account
 bank remains authoritative and later characters cannot merge legacy snapshots.
 
+`RosterNewsObservation` contains the scan timestamp and a canonical identity,
+display name, numeric rank index, and current rank name for every member in that
+successful API response. A `RosterNewsSet` contains its unique scan-derived ID,
+Pacific creation date, and non-empty change data across joining members, leaving
+members, and rank changes. Rank changes save the member display name and new
+rank name; set acknowledgement removes only the selected set.
+
 `WindowPosition` contains `point`, `relativePoint`, `x`, and `y`. The active
 view references the current character's `ui` subtree, so dragging the window
 continues to save independently for every character even though guild data is
@@ -144,7 +159,10 @@ and the still-pending per-character bank data.
 
 Only a complete, validated success atomically replaces that one dataset in the
 matching guild partition and marks its initialization flag true. A successful
-commit also clears the logged-in character's corresponding deprecated dataset
+roster commit also prunes expired News Sets, compares its raw API observation
+with the prior successful observation, saves the new baseline, and appends one
+News Set when qualifying changes exist. The commit also clears the logged-in
+character's corresponding deprecated dataset
 while preserving the other dataset and window position. Failed, incomplete,
 timed-out, and canceled scans preserve both the last account-wide observations
 and the pending deprecated data. The other account dataset, initialization
@@ -155,7 +173,8 @@ against the retained roster while preserving the complete tag catalog.
 ## Reset and recovery
 
 Confirming `/rgms reset` while guilded clears the current guild's roster, bank,
-groups, notes, custom tag definitions, and tag assignments, then reseeds `me`.
+groups, notes, custom tag definitions, tag assignments, news baseline, and News
+Sets, then reseeds `me`.
 It leaves both dataset initialization flags true, preserves
 all other guild partitions and deprecated per-character observations, and
 preserves the character's window position. The initialized empty datasets

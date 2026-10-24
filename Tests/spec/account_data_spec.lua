@@ -1,9 +1,11 @@
 local accountData = require("Core.AccountData")
+local dateTime = require("Core.DateTime")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
 local groups = require("MainsAlts.Groups")
 local tags = require("MainsAlts.Tags")
 local reset = require("Core.Reset")
+local rosterNews = require("Roster.News")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
 
@@ -37,7 +39,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 4,
+            schemaVersion = 5,
             settings = {
                 minimapPos = 225,
             },
@@ -56,7 +58,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 4,
+            schemaVersion = 5,
             settings = {
                 minimapPos = 225,
             },
@@ -80,7 +82,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 4,
+            schemaVersion = 5,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -106,12 +108,36 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 4)
+        test.assert_equal(state.model.schemaVersion, 5)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
         })
         test.assert_nil(accountData.findGuild(original, identity).tags)
+    end),
+
+    test.case("version 4 account data gains empty roster news state copy-on-write", function()
+        local identity = guild("Night Shift", "area-52")
+        local original = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            completedRoster(identity, "Main")
+        ))
+        original.schemaVersion = 4
+        local originalGuild = accountData.findGuild(original, identity)
+        originalGuild.rosterObservation = nil
+        originalGuild.newsSets = nil
+
+        local state = accountData.load(original)
+        local migratedGuild = accountData.findGuild(state.model, identity)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 4)
+        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_nil(migratedGuild.rosterObservation)
+        test.assert_equal(migratedGuild.newsSets, {})
+        test.assert_nil(originalGuild.newsSets)
     end),
 
     test.case("account data validates the saved LibDBIcon position", function()
@@ -208,6 +234,127 @@ return {
         test.assert_equal(accountData.findGuild(model, firstIdentity).roster.members[1].name, "First")
         test.assert_equal(accountData.findGuild(model, secondIdentity).roster.members[1].name, "Second")
         test.assert_equal(accountData.findGuild(model, thirdIdentity).roster.members[1].name, "Third")
+    end),
+
+    test.case("roster news persists account-wide inside only its guild partition", function()
+        local active = guild("Night Shift", "area-52")
+        local other = guild("Night Shift", "illidan")
+        local model = accountData.newModel()
+        model = assert(accountData.replaceDataset(
+            model,
+            active,
+            "roster",
+            completedRoster(active, "Active")
+        ))
+        model = assert(accountData.replaceDataset(
+            model,
+            other,
+            "roster",
+            completedRoster(other, "Other")
+        ))
+        local observation = {
+            scannedAt = fixtures.timestamp(),
+            members = {
+                {
+                    identity = "active-area-52",
+                    name = "Active-Area-52",
+                    rankIndex = 2,
+                    rankName = "Member",
+                },
+            },
+        }
+        local newsSets = {
+            {
+                id = "news-1",
+                createdDate = "2024-06-01",
+                joiningMembers = { "Active-Area-52" },
+                leavingMembers = {},
+                rankChanges = {},
+            },
+        }
+
+        local replacement = assert(accountData.replaceRosterNews(
+            model,
+            active,
+            observation,
+            newsSets
+        ))
+
+        test.assert_equal(accountData.findGuild(replacement, active).newsSets, newsSets)
+        test.assert_equal(accountData.findGuild(replacement, other).newsSets, {})
+        test.assert_equal(accountData.view(replacement, active, {}).newsSets, newsSets)
+        test.assert_equal(accountData.findGuild(model, active).newsSets, {})
+    end),
+
+    test.case("successful roster ownership commits baseline and news atomically", function()
+        local identity = guild("Night Shift", "area-52")
+        local current = accountData.newModel()
+        local function applyNews(model, guildIdentity, snapshot)
+            local partition = accountData.findGuild(model, guildIdentity)
+            local result = assert(rosterNews.process(
+                partition.rosterObservation,
+                partition.newsSets,
+                snapshot,
+                dateTime
+            ))
+            return accountData.replaceRosterNews(
+                model,
+                guildIdentity,
+                result.observation,
+                result.newsSets
+            ), result.created
+        end
+        local controller = datasetOwnership.create({
+            savedData = savedData,
+            accountData = accountData,
+            getSavedData = function() return current end,
+            commit = function(model) current = model end,
+            reconcileRosterFeatures = groups.reconcile,
+            reconcileCharacterTags = tags.reconcile,
+            applyRosterNews = applyNews,
+            print = function() end,
+        })
+        local firstSnapshot = completedRoster(identity, "Alpha")
+        local first = assert(controller:begin("roster", identity))
+        first.dataset = firstSnapshot
+        first.snapshot = firstSnapshot
+        local committed, _, created = controller:finish(first, "success")
+        test.assert_true(committed)
+        test.assert_false(created)
+        test.assert_equal(accountData.findGuild(current, identity).newsSets, {})
+
+        local secondSnapshot = completedRoster(identity, "Bravo")
+        secondSnapshot.scannedAt = assert(dateTime.utcTimestamp(
+            firstSnapshot.scannedAt.unixSeconds + 24 * 60 * 60
+        ))
+        secondSnapshot.members[1].observedAt = secondSnapshot.scannedAt
+        secondSnapshot.members[1].lastSeenDate = assert(
+            dateTime.currentPacificDate(secondSnapshot.scannedAt.unixSeconds)
+        )
+        local beforeFailure = current
+        local failed = assert(controller:begin("roster", identity))
+        failed.dataset = secondSnapshot
+        failed.snapshot = secondSnapshot
+        local failedCommit, failedStatus = controller:finish(failed, "failed")
+        test.assert_false(failedCommit)
+        test.assert_equal(failedStatus, "failed")
+        test.assert_true(current == beforeFailure)
+        test.assert_equal(accountData.findGuild(current, identity).newsSets, {})
+
+        local second = assert(controller:begin("roster", identity))
+        second.dataset = secondSnapshot
+        second.snapshot = secondSnapshot
+        local commitResult
+        committed, commitResult, created = controller:finish(second, "success")
+        if not committed then
+            error(tostring(commitResult))
+        end
+
+        local partition = accountData.findGuild(current, identity)
+        test.assert_true(committed)
+        test.assert_true(created)
+        test.assert_equal(partition.newsSets[1].joiningMembers, { "Bravo-area-52" })
+        test.assert_equal(partition.newsSets[1].leavingMembers, { "Alpha-area-52" })
     end),
 
     test.case("guildless views are empty and never mutate saved partitions", function()
@@ -526,6 +673,26 @@ return {
         local activePartition = accountData.findGuild(account, active)
         activePartition.tags.definitions.raid = true
         activePartition.tags.assignments["active-area-52"] = { raid = true }
+        activePartition.rosterObservation = {
+            scannedAt = fixtures.timestamp(),
+            members = {
+                {
+                    identity = "active-area-52",
+                    name = "Active-area-52",
+                    rankIndex = 1,
+                    rankName = "Guild Master",
+                },
+            },
+        }
+        activePartition.newsSets = {
+            {
+                id = "reset-news",
+                createdDate = "2024-06-01",
+                joiningMembers = { "Active-area-52" },
+                leavingMembers = {},
+                rankChanges = {},
+            },
+        }
         account = assert(accountData.replaceDataset(
             account,
             other,
@@ -558,6 +725,8 @@ return {
             definitions = { me = true },
             assignments = {},
         })
+        test.assert_nil(accountData.findGuild(account, active).rosterObservation)
+        test.assert_equal(accountData.findGuild(account, active).newsSets, {})
         test.assert_equal(
             accountData.findGuild(account, other).roster.members[1].name,
             "Other"

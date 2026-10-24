@@ -49,6 +49,20 @@ local function mainsAltsReport(count, prefix)
     return { rows = rows }
 end
 
+local function newsSet(id, overrides)
+    local value = {
+        id = id,
+        createdDate = "2024-06-01",
+        joiningMembers = { "Alpha-Area52" },
+        leavingMembers = {},
+        rankChanges = {},
+    }
+    for key, item in pairs(overrides or {}) do
+        value[key] = item
+    end
+    return value
+end
+
 local function countLines(value)
     local count = 1
     for _ in string.gmatch(value or "", "\n") do
@@ -227,6 +241,10 @@ local function newRegion(parent)
 
     function region:SetVertexColor(red, green, blue, alpha)
         self.vertexColor = { red, green, blue, alpha }
+    end
+
+    function region:SetDesaturated(desaturated)
+        self.desaturated = desaturated == true
     end
 
     function region:SetAlpha(alpha)
@@ -504,6 +522,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
 
     local database = {
         ui = {},
+        newsSets = {},
     }
     local modifiedItemClicks = {}
     HandleModifiedItemClick = function(itemLink)
@@ -522,6 +541,23 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         Roster = {
             RequestManualScan = function()
                 refreshRequests = refreshRequests + 1
+            end,
+            AcknowledgeNewsSet = function(setId)
+                local retained = {}
+                local removed = false
+                for _, set in ipairs(database.newsSets) do
+                    if set.id == setId then
+                        removed = true
+                    else
+                        retained[#retained + 1] = set
+                    end
+                end
+                if not removed then
+                    return nil, "news set was not found"
+                end
+                database.newsSets = retained
+                rgms.UI.SetNewsSets(retained)
+                return true
             end,
         },
         Bank = {
@@ -704,6 +740,148 @@ return {
         test.assert_nil(frame.views.tags.refreshButton)
         test.assert_nil(frame.views.tags.groupButton)
         test.assert_nil(frame.views.tags.mainsAltsSearchBox)
+    end),
+
+    test.case("News is a fixed right drawer with explicit and automatic opening", function()
+        local harness = newHarness()
+        harness.database.newsSets = { newsSet("pending") }
+        test.assert_true(harness.ui.Initialize())
+        local frame = harness.frame()
+        local drawer = frame.newsWindow
+
+        test.assert_equal(drawer:GetWidth(), 400)
+        test.assert_equal(drawer:GetHeight(), 400)
+        test.assert_equal(drawer.shadow.texture, "Interface\\Buttons\\WHITE8X8")
+        test.assert_equal(drawer.shadow.sublevel, -8)
+        test.assert_equal(drawer.shadow.vertexColor, { 0, 0, 0, 0.45 })
+        test.assert_equal(drawer.shadow.points[1].x, -6)
+        test.assert_equal(drawer.shadow.points[1].y, 6)
+        test.assert_equal(drawer.shadow.points[2].x, 6)
+        test.assert_equal(drawer.shadow.points[2].y, -6)
+        test.assert_false(drawer:IsShown())
+        test.assert_true(harness.ui.Show())
+        test.assert_true(drawer:IsShown())
+        test.assert_equal(drawer.point, "TOPLEFT")
+        test.assert_true(drawer.relativeTo == frame)
+        test.assert_equal(drawer.relativePoint, "TOPRIGHT")
+        test.assert_equal(drawer.x, 20)
+        test.assert_equal(drawer.y, 0)
+
+        drawer.closeButton.scripts.OnClick()
+        test.assert_false(drawer:IsShown())
+        test.assert_equal(#harness.database.newsSets, 1)
+        frame.logoButton.scripts.OnClick()
+        test.assert_true(drawer:IsShown())
+        frame.logoButton.scripts.OnClick()
+        test.assert_true(drawer:IsShown())
+    end),
+
+    test.case("News renders categories newest first and acknowledges sets independently", function()
+        local harness = newHarness()
+        harness.database.newsSets = {
+            newsSet("newest", {
+                joiningMembers = { "Alpha-Area52" },
+                leavingMembers = { "Bravo-Area52" },
+                rankChanges = {
+                    { name = "Charlie-Area52", rankName = "Officer" },
+                },
+            }),
+            newsSet("older", { joiningMembers = { "Delta-Area52" } }),
+        }
+        harness.ui.Initialize()
+        harness.ui.OpenNews()
+        local drawer = harness.frame().newsWindow
+
+        test.assert_equal(drawer.blocks[1].setId, "newest")
+        test.assert_equal(
+            drawer.blocks[1].text.text,
+            "Alpha-Area52 joined the guild.\n"
+                .. "Bravo-Area52 left the guild.\n"
+                .. "Charlie-Area52's rank changed to Officer."
+        )
+        test.assert_equal(drawer.scrollFrame:GetWidth(), 394)
+        test.assert_equal(drawer.scrollFrame.x, 3)
+        test.assert_equal(drawer.content:GetWidth(), 394)
+        test.assert_equal(drawer.blocks[1].panel.points[1].x, 0)
+        test.assert_equal(drawer.blocks[1].panel.points[2].x, 0)
+        test.assert_equal(drawer.blocks[1].check.point, "TOPRIGHT")
+        test.assert_true(drawer.blocks[1].check.relativeTo == drawer.blocks[1].panel)
+        test.assert_equal(drawer.blocks[1].check.x, -10)
+        test.assert_equal(drawer.blocks[1].text.font[2], 12)
+        test.assert_nil(drawer.blocks[1].check.circleBorder)
+        test.assert_true(drawer.blocks[1].check.circleFill.allPoints
+            == drawer.blocks[1].check)
+        test.assert_equal(
+            drawer.blocks[1].check.icon.vertexColor,
+            { 1, 0.82, 0.2, 1 }
+        )
+        test.assert_true(drawer.blocks[1].check.icon.desaturated)
+        test.assert_equal(drawer.blocks[2].setId, "older")
+        test.assert_equal(drawer.blocks[2].text.text, "Delta-Area52 joined the guild.")
+
+        drawer.blocks[2].check.scripts.OnClick()
+        test.assert_equal(#harness.database.newsSets, 1)
+        test.assert_equal(harness.database.newsSets[1].id, "newest")
+        test.assert_true(drawer:IsShown())
+        drawer.blocks[1].check.scripts.OnClick()
+        test.assert_equal(harness.database.newsSets, {})
+        test.assert_true(drawer:IsShown())
+    end),
+
+    test.case("News and Notes are exclusive while the scan overlay locks both windows", function()
+        local harness = newHarness()
+        harness.database.newsSets = { newsSet("pending") }
+        harness.ui.Initialize()
+        harness.ui.Show()
+        local frame = harness.frame()
+        test.assert_true(frame.newsWindow:IsShown())
+
+        test.assert_true(harness.ui.OpenCharacterNote(
+            "main-area52",
+            "Main-Area52",
+            "Private",
+            true
+        ))
+        test.assert_false(frame.newsWindow:IsShown())
+        test.assert_true(frame.notesEditor:IsShown())
+        harness.ui.OpenNews()
+        test.assert_false(frame.notesEditor:IsShown())
+        test.assert_true(frame.newsWindow:IsShown())
+        test.assert_true(harness.ui.OpenCharacterNote(
+            "main-area52",
+            "Main-Area52",
+            "Private",
+            true
+        ))
+        test.assert_false(frame.newsWindow:IsShown())
+        harness.ui.CloseCharacterNoteEditor()
+
+        harness.ui.CompleteRosterScan(false)
+        test.assert_false(frame.newsWindow:IsShown())
+        harness.ui.CompleteRosterScan(true)
+        test.assert_true(frame.newsWindow:IsShown())
+        test.assert_true(harness.ui.SetGlobalScanLock(true))
+        test.assert_true(frame.globalDimmer:IsShown())
+        test.assert_true(frame.newsWindow.dimmer:IsShown())
+        test.assert_true(harness.ui.SetGlobalScanLock(false))
+        test.assert_false(frame.newsWindow.dimmer:IsShown())
+    end),
+
+    test.case("News shows its scrollbar only when blocks overflow", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local sets = {}
+        for index = 1, 8 do
+            sets[index] = newsSet(tostring(index), {
+                joiningMembers = { "Alpha" .. index, "Bravo" .. index },
+            })
+        end
+        harness.ui.SetNewsSets(sets)
+        local drawer = harness.frame().newsWindow
+        test.assert_true(drawer.scrollFrame.ScrollBar:IsShown())
+
+        harness.ui.SetNewsSets({ sets[1] })
+        test.assert_false(drawer.scrollFrame.ScrollBar:IsShown())
     end),
 
     test.case("primary tabs content status and close behavior use the public API", function()
