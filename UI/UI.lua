@@ -56,6 +56,16 @@ local INITIAL_COPY = {
 }
 
 local HEADER_HEIGHT = 56
+UI.GUILD_BADGE = {
+    size = 63,
+    x = -20,
+    y = 20,
+    innerSize = 55,
+    emblemWidth = 65,
+    emblemHeight = 65,
+    controlX = 63,
+    sidebarTop = 8,
+}
 local SIDEBAR_WIDTH = 136
 local CONTENT_PADDING = 16
 local GLOBAL_DIMMER_ALPHA = 0.8
@@ -103,7 +113,7 @@ local MAINS_ALTS_WHEEL_ROWS = 3
 -- The legacy ScrollFrame is retained for exact pixel anchors and existing styling;
 -- only enough complex row controls for the viewport are kept live and recycled.
 local MAINS_ALTS_VIEWPORT_BUFFER_ROWS = 1
-local MAINS_ALTS_SEARCH_WIDTH = 252
+local MAINS_ALTS_SEARCH_WIDTH = 253
 local MAINS_ALTS_SEARCH_HEIGHT = 32
 local MAINS_ALTS_FILTER_WIDTH = 124
 local MAINS_ALTS_FILTER_HEIGHT = 28
@@ -148,7 +158,7 @@ local PALETTE = type(RGMS.Portal) == "table" and RGMS.Portal.PALETTE or {
     zebra = { 0.114, 0.125, 0.153, 1 }, filterMatch = { 0.231, 0.137, 0.192, 1 },
     pink = { 0.925, 0.282, 0.6, 1 }, pinkHover = { 0.957, 0.447, 0.714, 1 }, text = { 0.957, 0.957, 0.961, 1 },
     secondary = { 0.631, 0.631, 0.667, 1 }, disabled = { 0.443, 0.443, 0.478, 1 },
-    error = { 0.973, 0.443, 0.443, 1 },
+    warning = { 0.984, 0.749, 0.141, 1 }, error = { 0.973, 0.443, 0.443, 1 },
 }
 
 local function unpackColor(color)
@@ -208,6 +218,32 @@ local function setTextureColor(texture, color)
     if texture and type(texture.SetVertexColor) == "function" then
         texture:SetVertexColor(unpackColor(color))
     end
+end
+
+function UI.RefreshGuildBadge(frame)
+    if not frame or not frame.guildEmblem or not frame.guildBackground then
+        return false
+    end
+
+    frame.guildEmblem:SetSize(
+        UI.GUILD_BADGE.emblemWidth,
+        UI.GUILD_BADGE.emblemHeight
+    )
+    if type(SetLargeGuildTabardTextures) == "function" then
+        SetLargeGuildTabardTextures(
+            "player",
+            frame.guildEmblem,
+            frame.guildBackground,
+            nil
+        )
+        return true
+    end
+
+    frame.guildBackground:SetVertexColor(unpackColor(PALETTE.surface))
+    frame.guildEmblem:SetTexture(LOGO_TEXTURE)
+    frame.guildEmblem:SetTexCoord(0, 1, 0, 1)
+    frame.guildEmblem:SetVertexColor(1, 1, 1, 1)
+    return false
 end
 
 local function styleTagCapsule(control, background, borderColor)
@@ -1867,7 +1903,13 @@ end
 local function createMainsAltsSearch(view)
     local editBox = CreateFrame("EditBox", nil, view, "BackdropTemplate")
     editBox:SetSize(MAINS_ALTS_SEARCH_WIDTH, MAINS_ALTS_SEARCH_HEIGHT)
-    editBox:SetPoint("TOPLEFT", view:GetParent(), "TOPLEFT", 64, -12)
+    editBox:SetPoint(
+        "TOPLEFT",
+        view:GetParent(),
+        "TOPLEFT",
+        UI.GUILD_BADGE.controlX,
+        -12
+    )
     editBox:SetAutoFocus(false)
     editBox:SetJustifyH("LEFT")
     if type(editBox.SetTextInsets) == "function" then
@@ -3002,7 +3044,13 @@ local function createView(parent, tabId)
         end, function()
             return view.rosterReport and view.rosterReport.ranks or {}
         end)
-        view.rankDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 64, -12)
+        view.rankDropdown:SetPoint(
+            "TOPLEFT",
+            parent,
+            "TOPLEFT",
+            UI.GUILD_BADGE.controlX,
+            -12
+        )
         createByRankControl(
             view,
             true,
@@ -3085,7 +3133,13 @@ local function createView(parent, tabId)
         end, function()
             return view.bankReport and view.bankReport.tabs or {}
         end)
-        view.bankDropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", 64, -12)
+        view.bankDropdown:SetPoint(
+            "TOPLEFT",
+            parent,
+            "TOPLEFT",
+            UI.GUILD_BADGE.controlX,
+            -12
+        )
         view.bankTabScrollFrame:SetScript("OnSizeChanged", function()
             refreshBankTabScrollChild(view)
         end)
@@ -3806,13 +3860,28 @@ local function createWindow()
     flatBackdrop(sidebar, PALETTE.surface, PALETTE.border)
     frame.sidebar = sidebar
 
-    local logo = header:CreateTexture(nil, "OVERLAY")
-    logo:SetSize(40, 40)
-    logo:SetPoint("TOPLEFT", header, "TOPLEFT", 8, -8)
-    logo:SetTexture(LOGO_TEXTURE)
-    frame.logo = logo
-    frame.logoButton = CreateFrame("Button", nil, header)
-    frame.logoButton:SetAllPoints(logo)
+    frame.logoButton = CreateFrame("Button", nil, frame)
+    frame.logoButton:SetSize(UI.GUILD_BADGE.size, UI.GUILD_BADGE.size)
+    frame.logoButton:SetPoint(
+        "TOPLEFT",
+        frame,
+        "TOPLEFT",
+        UI.GUILD_BADGE.x,
+        UI.GUILD_BADGE.y
+    )
+    frame.logoButton:SetFrameLevel(header:GetFrameLevel() + 1)
+    frame.logoRing = frame.logoButton:CreateTexture(nil, "ARTWORK", nil, 0)
+    frame.logoRing:SetAllPoints(frame.logoButton)
+    frame.logoRing:SetTexture(CIRCLE_TEXTURE)
+    setTextureColor(frame.logoRing, PALETTE.shell)
+    frame.guildBackground = frame.logoButton:CreateTexture(nil, "ARTWORK", nil, 1)
+    frame.guildBackground:SetSize(UI.GUILD_BADGE.innerSize, UI.GUILD_BADGE.innerSize)
+    frame.guildBackground:SetPoint("CENTER", frame.logoButton, "CENTER", 0, 0)
+    frame.guildBackground:SetTexture(CIRCLE_TEXTURE)
+    frame.guildEmblem = frame.logoButton:CreateTexture(nil, "OVERLAY", nil, 1)
+    frame.guildEmblem:SetPoint("CENTER", frame.logoButton, "CENTER", 0, 0)
+    frame.logo = frame.guildEmblem
+    UI.RefreshGuildBadge(frame)
     frame.logoButton:SetScript("OnClick", function()
         UI.OpenNews()
     end)
@@ -3840,7 +3909,13 @@ local function createWindow()
         local tab = CreateFrame("Button", "RGMSMainFrameTab" .. index, sidebar, "BackdropTemplate")
         tab:SetID(index)
         tab:SetSize(120, 40)
-        tab:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -8 - (index - 1) * 40)
+        tab:SetPoint(
+            "TOPLEFT",
+            sidebar,
+            "TOPLEFT",
+            8,
+            -UI.GUILD_BADGE.sidebarTop - (index - 1) * 40
+        )
         flatBackdrop(tab, { 0, 0, 0, 0 }, { 0, 0, 0, 0 })
         tab.indicator = tab:CreateTexture(nil, "ARTWORK")
         tab.indicator:SetTexture(WHITE_TEXTURE)
@@ -4006,8 +4081,14 @@ function UI.Initialize()
     UI.eventFrame = CreateFrame("Frame")
     UI.eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
     UI.eventFrame:RegisterEvent("UI_SCALE_CHANGED")
-    UI.eventFrame:SetScript("OnEvent", function()
-        UI.ClampToScreen()
+    UI.eventFrame:RegisterEvent("INITIAL_CLUBS_LOADED")
+    UI.eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
+    UI.eventFrame:SetScript("OnEvent", function(_, event)
+        if event == "DISPLAY_SIZE_CHANGED" or event == "UI_SCALE_CHANGED" then
+            UI.ClampToScreen()
+        else
+            UI.RefreshGuildBadge(UI.frame)
+        end
     end)
 
     return true

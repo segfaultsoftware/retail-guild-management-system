@@ -448,6 +448,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local tagDeleteRequests = {}
     local tagRefreshRequests = 0
     local shownPopup
+    local guildTabardRequests = {}
     local tooltip = {
         lines = {},
         shown = false,
@@ -530,6 +531,20 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     end
     PanelTemplates_SetTab = function(frame, selectedTab)
         frame.selectedTab = selectedTab
+    end
+    SetLargeGuildTabardTextures = function(unit, emblem, background, border)
+        guildTabardRequests[#guildTabardRequests + 1] = {
+            unit = unit,
+            emblem = emblem,
+            background = background,
+            border = border,
+        }
+        emblem:SetTexture("guild-emblem")
+        emblem:SetVertexColor(0.9, 0.8, 0.2, 1)
+        background:SetVertexColor(0.2, 0.3, 0.7, 1)
+        if border then
+            border:SetVertexColor(0.8, 0.7, 0.1, 1)
+        end
     end
 
     local database = {
@@ -696,6 +711,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         end,
         tooltip = tooltip,
         modifiedItemClicks = modifiedItemClicks,
+        guildTabardRequests = guildTabardRequests,
         ui = ui,
     }
 end
@@ -720,11 +736,29 @@ return {
         test.assert_nil(frame.tabs[2].text)
         test.assert_equal(frame.views.roster.rankDropdown.parent, frame.views.roster)
         test.assert_equal(frame.views.bank.bankDropdown.parent, frame.views.bank)
-        test.assert_equal(frame.logo.parent, frame.header)
+        test.assert_equal(frame.logo.parent, frame.logoButton)
+        test.assert_equal(frame.logo.texture, "guild-emblem")
+        test.assert_equal(frame.logoButton:GetWidth(), 63)
+        test.assert_equal(frame.logoButton:GetHeight(), 63)
+        test.assert_equal(frame.logoButton.relativeTo, frame)
+        test.assert_equal(frame.logoButton.x, -20)
+        test.assert_equal(frame.logoButton.y, 20)
+        test.assert_equal(frame.logoRing.texture, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+        test.assert_equal(frame.logoRing.vertexColor, { 0.059, 0.067, 0.082, 1 })
         test.assert_equal(
-            frame.logo.texture,
-            "Interface\\AddOns\\RGMS\\assets\\rgms-logo.png"
+            frame.guildBackground.texture,
+            "Interface\\CharacterFrame\\TempPortraitAlphaMask"
         )
+        test.assert_equal(frame.guildBackground.width, 55)
+        test.assert_equal(frame.guildBackground.height, 55)
+        test.assert_equal(frame.guildBackground.vertexColor, { 0.2, 0.3, 0.7, 1 })
+        test.assert_equal(frame.guildEmblem.width, 65)
+        test.assert_equal(frame.guildEmblem.height, 65)
+        test.assert_equal(#harness.guildTabardRequests, 1)
+        test.assert_equal(harness.guildTabardRequests[1].unit, "player")
+        test.assert_true(harness.ui.eventFrame.registeredEvents.INITIAL_CLUBS_LOADED)
+        test.assert_true(harness.ui.eventFrame.registeredEvents.PLAYER_GUILD_UPDATE)
+        test.assert_equal(frame.tabs[1].y, -8)
         test.assert_false(frame.resizable)
         test.assert_nil(harness.database.ui.windowPosition)
         test.assert_equal(frame.views.roster.text.text, "No roster data yet")
@@ -732,9 +766,9 @@ return {
         test.assert_equal(frame.views.mainsalts.text.text, "No roster data yet")
         test.assert_equal(frame.views.mainsalts.status.text, "No roster data yet")
         local searchBox = frame.views.mainsalts.mainsAltsSearchBox
-        test.assert_equal(searchBox:GetWidth(), 252)
+        test.assert_equal(searchBox:GetWidth(), 253)
         test.assert_equal(searchBox.relativeTo, frame)
-        test.assert_equal(searchBox.x, 64)
+        test.assert_equal(searchBox.x, 63)
         test.assert_false(searchBox.autoFocus)
         test.assert_nil(searchBox.maxLetters)
         test.assert_equal(
@@ -816,6 +850,18 @@ return {
         test.assert_true(drawer:IsShown())
         frame.logoButton.scripts.OnClick()
         test.assert_true(drawer:IsShown())
+    end),
+
+    test.case("guild badge refreshes when guild data becomes available", function()
+        local harness = newHarness()
+        test.assert_true(harness.ui.Initialize())
+        local eventFrame = harness.ui.eventFrame
+
+        eventFrame.scripts.OnEvent(eventFrame, "INITIAL_CLUBS_LOADED")
+        eventFrame.scripts.OnEvent(eventFrame, "PLAYER_GUILD_UPDATE")
+
+        test.assert_equal(#harness.guildTabardRequests, 3)
+        test.assert_equal(harness.guildTabardRequests[3].unit, "player")
     end),
 
     test.case("News renders categories newest first and acknowledges sets independently", function()

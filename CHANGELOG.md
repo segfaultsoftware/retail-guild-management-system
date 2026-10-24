@@ -19,6 +19,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Replaced the main-window RGMS mark with a live guild emblem in a standalone
+  circular frame using RGMS's near-black shell color, overlapping the top-left
+  corner while retaining News access.
 - Merged the former Roster and Mains/Alts tabs into one Roster workflow that
   opens in the grouped ByName presentation and switches in place to the
   rank-and-tenure ByTenure presentation with a **By rank** checkbox, preserving
