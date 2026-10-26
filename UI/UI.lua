@@ -130,6 +130,16 @@ local ProvisionUI = {
     ICON_SIZE = 38,
     PROGRESS_WIDTH = 180,
     PROGRESS_HEIGHT = 18,
+    TOAST_FRAME_LEVEL_OFFSET = 50,
+    TOAST_MAX_WIDTH = 560,
+    TOAST_BORDER_INSET = 1,
+    TOAST_TEXT_HORIZONTAL_PADDING = 18,
+    TOAST_TEXT_VERTICAL_PADDING = 12,
+    TOAST_MIN_HEIGHT = 40,
+    TOAST_TOP_OFFSET = 10,
+    TOAST_GAP = 2,
+    TOAST_HOLD_SECONDS = 3,
+    TOAST_FADE_SECONDS = 1,
     QUALITY_ATLASES = {
         silver = "Professions-Icon-Quality-12-Tier1",
         gold = "Professions-Icon-Quality-12-Tier2",
@@ -139,6 +149,10 @@ local ProvisionUI = {
 -- native-frame composition because Provisions shares the portal's scan lock,
 -- styling, and lifecycle; another widget framework would add compatibility
 -- surface without supplying bank matching or transactional persistence.
+-- LibToast-1.0 was also evaluated for Provision success feedback. Its global
+-- queue and presentation model do not provide RGMS's window-relative anchor,
+-- exact dimmer layering, or tested close lifecycle, so the small native stack
+-- remains within the existing adapter instead of adding a bundled dependency.
 local CHARACTER_NOTE_LIMIT = 5500
 local GUILD_NOTE_LIMIT = 31
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
@@ -221,6 +235,50 @@ local function flatBackdrop(frame, color, borderColor)
     if type(frame.SetBackdropBorderColor) == "function" then
         frame:SetBackdropBorderColor(unpackColor(borderColor or PALETTE.border))
     end
+end
+
+function ProvisionUI.toastWidth(frame)
+    local innerWidth = frame:GetWidth() - ProvisionUI.TOAST_BORDER_INSET * 2
+    return math.min(ProvisionUI.TOAST_MAX_WIDTH, math.max(1, innerWidth))
+end
+
+function ProvisionUI.reflowToasts(frame)
+    for index, toast in ipairs(frame.toasts or {}) do
+        toast:ClearAllPoints()
+        if index == 1 then
+            toast:SetPoint(
+                "TOP",
+                frame.header,
+                "TOP",
+                0,
+                ProvisionUI.TOAST_TOP_OFFSET
+            )
+        else
+            toast:SetPoint(
+                "TOP",
+                frame.toasts[index - 1],
+                "BOTTOM",
+                0,
+                -ProvisionUI.TOAST_GAP
+            )
+        end
+    end
+end
+
+function ProvisionUI.removeToast(frame, toast)
+    if toast.removed then
+        return
+    end
+    toast.removed = true
+    toast:SetScript("OnUpdate", nil)
+    toast:Hide()
+    for index, current in ipairs(frame.toasts or {}) do
+        if current == toast then
+            table.remove(frame.toasts, index)
+            break
+        end
+    end
+    ProvisionUI.reflowToasts(frame)
 end
 
 local function setTextureColor(texture, color)
@@ -4292,6 +4350,7 @@ local function createWindow()
 
     frame.tabs = {}
     frame.views = {}
+    frame.toasts = {}
     for index, tabId in ipairs(TAB_ORDER) do
         local tab = CreateFrame("Button", "RGMSMainFrameTab" .. index, sidebar, "BackdropTemplate")
         tab:SetID(index)
@@ -4374,6 +4433,9 @@ local function createWindow()
     frame.globalDimmer:Hide()
 
     frame.modalDimmer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    frame.modalDimmer:SetFrameLevel(
+        frame:GetFrameLevel() + 90
+    )
     frame.modalDimmer:SetAllPoints(frame)
     frame.modalDimmer:SetBackdrop({ bgFile = WHITE_TEXTURE })
     frame.modalDimmer:SetBackdropColor(0, 0, 0, 0.5)
@@ -4388,6 +4450,7 @@ local function createWindow()
         refreshVisibleReport(frame.views[UI.selectedTab], UI.selectedTab)
     end)
     frame:SetScript("OnHide", function()
+        UI.ClearToasts()
         local mainsAltsView = frame.views.mainsalts
         cancelMainsAltsScrollWork(mainsAltsView)
         clearMainsAltsFilters(mainsAltsView, false)
@@ -4422,6 +4485,89 @@ local function createWindow()
     end)
 
     return frame
+end
+
+function UI.ShowToast(message)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(message) ~= "string" or message == "" then
+        return nil, "toast message must be a non-empty string"
+    end
+
+    local frame = UI.frame
+    local toast = createFrame("Frame", nil, frame, "BackdropTemplate")
+    local width = ProvisionUI.toastWidth(frame)
+    toast:SetWidth(width)
+    toast:SetFrameLevel(
+        frame:GetFrameLevel() + ProvisionUI.TOAST_FRAME_LEVEL_OFFSET
+    )
+    toast:EnableMouse(false)
+    toast:SetAlpha(1)
+    flatBackdrop(toast, PALETTE.shell, PALETTE.border)
+
+    toast.accent = toast:CreateTexture(nil, "ARTWORK")
+    toast.accent:SetTexture(WHITE_TEXTURE)
+    toast.accent:SetVertexColor(unpackColor(PALETTE.pink))
+    toast.accent:SetPoint("TOPLEFT", toast, "TOPLEFT", 1, -1)
+    toast.accent:SetPoint("BOTTOMLEFT", toast, "BOTTOMLEFT", 1, 1)
+    toast.accent:SetWidth(3)
+
+    toast.text = toast:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    toast.text:SetWidth(width - ProvisionUI.TOAST_TEXT_HORIZONTAL_PADDING * 2)
+    toast.text:SetPoint(
+        "TOP",
+        toast,
+        "TOP",
+        0,
+        -ProvisionUI.TOAST_TEXT_VERTICAL_PADDING
+    )
+    toast.text:SetJustifyH("CENTER")
+    toast.text:SetJustifyV("MIDDLE")
+    toast.text:SetWordWrap(true)
+    toast.text:SetNonSpaceWrap(true)
+    toast.text:SetMaxLines(0)
+    toast.text:SetText(message)
+    setFont(toast.text, FONT_REGULAR, 12)
+    setTextColor(toast.text, PALETTE.text)
+    toast:SetHeight(math.max(
+        ProvisionUI.TOAST_MIN_HEIGHT,
+        toast.text:GetStringHeight()
+            + ProvisionUI.TOAST_TEXT_VERTICAL_PADDING * 2
+    ))
+
+    toast.elapsed = 0
+    toast:SetScript("OnUpdate", function(current, elapsed)
+        current.elapsed = current.elapsed + elapsed
+        if current.elapsed <= ProvisionUI.TOAST_HOLD_SECONDS then
+            current:SetAlpha(1)
+            return
+        end
+        local fadeElapsed = current.elapsed - ProvisionUI.TOAST_HOLD_SECONDS
+        if fadeElapsed < ProvisionUI.TOAST_FADE_SECONDS then
+            current:SetAlpha(1 - fadeElapsed / ProvisionUI.TOAST_FADE_SECONDS)
+            return
+        end
+        current:SetAlpha(0)
+        ProvisionUI.removeToast(frame, current)
+    end)
+
+    table.insert(frame.toasts, 1, toast)
+    ProvisionUI.reflowToasts(frame)
+    return toast
+end
+
+function UI.ClearToasts()
+    if not UI.frame then
+        return true
+    end
+    for _, toast in ipairs(UI.frame.toasts or {}) do
+        toast.removed = true
+        toast:SetScript("OnUpdate", nil)
+        toast:Hide()
+    end
+    UI.frame.toasts = {}
+    return true
 end
 
 function UI.Initialize()

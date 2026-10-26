@@ -9,6 +9,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Added transient, stacked success toasts for completed Provision creates,
+  updates, and deletions, with independent hold-and-fade timing and
+  window-bound lifecycle and layering.
 - Added an account-wide, per-guild **Provisions** tab for defining R1, R2, or
   Either inventory targets and tracking stack totals against
   the latest committed guild-bank snapshot, with duplicate-safe CRUD, stable
