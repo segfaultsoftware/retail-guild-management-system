@@ -7,6 +7,19 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Added an account-wide, per-guild **Provisions** tab for defining R1, R2, or
+  Either inventory targets and tracking stack totals against
+  the latest committed guild-bank snapshot, with duplicate-safe CRUD, stable
+  sorting, scan-aware progress rows, and transactional persistence.
+
+### Changed
+
+- Refined the Provisions editor and list actions, reset the form after saves,
+  corrected Midnight reagent-quality capture and icon-suffixed name matching,
+  and added `/rgms dumpbanktab N` diagnostics for stored bank records.
+
 ## 1.0.8
 
 ### Added

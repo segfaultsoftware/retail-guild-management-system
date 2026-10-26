@@ -134,6 +134,10 @@ function RGMS.ActivateCurrentGuild()
         identity,
         RGMS.SavedDataState.model.ui
     )
+    if type(RGMS.Provisions) == "table"
+        and type(RGMS.Provisions.OnGuildChanged) == "function" then
+        RGMS.Provisions.OnGuildChanged()
+    end
     return identity, rosterInitialized
 end
 
@@ -206,6 +210,10 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
         if type(RGMS.Bank) == "table"
             and type(RGMS.Bank.RefreshStatus) == "function" then
             RGMS.Bank.RefreshStatus()
+        end
+        if type(RGMS.Provisions) == "table"
+            and type(RGMS.Provisions.RefreshStatus) == "function" then
+            RGMS.Provisions.RefreshStatus()
         end
     end
 

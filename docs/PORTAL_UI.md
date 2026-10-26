@@ -18,10 +18,10 @@ roster-backed reports:
   presentation.
 
 The user-facing checkbox is labeled **By rank**; ByName and ByTenure are the
-standard internal terms. The mode is session-only: navigation to Guild Bank or
-Tags preserves it and each mode's transient state, while closing RGMS resets
-Roster to a clean ByName presentation. The selected numeric rank remains saved
-through its existing SavedVariables field.
+standard internal terms. The mode is session-only: navigation to Guild Bank,
+Provisions, or Tags preserves it and each mode's transient state, while closing
+RGMS resets Roster to a clean ByName presentation. The selected numeric rank
+remains saved through its existing SavedVariables field.
 
 ## Shared-solution evaluation
 
@@ -43,6 +43,12 @@ The implementation was checked against the maintained Retail sources on the
   behind one navigation entry. A third-party view router or state library would
   add lifecycle and SavedVariables risk without solving compatibility concerns
   beyond the portal's small tested session controller.
+- The Provisions view also stays on RGMS's native frame and fixed-row adapter.
+  AceGUI remains maintained and adopted, but introducing it for one view would
+  duplicate the portal's scan lock, control styling, and lifecycle without
+  providing bank-snapshot aggregation or atomic per-guild mutations. Crafting
+  quality uses Blizzard's `C_TradeSkillUI.GetItemReagentQualityByItemInfo`
+  instead of a third-party item database.
 - AceGUI, Details Framework, LibDropDownMenu, lib-ScrollingTable,
   LibSharedMedia, and other UI frameworks were rejected because the ticket
   explicitly excludes them and the maintained Blizzard menu API covers the
