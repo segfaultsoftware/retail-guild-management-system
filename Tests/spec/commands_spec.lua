@@ -31,6 +31,14 @@ local function newCommandHarness()
                 }
             end,
         },
+        Bank = {
+            DumpTab = function(tabIndex)
+                harness.actions[#harness.actions + 1] = {
+                    action = "dumpbanktab",
+                    tabIndex = tabIndex,
+                }
+            end,
+        },
         Reset = {
             requestManual = function()
                 harness.actions[#harness.actions + 1] = {
@@ -130,6 +138,17 @@ return {
             "Debug logging enabled.",
             "Debug logging disabled.",
         })
+    end),
+
+    test.case("bank tab dump parses one positive numeric tab index", function()
+        local harness = newCommandHarness()
+
+        commands.handle("  DuMpBaNkTaB 3  ", harness.api)
+
+        test.assert_equal(harness.actions, {
+            { action = "dumpbanktab", tabIndex = 3 },
+        })
+        test.assert_equal(harness.messages, {})
     end),
 
     test.case("help and unknown arguments print equivalent complete listings", function()

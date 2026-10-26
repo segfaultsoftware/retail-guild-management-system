@@ -151,6 +151,22 @@ local function createRetailApi()
                     )
                 end
 
+                local craftingQuality
+                if type(C_TradeSkillUI) == "table"
+                    and type(C_TradeSkillUI.GetItemReagentQualityByItemInfo) == "function" then
+                    -- The Retail API accepts ItemInfo, but Midnight quality
+                    -- reagents do not reliably resolve when the guild-bank
+                    -- hyperlink is passed directly. The basic item ID is
+                    -- already validated above and resolves the reagent tier.
+                    local quality = C_TradeSkillUI.GetItemReagentQualityByItemInfo(itemId)
+                    if quality == nil then
+                        quality = C_TradeSkillUI.GetItemReagentQualityByItemInfo(itemLink)
+                    end
+                    if quality == 1 or quality == 2 then
+                        craftingQuality = quality
+                    end
+                end
+
                 slots[#slots + 1] = {
                     tabIndex = tabIndex,
                     slotIndex = slotIndex,
@@ -159,6 +175,7 @@ local function createRetailApi()
                     icon = texture,
                     quantity = quantity,
                     isLocked = isLocked == true,
+                    craftingQuality = craftingQuality,
                 }
             elseif quantity ~= nil and quantity ~= 0 then
                 return incomplete(
@@ -312,6 +329,89 @@ function Bank.RequestManualScan()
     return Bank.RequestScan("manual")
 end
 
+local function dumpValue(value)
+    if value == nil then
+        return "nil"
+    elseif type(value) == "string" then
+        return string.format("%q", value)
+    end
+    return tostring(value)
+end
+
+local function dumpTimestamp(value)
+    return type(value) == "table" and dumpValue(value.iso8601) or "nil"
+end
+
+local function dumpItemName(itemLink)
+    return type(itemLink) == "string"
+        and itemLink:match("|h%[([^%]]+)%]|h")
+        or nil
+end
+
+function Bank.DumpTab(tabIndex)
+    if type(tabIndex) ~= "number"
+        or tabIndex < 1
+        or tabIndex ~= math.floor(tabIndex) then
+        RGMS.Print("Usage: /rgms dumpbanktab N")
+        return nil, "bank tab index must be a positive integer"
+    end
+
+    local bank = type(RGMS.DB) == "table" and RGMS.DB.bank or nil
+    if type(bank) ~= "table" then
+        RGMS.Print("Guild bank data is unavailable for the active guild.")
+        return nil, "guild bank data is unavailable"
+    end
+
+    RGMS.Print("Guild bank DB dump for tab " .. tabIndex .. ":")
+    local tabRecord
+    for _, tab in ipairs(bank.tabs or {}) do
+        if tab.index == tabIndex then
+            tabRecord = tab
+            break
+        end
+    end
+    if tabRecord then
+        RGMS.Print(
+            "tab index=" .. dumpValue(tabRecord.index)
+                .. " name=" .. dumpValue(tabRecord.name)
+                .. " icon=" .. dumpValue(tabRecord.icon)
+                .. " isViewable=" .. dumpValue(tabRecord.isViewable)
+                .. " canDeposit=" .. dumpValue(tabRecord.canDeposit)
+                .. " withdrawalsPerDay=" .. dumpValue(tabRecord.withdrawalsPerDay)
+                .. " lastAccessibleAt=" .. dumpTimestamp(tabRecord.lastAccessibleAt)
+        )
+    else
+        RGMS.Print("tab record: nil")
+    end
+
+    local count = 0
+    for _, slot in ipairs(bank.slots or {}) do
+        if slot.tabIndex == tabIndex then
+            count = count + 1
+            local rawName = dumpItemName(slot.itemLink)
+            local matchName = type(RGMS.ProvisionModel) == "table"
+                and type(RGMS.ProvisionModel.itemNameFromLink) == "function"
+                and RGMS.ProvisionModel.itemNameFromLink(slot.itemLink)
+                or rawName
+            RGMS.Print(
+                "slot tabIndex=" .. dumpValue(slot.tabIndex)
+                    .. " slotIndex=" .. dumpValue(slot.slotIndex)
+                    .. " itemId=" .. dumpValue(slot.itemId)
+                    .. " rawName=" .. dumpValue(rawName)
+                    .. " matchName=" .. dumpValue(matchName)
+                    .. " quantity=" .. dumpValue(slot.quantity)
+                    .. " craftingQuality=" .. dumpValue(slot.craftingQuality)
+                    .. " isLocked=" .. dumpValue(slot.isLocked)
+                    .. " observedAt=" .. dumpTimestamp(slot.observedAt)
+                    .. " stableSinceDate=" .. dumpValue(slot.stableSinceDate)
+                    .. " itemLink=" .. dumpValue(slot.itemLink)
+            )
+        end
+    end
+    RGMS.Print("Stored slot records: " .. count)
+    return true, count
+end
+
 function Bank.RequestAutomaticScan()
     return Bank.RequestScan("automatic")
 end
@@ -350,6 +450,10 @@ function Bank.PrepareScan(guildIdentity)
             guildIdentity,
             RGMS.SavedDataState.model.ui
         )
+        if type(RGMS.Provisions) == "table"
+            and type(RGMS.Provisions.OnGuildChanged) == "function" then
+            RGMS.Provisions.OnGuildChanged()
+        end
     end
     return true
 end
@@ -407,8 +511,18 @@ if type(Bank.Scanner) ~= "table"
                 RGMS.UI.SetBankScanInProgress(inProgress)
             end
             Bank.RefreshStatus()
+            if type(RGMS.Provisions) == "table"
+                and type(RGMS.Provisions.RefreshStatus) == "function" then
+                RGMS.Provisions.RefreshStatus()
+            end
         end,
-        refreshStatus = Bank.RefreshStatus,
+        refreshStatus = function()
+            Bank.RefreshStatus()
+            if type(RGMS.Provisions) == "table"
+                and type(RGMS.Provisions.RefreshStatus) == "function" then
+                RGMS.Provisions.RefreshStatus()
+            end
+        end,
     })
 end
 

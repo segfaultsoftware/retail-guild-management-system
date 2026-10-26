@@ -30,7 +30,9 @@ Core\Commands.lua
 MainsAlts\Search.lua
 MainsAlts\Tags.lua
 MainsAlts\Notes.lua
+Provisions\Model.lua
 UI\UI.lua
+Provisions\Provisions.lua
 Roster\Report.lua
 MainsAlts\Groups.lua
 MainsAlts\Report.lua

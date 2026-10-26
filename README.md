@@ -22,10 +22,14 @@ migration sources remain per character. It does not send data anywhere.
   default guild-bank window opens or Bank **Refresh** is selected.
 - Shows bank contents by tab and tracks how long an item ID and stack count have
   remained in the same slot.
+- Tracks unlimited per-guild Provisions targets by localized item name and
+  Midnight crafting quality, with progress calculated from the latest complete
+  guild-bank snapshot, including retained inaccessible-tab contents.
 - Commits roster and bank scans transactionally. A partial, failed, timed-out,
   or canceled scan leaves the previous successful observation unchanged.
-- Shares each guild's roster and bank observations between characters on the
-  account while isolating identically named guilds on different realms.
+- Shares each guild's roster, bank observations, and Provisions between
+  characters on the account while isolating identically named guilds on
+  different realms.
 - Validates account-wide guild storage and versioned per-character migration
   sources. Corrupt or newer, incompatible data is preserved until the user
   accepts `/rgms reset`.
@@ -45,7 +49,8 @@ addon has been tested on that live Retail client build.
 | `/rgms help` | Print the supported command list. |
 | `/rgms debug` | Toggle verbose session-only diagnostic logging. |
 | `/rgms scanroster` | Start the same roster transaction as Roster **Refresh**. |
-| `/rgms reset` | Open a confirmation before clearing the current guild's roster, bank, groups, notes, and news; preserve the character's window position. |
+| `/rgms dumpbanktab N` | Print the active guild's stored tab and slot records for guild-bank tab `N`. |
+| `/rgms reset` | Open a confirmation before clearing the current guild's roster, bank, provisions, groups, notes, and news; preserve the character's window position. |
 
 Bank scans are started from the default guild-bank window and the Bank
 **Refresh** button. There is no bank scan slash command.

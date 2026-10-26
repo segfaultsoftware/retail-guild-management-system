@@ -292,6 +292,10 @@ local function newRegion(parent)
         self.backdropColor = { red, green, blue, alpha }
     end
 
+    function region:SetBackdropBorderColor(red, green, blue, alpha)
+        self.backdropBorderColor = { red, green, blue, alpha }
+    end
+
     function region:SetEnabled(enabled)
         self.enabled = enabled
     end
@@ -447,6 +451,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local tagToggles = {}
     local tagDeleteRequests = {}
     local tagRefreshRequests = 0
+    local provisionActions = {}
     local shownPopup
     local tooltip = {
         lines = {},
@@ -580,6 +585,45 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 bankCancellations = bankCancellations + 1
             end,
         },
+        Provisions = {
+            OnTabSelected = function()
+                provisionActions[#provisionActions + 1] = { action = "tab" }
+                return true
+            end,
+            OnWindowClosed = function()
+                provisionActions[#provisionActions + 1] = { action = "close" }
+                return true
+            end,
+            New = function()
+                provisionActions[#provisionActions + 1] = { action = "new" }
+                return true
+            end,
+            Save = function()
+                provisionActions[#provisionActions + 1] = { action = "save" }
+                return true
+            end,
+            Delete = function(id)
+                provisionActions[#provisionActions + 1] = {
+                    action = "delete",
+                    id = id,
+                }
+                return true
+            end,
+            Select = function(id)
+                provisionActions[#provisionActions + 1] = {
+                    action = "select",
+                    id = id,
+                }
+                return true
+            end,
+            SetDraft = function(draft)
+                provisionActions[#provisionActions + 1] = {
+                    action = "draft",
+                    draft = draft,
+                }
+                return true
+            end,
+        },
         MainsAlts = {
             GroupSelected = function(selectedIdentities)
                 groupingRequests[#groupingRequests + 1] = selectedIdentities
@@ -691,6 +735,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         tagRefreshRequests = function()
             return tagRefreshRequests
         end,
+        provisionActions = provisionActions,
         shownPopup = function()
             return shownPopup
         end,
@@ -713,10 +758,11 @@ return {
         test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 0)
         test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 1)
         test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 0)
-        test.assert_equal(frame.numTabs, 3)
+        test.assert_equal(frame.numTabs, 4)
         test.assert_equal(frame.tabs[1].label.text, "Roster")
         test.assert_equal(frame.tabs[2].label.text, "Guild Bank")
-        test.assert_equal(frame.tabs[3].label.text, "Tags")
+        test.assert_equal(frame.tabs[3].label.text, "Provisions")
+        test.assert_equal(frame.tabs[4].label.text, "Tags")
         test.assert_nil(frame.tabs[2].text)
         test.assert_equal(frame.views.roster.rankDropdown.parent, frame.views.roster)
         test.assert_equal(frame.views.bank.bankDropdown.parent, frame.views.bank)
@@ -777,6 +823,93 @@ return {
         test.assert_equal(frame.views.bank.status.justifyV, "MIDDLE")
         test.assert_equal(frame.views.bank.text.text, "No bank scan yet")
         test.assert_equal(frame.views.bank.status.text, "No bank scan yet")
+        test.assert_nil(frame.views.provisions.provisionStatusTitle)
+        test.assert_nil(frame.views.provisions.provisionEditor.title)
+        test.assert_equal(
+            frame.views.provisions.provisionStatusPane.points[2].relativeTo,
+            frame.views.provisions
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionStatusPane.points[2].relativePoint,
+            "BOTTOM"
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionStatusPane.points[2].x,
+            -8
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionEditor.points[1].relativeTo,
+            frame.views.provisions
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionEditor.points[1].relativePoint,
+            "TOP"
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionEditor.points[1].x,
+            8
+        )
+        test.assert_equal(frame.views.provisions.status.text, "No provisions yet")
+        test.assert_equal(
+            frame.views.provisions.provisionR1.symbol.atlas,
+            "Professions-Icon-Quality-12-Tier1"
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionR2.symbol.atlas,
+            "Professions-Icon-Quality-12-Tier2"
+        )
+        test.assert_nil(frame.views.provisions.provisionR1.label)
+        test.assert_nil(frame.views.provisions.provisionR2.label)
+        test.assert_equal(frame.views.provisions.provisionEither.label.text, "Either")
+        test.assert_false(frame.views.provisions.provisionR1:GetChecked())
+        test.assert_false(frame.views.provisions.provisionR2:GetChecked())
+        test.assert_false(frame.views.provisions.provisionEither:GetChecked())
+        test.assert_equal(frame.views.provisions.addProvisionButton.text, "Add")
+        test.assert_equal(frame.views.provisions.saveProvisionButton.text, "Save")
+        test.assert_nil(frame.views.provisions.deleteProvisionButton)
+        test.assert_equal(frame.views.provisions.addProvisionButton:GetWidth(), 35)
+        test.assert_equal(frame.views.provisions.saveProvisionButton:GetWidth(), 42)
+        test.assert_equal(
+            frame.views.provisions.addProvisionButton.point,
+            "RIGHT"
+        )
+        test.assert_equal(
+            frame.views.provisions.addProvisionButton.parent,
+            frame.views.provisions.provisionAddRow
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionAddRow:GetHeight(),
+            64
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionAddRow.points[2].x,
+            -28
+        )
+        test.assert_equal(frame.views.provisions.saveProvisionButton.point, "BOTTOMRIGHT")
+        test.assert_equal(frame.views.provisions.provisionNameLabel.y, -16)
+        test.assert_equal(frame.views.provisions.provisionQualityLabel.y, -99)
+        test.assert_equal(frame.views.provisions.provisionR1.y, -119)
+        test.assert_equal(frame.views.provisions.provisionTargetLabel.y, -169)
+        test.assert_equal(
+            frame.views.provisions.provisionScrollFrame.points[1].relativeTo,
+            frame.views.provisions.provisionAddRow
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionScrollFrame.points[1].relativePoint,
+            "BOTTOMLEFT"
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionScrollFrame.points[2].relativeTo,
+            frame.views.provisions.provisionStatusPane
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionScrollFrame.points[2].x,
+            -10
+        )
+        test.assert_equal(
+            frame.views.provisions.provisionAddRow.backdropColor,
+            { 0.133, 0.149, 0.18, 1 }
+        )
         test.assert_equal(frame.views.tags.text.text, "No tags yet")
         test.assert_equal(frame.views.tags.status.text, "No tags yet")
         test.assert_nil(frame.views.tags.refreshButton)
@@ -2385,6 +2518,138 @@ return {
         test.assert_false(refreshButton:IsEnabled())
     end),
 
+    test.case("Provisions renders editor actions progress rows scrolling and scan locking", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.provisions
+
+        test.assert_true(view.addProvisionButton:IsEnabled())
+        test.assert_false(view.saveProvisionButton:IsEnabled())
+        test.assert_false(view.refreshButton:IsEnabled())
+        harness.ui.SetGuildBankOpen(true)
+        test.assert_true(view.refreshButton:IsEnabled())
+        view.refreshButton.scripts.OnClick()
+        test.assert_equal(harness.bankRefreshRequests(), 1)
+
+        harness.ui.SetProvisionsEditor({
+            selectedId = 7,
+            draft = {
+                name = "Feast",
+                silver = true,
+                gold = false,
+                targetText = "10",
+            },
+            valid = true,
+            changed = false,
+        })
+        test.assert_false(view.saveProvisionButton:IsEnabled())
+        test.assert_true(view.provisionR1:GetChecked())
+        test.assert_false(view.provisionR2:GetChecked())
+        test.assert_false(view.provisionEither:GetChecked())
+        harness.ui.SetProvisionsEditor({
+            selectedId = 7,
+            draft = {
+                name = "Feast",
+                silver = true,
+                gold = false,
+                targetText = "11",
+            },
+            valid = true,
+            changed = true,
+        })
+        test.assert_true(view.saveProvisionButton:IsEnabled())
+
+        view.provisionR2.scripts.OnClick()
+        local r2Draft = harness.provisionActions[#harness.provisionActions].draft
+        test.assert_false(r2Draft.silver)
+        test.assert_true(r2Draft.gold)
+        test.assert_false(view.provisionR1:GetChecked())
+        test.assert_true(view.provisionR2:GetChecked())
+        test.assert_false(view.provisionEither:GetChecked())
+        view.provisionEither.scripts.OnClick()
+        local eitherDraft = harness.provisionActions[#harness.provisionActions].draft
+        test.assert_true(eitherDraft.silver)
+        test.assert_true(eitherDraft.gold)
+        test.assert_false(view.provisionR1:GetChecked())
+        test.assert_false(view.provisionR2:GetChecked())
+        test.assert_true(view.provisionEither:GetChecked())
+
+        local rows = {}
+        for index = 1, 10 do
+            rows[index] = {
+                id = index == 1 and 7 or index + 10,
+                name = "Provision " .. index,
+                quality = index == 1 and "silver" or "either",
+                target = 10,
+                current = index == 1 and 123 or 0,
+                progress = index == 1 and 1 or 0,
+                progressText = index == 1 and "123 / 10" or "0 / 10",
+                icon = 134400,
+            }
+        end
+        harness.ui.SetProvisionsReport({ rows = rows }, 7)
+        local first = view.provisionRows[1]
+        test.assert_equal(first.icon.texture, 134400)
+        test.assert_equal(first.badge.atlas, "Professions-Icon-Quality-12-Tier1")
+        test.assert_true(first.badge:IsShown())
+        test.assert_equal(first.progressText.text, "123 / 10")
+        test.assert_equal(first.fill.width, 178)
+        test.assert_equal(first.deleteIcon.atlas, "common-icon-delete")
+        test.assert_equal(first.deleteButton.relativeTo, first.progress)
+        test.assert_equal(first.deleteButton.relativePoint, "RIGHT")
+        test.assert_equal(first.deleteButton.x, 6)
+        test.assert_true(first.deleteButton:IsEnabled())
+        test.assert_equal(first.frame.backdropBorderColor, { 0.204, 0.227, 0.275, 1 })
+        test.assert_true(first.selectionBorder.top:IsShown())
+        test.assert_true(first.selectionBorder.bottom:IsShown())
+        test.assert_true(first.selectionBorder.left:IsShown())
+        test.assert_true(first.selectionBorder.right:IsShown())
+        test.assert_equal(first.selectionBorder.top:GetHeight(), 2)
+        test.assert_equal(first.selectionBorder.left:GetWidth(), 2)
+        test.assert_false(view.provisionRows[2].badge:IsShown())
+        test.assert_false(view.provisionRows[2].selectionBorder.top:IsShown())
+        test.assert_false(view.provisionRows[2].fill:IsShown())
+        test.assert_true(view.provisionScrollFrame.ScrollBar:IsShown())
+
+        view.provisionRows[2].frame.scripts.OnClick()
+        test.assert_equal(harness.provisionActions[#harness.provisionActions], {
+            action = "select",
+            id = 12,
+        })
+        view.addProvisionButton.scripts.OnClick()
+        test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "new")
+        view.saveProvisionButton.scripts.OnClick()
+        test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "save")
+        view.provisionRows[2].deleteButton.scripts.OnClick()
+        test.assert_equal(harness.provisionActions[#harness.provisionActions], {
+            action = "delete",
+            id = 12,
+        })
+
+        harness.ui.Show()
+        harness.ui.SelectPrimaryTab("provisions")
+        local tabCalls = 0
+        for _, action in ipairs(harness.provisionActions) do
+            if action.action == "tab" then
+                tabCalls = tabCalls + 1
+            end
+        end
+        test.assert_equal(tabCalls, 1)
+        harness.ui.SelectPrimaryTab("tags")
+        harness.ui.SelectPrimaryTab("provisions")
+        test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "tab")
+
+        local preservedName = view.provisionNameInput:GetText()
+        harness.ui.SetGlobalScanLock(true)
+        test.assert_false(view.addProvisionButton:IsEnabled())
+        test.assert_false(view.saveProvisionButton:IsEnabled())
+        test.assert_false(view.provisionRows[1].deleteButton:IsEnabled())
+        test.assert_equal(view.provisionNameInput:GetText(), preservedName)
+        harness.ui.SetGlobalScanLock(false)
+        harness.ui.Hide()
+        test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "close")
+    end),
+
     test.case("disabled saved data explains the recovery path and disables controls", function()
         local harness = newHarness()
         harness.ui.Initialize()
@@ -2955,7 +3220,7 @@ return {
 
         local selected, message = harness.ui.SelectPrimaryTab("settings")
         test.assert_nil(selected)
-        test.assert_equal(message, "primary tab must be roster, bank, or tags")
+        test.assert_equal(message, "primary tab must be roster, bank, provisions, or tags")
         test.assert_equal(harness.ui.selectedTab, "roster")
     end),
 
@@ -3184,7 +3449,7 @@ return {
         test.assert_equal(notice.rotation, 2.5)
         test.assert_equal(notice.icon.rotation, 2.5)
         test.assert_false(harness.frame().notesEditor:IsShown())
-        for _, tabId in ipairs({ "roster", "mainsalts", "bank", "tags" }) do
+        for _, tabId in ipairs({ "roster", "mainsalts", "bank", "provisions", "tags" }) do
             test.assert_nil(harness.frame().views[tabId].spinner)
         end
         local selected, reason = harness.ui.SelectPrimaryTab("bank")

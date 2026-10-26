@@ -531,7 +531,8 @@ local function validateBankSlotFields(
     value,
     path,
     requireStableSinceDate,
-    allowIcon
+    allowIcon,
+    allowCraftingQuality
 )
     local allowedKeys = {
         tabIndex = true,
@@ -547,6 +548,9 @@ local function validateBankSlotFields(
     end
     if allowIcon then
         allowedKeys.icon = true
+    end
+    if allowCraftingQuality then
+        allowedKeys.craftingQuality = true
     end
 
     local valid, validationError = validateExactTable(value, allowedKeys, path)
@@ -578,6 +582,12 @@ local function validateBankSlotFields(
         if not valid then
             return nil, validationError
         end
+    end
+    if value.craftingQuality ~= nil
+        and (not isInteger(value.craftingQuality)
+            or value.craftingQuality < 1
+            or value.craftingQuality > 2) then
+        return nil, path .. ".craftingQuality must be 1, 2, or absent"
     end
 
     valid, validationError = validateTimestamp(value.observedAt, path .. ".observedAt")
@@ -621,15 +631,15 @@ local function validateBankSlotFields(
 end
 
 local function validateLegacyBankSlot(value, path)
-    return validateBankSlotFields(value, path, false, false)
+    return validateBankSlotFields(value, path, false, false, false)
 end
 
 local function validateVersionSixBankSlot(value, path)
-    return validateBankSlotFields(value, path, true, false)
+    return validateBankSlotFields(value, path, true, false, false)
 end
 
 local function validateBankSlot(value, path)
-    return validateBankSlotFields(value, path, true, true)
+    return validateBankSlotFields(value, path, true, true, true)
 end
 
 local function validateWindowPosition(value, path)

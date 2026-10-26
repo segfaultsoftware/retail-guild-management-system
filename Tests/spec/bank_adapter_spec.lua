@@ -5,6 +5,7 @@ local test = require("Tests.lib.runner")
 
 local GLOBAL_NAMES = {
     "C_Club",
+    "C_TradeSkillUI",
     "CreateFrame",
     "Enum",
     "GetCurrentRegion",
@@ -28,6 +29,7 @@ local function withRetailStubs(callback)
     end
 
     local requested = {}
+    local messages = {}
     local itemLink = "|Hitem:191384::::::::80:::::|h[Refreshing Healing Potion]|h"
     local eventFrame = { events = {}, scripts = {} }
     function eventFrame:RegisterEvent(event)
@@ -43,6 +45,13 @@ local function withRetailStubs(callback)
         end,
         GetClubInfo = function()
             return { name = "Example Guild" }
+        end,
+    }
+    C_TradeSkillUI = {
+        GetItemReagentQualityByItemInfo = function(itemInfo)
+            if itemInfo == 191384 then
+                return 2
+            end
         end,
     }
     CreateFrame = function()
@@ -101,6 +110,7 @@ local function withRetailStubs(callback)
 
     local rgms = {
         DateTime = dateTime,
+        ProvisionModel = require("Provisions.Model"),
         Realm = require("Core.Realm"),
         Reset = {},
         UI = {
@@ -108,13 +118,18 @@ local function withRetailStubs(callback)
                 return false
             end,
         },
-        Print = function() end,
+        Print = function(message)
+            messages[#messages + 1] = message
+        end,
     }
     local chunk = assert(loadfile("Bank/Bank.lua"))
     local bank = chunk("RGMS", rgms)
 
     local succeeded, callbackError = pcall(callback, {
         api = bank.CreateRetailApi(),
+        bank = bank,
+        rgms = rgms,
+        messages = messages,
         requested = requested,
         setItemLink = function(value)
             itemLink = value
@@ -165,6 +180,7 @@ return {
             test.assert_equal(slots[1].icon, 236873)
             test.assert_equal(slots[1].quantity, 20)
             test.assert_false(slots[1].isLocked)
+            test.assert_equal(slots[1].craftingQuality, 2)
             test.assert_matches(slots[1].itemLink, "Refreshing Healing Potion")
 
             local model = savedData.newModel()
@@ -187,6 +203,50 @@ return {
             test.assert_nil(slots)
             test.assert_equal(state, "incomplete")
             test.assert_matches(message, "partial")
+        end)
+    end),
+
+    test.case("bank tab dump prints the stored tab and raw quality-bearing slots", function()
+        withRetailStubs(function(harness)
+            harness.rgms.DB = {
+                bank = {
+                    tabs = {
+                        {
+                            index = 1,
+                            name = "Consumables",
+                            icon = 134400,
+                            isViewable = true,
+                            canDeposit = true,
+                            withdrawalsPerDay = -1,
+                            lastAccessibleAt = { iso8601 = "2024-06-01T12:34:56Z" },
+                        },
+                    },
+                    slots = {
+                        {
+                            tabIndex = 1,
+                            slotIndex = 5,
+                            itemId = 191384,
+                            itemLink = "|Hitem:191384|h[Refreshing Healing Potion |A:Professions-Icon-Quality-12-Tier2:20:20|a]|h",
+                            quantity = 20,
+                            craftingQuality = 2,
+                            isLocked = false,
+                            observedAt = { iso8601 = "2024-06-01T12:34:56Z" },
+                            stableSinceDate = "2024-06-01",
+                        },
+                    },
+                },
+            }
+
+            local dumped, count = harness.bank.DumpTab(1)
+
+            test.assert_true(dumped)
+            test.assert_equal(count, 1)
+            test.assert_matches(harness.messages[1], "tab 1")
+            test.assert_matches(harness.messages[2], 'name="Consumables"')
+            test.assert_matches(harness.messages[3], "rawName=.*Quality%-12%-Tier2")
+            test.assert_matches(harness.messages[3], 'matchName="Refreshing Healing Potion"')
+            test.assert_matches(harness.messages[3], "craftingQuality=2")
+            test.assert_equal(harness.messages[4], "Stored slot records: 1")
         end)
     end),
 }

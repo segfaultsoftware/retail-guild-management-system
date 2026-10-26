@@ -9,7 +9,7 @@ local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
-AccountData.CURRENT_SCHEMA_VERSION = 5
+AccountData.CURRENT_SCHEMA_VERSION = 6
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -171,6 +171,57 @@ local function validateDenseArray(value, path, validateValue)
         if not valid then
             return nil, validationError
         end
+    end
+    return true
+end
+
+local function validateProvisions(value, nextId, path)
+    if not isInteger(nextId) or nextId < 1 then
+        return nil, path .. " next ID must be a positive integer"
+    end
+    local seenIds = {}
+    local largestId = 0
+    local valid, validationError = validateDenseArray(value, path, function(provision, itemPath)
+        if type(provision) ~= "table" then
+            return nil, itemPath .. " must be a table"
+        end
+        for key in pairs(provision) do
+            if key ~= "id" and key ~= "name" and key ~= "quality" and key ~= "target" then
+                return nil, itemPath .. " contains unexpected field " .. tostring(key)
+            end
+        end
+        if not isInteger(provision.id) or provision.id < 1 then
+            return nil, itemPath .. ".id must be a positive integer"
+        end
+        if seenIds[provision.id] then
+            return nil, itemPath .. ".id must be unique"
+        end
+        seenIds[provision.id] = true
+        largestId = math.max(largestId, provision.id)
+        if type(provision.name) ~= "string" or provision.name == "" then
+            return nil, itemPath .. ".name must be a non-empty string"
+        end
+        local length = characterCount(provision.name)
+        if length < 3 or length > 100
+            or provision.name ~= string.gsub(string.gsub(provision.name, "^%s+", ""), "%s+$", "") then
+            return nil, itemPath .. ".name must be trimmed and contain 3 through 100 characters"
+        end
+        if provision.quality ~= "silver"
+            and provision.quality ~= "gold"
+            and provision.quality ~= "either" then
+            return nil, itemPath .. ".quality must be silver, gold, or either"
+        end
+        if not isInteger(provision.target)
+            or provision.target < 1 or provision.target > 99999 then
+            return nil, itemPath .. ".target must be an integer from 1 through 99999"
+        end
+        return true
+    end)
+    if not valid then
+        return nil, validationError
+    end
+    if nextId <= largestId then
+        return nil, path .. " next ID must follow every saved provision ID"
     end
     return true
 end
@@ -385,6 +436,8 @@ function AccountData.newGuild(identity)
         tags = newTags(),
         rosterObservation = nil,
         newsSets = {},
+        provisions = {},
+        nextProvisionId = 1,
     }
 end
 
@@ -437,6 +490,8 @@ function AccountData.validate(model)
             tags = true,
             rosterObservation = true,
             newsSets = true,
+            provisions = true,
+            nextProvisionId = true,
         }
         for field in pairs(guild) do
             if not allowed[field] then
@@ -520,6 +575,14 @@ function AccountData.validate(model)
         valid, validationError = validateNewsSets(
             guild.newsSets,
             "account data.guilds[" .. key .. "].newsSets"
+        )
+        if not valid then
+            return nil, validationError
+        end
+        valid, validationError = validateProvisions(
+            guild.provisions,
+            guild.nextProvisionId,
+            "account data.guilds[" .. key .. "].provisions"
         )
         if not valid then
             return nil, validationError
@@ -653,6 +716,28 @@ function AccountData.load(saved)
         end
         migratedFrom = migratedFrom or 4
         working.schemaVersion = 5
+    end
+    if working.schemaVersion == 5 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for _, guild in pairs(working.guilds) do
+            if type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild partitions must be tables",
+                    saved
+                )
+            end
+            guild.provisions = {}
+            guild.nextProvisionId = 1
+        end
+        migratedFrom = migratedFrom or 5
+        working.schemaVersion = 6
     end
     local valid, validationError = AccountData.validate(working)
     if not valid then
@@ -940,6 +1025,46 @@ function AccountData.replaceRosterNews(model, identity, observation, newsSets)
     return replacement, guild, key
 end
 
+function AccountData.replaceProvisions(model, identity, provisions, nextProvisionId)
+    local valid, validationError = AccountData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateProvisions(
+        provisions,
+        nextProvisionId,
+        "provisions"
+    )
+    if not valid then
+        return nil, validationError
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+    local guild, key = AccountData.findGuild(replacement, identity)
+    if not guild then
+        local guildError
+        guild, guildError = AccountData.newGuild(identity)
+        if not guild then
+            return nil, guildError
+        end
+        replacement.guilds[key] = guild
+    end
+    guild.provisions, copyError = deepCopy(provisions)
+    if not guild.provisions then
+        return nil, copyError
+    end
+    guild.nextProvisionId = nextProvisionId
+
+    valid, validationError = AccountData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+    return replacement, guild, key
+end
+
 function AccountData.resetGuild(model, identity)
     local valid, validationError = AccountData.validate(model)
     if not valid then
@@ -967,6 +1092,8 @@ function AccountData.resetGuild(model, identity)
     guild.tags = newTags()
     guild.rosterObservation = nil
     guild.newsSets = {}
+    guild.provisions = {}
+    guild.nextProvisionId = 1
 
     valid, validationError = AccountData.validate(replacement)
     if not valid then
@@ -984,6 +1111,8 @@ function AccountData.view(model, identity, ui)
         characterNotes = guild and guild.characterNotes or {},
         tags = guild and guild.tags or newTags(),
         newsSets = guild and guild.newsSets or {},
+        provisions = guild and guild.provisions or {},
+        nextProvisionId = guild and guild.nextProvisionId or 1,
         ui = ui or {},
     }
 end

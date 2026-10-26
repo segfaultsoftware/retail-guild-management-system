@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 5
+## Account-wide schema: version 6
 
 ```text
 {
-  schemaVersion = 5,
+  schemaVersion = 6,
   settings = {
     minimapPos = number,
   },
@@ -47,6 +47,13 @@ view and does not create, bind, replace, or erase an account guild partition.
       },
       rosterObservation = RosterNewsObservation | nil,
       newsSets = { RosterNewsSet, ... },
+      provisions = {
+        { id = positive integer, name = string,
+          quality = "silver" | "gold" | "either",
+          target = integer from 1 through 99999 },
+        ...
+      },
+      nextProvisionId = positive integer,
     },
   },
 }
@@ -61,7 +68,10 @@ empty-assignment tag catalog containing the required `me` definition. All
 migrations are copy-on-write, so the original table is left untouched if
 validation fails. Version 4 data gains an empty News Set collection and no
 raw-observation baseline, so its first successful scan establishes the baseline
-without manufacturing historical news.
+without manufacturing historical news. Version 5 data gains an empty provision
+list and a next-ID value of 1 for every saved guild. Provision IDs are never
+reused within a partition, so exact duplicates remain independently selectable
+and equal-name sorting retains creation order.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
@@ -73,8 +83,8 @@ Roster and bank initialization flags are independent. `false` means no
 account-wide decision has been made for that dataset. `true` with empty
 collections and no scan timestamp is an intentional empty state, including a
 reset state; later migration code must not repopulate it from deprecated
-per-character observations. Main/alt groups, character notes, and tags are
-stored in the same guild partition. Roster's ByName presentation projects group
+per-character observations. Main/alt groups, character notes, tags, and
+provisions are stored in the same guild partition. Roster's ByName presentation projects group
 membership from this partition but limits its character population to the
 active guild's saved roster. `rosterObservation` stores the immediately prior
 complete API observation used only for news detection; unlike `roster`, it does
@@ -144,8 +154,10 @@ timestamp.
 Roster members retain canonical `Name-Realm`, rank, online, observation,
 rank-tenure, and missing-member fields. Bank tabs retain access state and
 last-access timestamps; occupied bank slots retain item, quantity, icon,
-observation, and stable-since fields. Detailed validation and legacy migration
-rules remain implemented in `Core/SavedData.lua`.
+observation, and stable-since fields. New observations may also retain the
+native Midnight reagent crafting-quality tier used by Provisions matching.
+Detailed validation and legacy migration rules remain implemented in
+`Core/SavedData.lua`.
 
 ## Transactional ownership
 
@@ -166,15 +178,15 @@ character's corresponding deprecated dataset
 while preserving the other dataset and window position. Failed, incomplete,
 timed-out, and canceled scans preserve both the last account-wide observations
 and the pending deprecated data. The other account dataset, initialization
-flag, groups, notes, tag definitions and assignments, and every other guild
-partition remain unchanged. Successful roster commits reconcile assignments
+flag, groups, notes, provisions, tag definitions and assignments, and every
+other guild partition remain unchanged. Successful roster commits reconcile assignments
 against the retained roster while preserving the complete tag catalog.
 
 ## Reset and recovery
 
 Confirming `/rgms reset` while guilded clears the current guild's roster, bank,
-groups, notes, custom tag definitions, tag assignments, news baseline, and News
-Sets, then reseeds `me`.
+provisions, groups, notes, custom tag definitions, tag assignments, news
+baseline, and News Sets, then reseeds `me`.
 It leaves both dataset initialization flags true, preserves
 all other guild partitions and deprecated per-character observations, and
 preserves the character's window position. The initialized empty datasets

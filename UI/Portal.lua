@@ -6,10 +6,11 @@ local _, RGMS = ...
 
 local Portal = {}
 
-Portal.VIEWS = { "roster", "bank", "tags" }
+Portal.VIEWS = { "roster", "bank", "provisions", "tags" }
 Portal.NAVIGATION = {
     { id = "roster", label = "Roster" },
     { id = "bank", label = "Guild Bank" },
+    { id = "provisions", label = "Provisions" },
     { id = "tags", label = "Tags" },
 }
 
@@ -33,6 +34,7 @@ Portal.PALETTE = {
 local VALID_VIEW = {
     roster = true,
     bank = true,
+    provisions = true,
     tags = true,
 }
 
@@ -40,6 +42,7 @@ local function copyScrollPositions()
     return {
         roster = { ByName = 0, ByTenure = 0 },
         bank = 0,
+        provisions = 0,
         tags = 0,
     }
 end
@@ -98,6 +101,8 @@ function Portal.contextControls(view, rosterMode)
         }
     elseif view == "bank" then
         return { dropdown = "bankTab", primary = "Refresh", close = true }
+    elseif view == "provisions" then
+        return { primary = "Refresh", close = true }
     elseif view == "tags" then
         return { close = true }
     end

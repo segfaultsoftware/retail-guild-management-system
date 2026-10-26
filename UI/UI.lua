@@ -40,11 +40,12 @@ local function CreateFrame(frameType, name, parent, template)
     return frame
 end
 
-local TAB_ORDER = { "roster", "bank", "tags" }
-local ALL_VIEW_IDS = { "roster", "mainsalts", "bank", "tags" }
+local TAB_ORDER = { "roster", "bank", "provisions", "tags" }
+local ALL_VIEW_IDS = { "roster", "mainsalts", "bank", "provisions", "tags" }
 local TAB_TITLES = {
     roster = "Roster",
     bank = "Guild Bank",
+    provisions = "Provisions",
     tags = "Tags",
 }
 
@@ -52,6 +53,7 @@ local INITIAL_COPY = {
     roster = "No roster data yet",
     mainsalts = "No roster data yet",
     bank = "No bank scan yet",
+    provisions = "No provisions yet",
     tags = "No tags yet",
 }
 
@@ -120,6 +122,23 @@ local TAG_POPOVER_WIDTH = 340
 local TAG_PILL_HEIGHT = 20
 local TAG_PILL_GAP = 6
 local TAG_POPOVER_PADDING = 8
+local ProvisionUI = {
+    PANE_GAP = 16,
+    ADD_ROW_GAP = 10,
+    ROW_HEIGHT = 64,
+    ROW_GAP = 6,
+    ICON_SIZE = 38,
+    PROGRESS_WIDTH = 180,
+    PROGRESS_HEIGHT = 18,
+    QUALITY_ATLASES = {
+        silver = "Professions-Icon-Quality-12-Tier1",
+        gold = "Professions-Icon-Quality-12-Tier2",
+    },
+}
+-- AceGUI and table libraries were evaluated for this feature. RGMS keeps its
+-- native-frame composition because Provisions shares the portal's scan lock,
+-- styling, and lifecycle; another widget framework would add compatibility
+-- surface without supplying bank matching or transactional persistence.
 local CHARACTER_NOTE_LIMIT = 5500
 local GUILD_NOTE_LIMIT = 31
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
@@ -2826,6 +2845,434 @@ local function renderTagManagement(view, report)
     refreshScrollChild(view)
 end
 
+function ProvisionUI.draft(view)
+    local r1 = view.provisionR1:GetChecked()
+    local r2 = view.provisionR2:GetChecked()
+    local either = view.provisionEither:GetChecked()
+    return {
+        name = view.provisionNameInput:GetText(),
+        silver = r1 or either,
+        gold = r2 or either,
+        targetText = view.provisionTargetInput:GetText(),
+    }
+end
+
+function ProvisionUI.updateControlState(view)
+    if not view or not view.addProvisionButton then
+        return
+    end
+    local available = UI.dataEnabled ~= false and UI.globalScanLocked ~= true
+    view.addProvisionButton:SetEnabled(available)
+    view.saveProvisionButton:SetEnabled(
+        available and view.provisionDraftValid == true
+            and view.provisionDraftChanged == true
+    )
+    for _, line in ipairs(view.provisionRows or {}) do
+        local deleteEnabled = available and line.row ~= nil
+        line.deleteEnabled = deleteEnabled
+        line.deleteButton:SetEnabled(deleteEnabled)
+        if type(line.deleteButton.SetAlpha) == "function" then
+            line.deleteButton:SetAlpha(deleteEnabled and 1 or 0.45)
+        end
+        setTextureColor(
+            line.deleteIcon,
+            deleteEnabled and PALETTE.text or PALETTE.disabled
+        )
+    end
+    setEditBoxEnabled(view.provisionNameInput, available)
+    setEditBoxEnabled(view.provisionTargetInput, available)
+    view.provisionR1:SetEnabled(available)
+    view.provisionR2:SetEnabled(available)
+    view.provisionEither:SetEnabled(available)
+    if type(view.provisionEditor.SetAlpha) == "function" then
+        view.provisionEditor:SetAlpha(available and 1 or 0.5)
+    end
+end
+
+function ProvisionUI.notifyDraftChanged(view)
+    if view.settingProvisionEditor then
+        return
+    end
+    if type(RGMS.Provisions) == "table"
+        and type(RGMS.Provisions.SetDraft) == "function" then
+        RGMS.Provisions.SetDraft(ProvisionUI.draft(view))
+    end
+end
+
+function ProvisionUI.createInput(parent, labelText, y, maximum)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
+    label:SetText(labelText)
+    setFont(label, FONT_SEMIBOLD, 11)
+    setTextColor(label, PALETTE.text)
+
+    local input = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
+    input:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -6)
+    input:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -16, y - 20)
+    input:SetHeight(30)
+    input:SetAutoFocus(false)
+    input:SetMaxLetters(maximum)
+    input:SetTextInsets(8, 8, 0, 0)
+    setFont(input, FONT_REGULAR, 12)
+    setTextColor(input, PALETTE.text)
+    flatBackdrop(input, PALETTE.control, PALETTE.border)
+    input:SetScript("OnEscapePressed", function(editBox)
+        editBox:ClearFocus()
+    end)
+    return input, label
+end
+
+function ProvisionUI.setQualitySelection(view, selection, notify)
+    for mode, control in pairs({
+        r1 = view.provisionR1,
+        r2 = view.provisionR2,
+        either = view.provisionEither,
+    }) do
+        local checked = mode == selection
+        control:SetChecked(checked)
+        control.dot:SetShown(checked)
+    end
+    if notify then
+        ProvisionUI.notifyDraftChanged(view)
+    end
+end
+
+function ProvisionUI.createQualityRadio(parent, mode, x, atlas, labelText)
+    local radio = CreateFrame("CheckButton", nil, parent)
+    radio:SetSize(labelText and 72 or 48, 24)
+    radio:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -119)
+
+    radio.ring = radio:CreateTexture(nil, "ARTWORK")
+    radio.ring:SetSize(16, 16)
+    radio.ring:SetPoint("LEFT", radio, "LEFT", 0, 0)
+    radio.ring:SetTexture(CIRCLE_TEXTURE)
+    setTextureColor(radio.ring, PALETTE.border)
+
+    radio.interior = radio:CreateTexture(nil, "ARTWORK")
+    radio.interior:SetSize(12, 12)
+    radio.interior:SetPoint("CENTER", radio.ring, "CENTER", 0, 0)
+    radio.interior:SetTexture(CIRCLE_TEXTURE)
+    setTextureColor(radio.interior, PALETTE.shell)
+
+    radio.dot = radio:CreateTexture(nil, "ARTWORK")
+    radio.dot:SetSize(8, 8)
+    radio.dot:SetPoint("CENTER", radio.ring, "CENTER", 0, 0)
+    radio.dot:SetTexture(CIRCLE_TEXTURE)
+    setTextureColor(radio.dot, PALETTE.pink)
+    radio.dot:Hide()
+
+    if atlas then
+        radio.symbol = radio:CreateTexture(nil, "ARTWORK")
+        radio.symbol:SetSize(20, 20)
+        radio.symbol:SetPoint("LEFT", radio.ring, "RIGHT", 6, 0)
+        if type(radio.symbol.SetAtlas) == "function" then
+            radio.symbol:SetAtlas(atlas)
+        end
+    else
+        radio.label = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        radio.label:SetPoint("LEFT", radio.ring, "RIGHT", 6, 0)
+        radio.label:SetText(labelText)
+        setFont(radio.label, FONT_REGULAR, 12)
+        setTextColor(radio.label, PALETTE.text)
+    end
+
+    radio:SetScript("OnClick", function()
+        ProvisionUI.setQualitySelection(parent.provisionView, mode, true)
+    end)
+    return radio
+end
+
+function ProvisionUI.fitActionButton(button, text)
+    button:SetText(text)
+    local textWidth = #text * 7
+    if type(button.GetFontString) == "function" then
+        local label = button:GetFontString()
+        if label and type(label.GetStringWidth) == "function" then
+            textWidth = label:GetStringWidth()
+        end
+    end
+    button:SetWidth(math.ceil(textWidth) + 14)
+end
+
+function ProvisionUI.refreshScrollChild(view)
+    if not view.provisionScrollFrame then
+        return
+    end
+    local viewportHeight = math.max(1, view.provisionScrollFrame:GetHeight())
+    local count = type(view.provisionsReport) == "table"
+        and type(view.provisionsReport.rows) == "table"
+        and #view.provisionsReport.rows
+        or 0
+    local contentHeight = count * (ProvisionUI.ROW_HEIGHT + ProvisionUI.ROW_GAP) + 4
+    view.provisionScrollChild:SetWidth(
+        math.max(1, view.provisionScrollFrame:GetWidth() - 18)
+    )
+    view.provisionScrollChild:SetHeight(math.max(viewportHeight, contentHeight))
+    setScrollBarShown(view.provisionScrollFrame, contentHeight > viewportHeight)
+end
+
+function ProvisionUI.createView(view)
+    view.scrollFrame:Hide()
+    view.text:Hide()
+
+    view.provisionStatusPane = CreateFrame("Frame", nil, view, "BackdropTemplate")
+    view.provisionStatusPane:SetPoint("TOPLEFT", view, "TOPLEFT", 0, 0)
+    view.provisionStatusPane:SetPoint(
+        "BOTTOMRIGHT",
+        view,
+        "BOTTOM",
+        -ProvisionUI.PANE_GAP / 2,
+        0
+    )
+    flatBackdrop(view.provisionStatusPane, PALETTE.surface, PALETTE.border)
+
+    view.provisionAddRow = CreateFrame(
+        "Frame",
+        nil,
+        view.provisionStatusPane,
+        "BackdropTemplate"
+    )
+    view.provisionAddRow:SetPoint(
+        "TOPLEFT",
+        view.provisionStatusPane,
+        "TOPLEFT",
+        10,
+        -10
+    )
+    view.provisionAddRow:SetPoint(
+        "TOPRIGHT",
+        view.provisionStatusPane,
+        "TOPRIGHT",
+        -28,
+        -10
+    )
+    view.provisionAddRow:SetHeight(ProvisionUI.ROW_HEIGHT)
+    flatBackdrop(view.provisionAddRow, PALETTE.control, PALETTE.border)
+
+    view.addProvisionButton = CreateFrame(
+        "Button",
+        nil,
+        view.provisionAddRow,
+        "UIPanelButtonTemplate"
+    )
+    styleButton(view.addProvisionButton, "secondary", 32)
+    ProvisionUI.fitActionButton(view.addProvisionButton, "Add")
+    view.addProvisionButton:SetPoint(
+        "RIGHT",
+        view.provisionAddRow,
+        "RIGHT",
+        -10,
+        0
+    )
+    view.addProvisionButton:SetScript("OnClick", function()
+        if type(RGMS.Provisions) == "table" then
+            RGMS.Provisions.New()
+        end
+    end)
+
+    view.provisionScrollFrame = CreateFrame(
+        "ScrollFrame",
+        nil,
+        view.provisionStatusPane,
+        "UIPanelScrollFrameTemplate"
+    )
+    styleScrollFrame(view.provisionScrollFrame)
+    view.provisionScrollFrame:SetPoint(
+        "TOPLEFT",
+        view.provisionAddRow,
+        "BOTTOMLEFT",
+        0,
+        -ProvisionUI.ADD_ROW_GAP
+    )
+    view.provisionScrollFrame:SetPoint(
+        "TOPRIGHT",
+        view.provisionStatusPane,
+        "TOPRIGHT",
+        -10,
+        -(10 + ProvisionUI.ROW_HEIGHT + ProvisionUI.ADD_ROW_GAP)
+    )
+    view.provisionScrollFrame:SetPoint("BOTTOMRIGHT", view.provisionStatusPane, "BOTTOMRIGHT", -10, 10)
+    view.provisionScrollChild = CreateFrame("Frame", nil, view.provisionScrollFrame)
+    view.provisionScrollChild:SetSize(1, 1)
+    view.provisionScrollFrame:SetScrollChild(view.provisionScrollChild)
+    view.provisionRows = {}
+    view.provisionScrollFrame:SetScript("OnSizeChanged", function()
+        ProvisionUI.refreshScrollChild(view)
+    end)
+
+    local editor = CreateFrame("Frame", nil, view, "BackdropTemplate")
+    editor:SetPoint(
+        "TOPLEFT",
+        view,
+        "TOP",
+        ProvisionUI.PANE_GAP / 2,
+        0
+    )
+    editor:SetPoint("BOTTOMRIGHT", view, "BOTTOMRIGHT", 0, 0)
+    flatBackdrop(editor, PALETTE.surface, PALETTE.border)
+    editor.provisionView = view
+    view.provisionEditor = editor
+    view.provisionNameInput, view.provisionNameLabel = ProvisionUI.createInput(
+        editor,
+        "Item Name",
+        -16,
+        100
+    )
+    local qualityLabel = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    qualityLabel:SetPoint("TOPLEFT", editor, "TOPLEFT", 16, -99)
+    qualityLabel:SetText("Quality")
+    setFont(qualityLabel, FONT_SEMIBOLD, 11)
+    setTextColor(qualityLabel, PALETTE.text)
+    view.provisionQualityLabel = qualityLabel
+    view.provisionR1 = ProvisionUI.createQualityRadio(
+        editor,
+        "r1",
+        16,
+        ProvisionUI.QUALITY_ATLASES.silver
+    )
+    view.provisionR2 = ProvisionUI.createQualityRadio(
+        editor,
+        "r2",
+        70,
+        ProvisionUI.QUALITY_ATLASES.gold
+    )
+    view.provisionEither = ProvisionUI.createQualityRadio(
+        editor,
+        "either",
+        124,
+        nil,
+        "Either"
+    )
+    view.provisionTargetInput, view.provisionTargetLabel = ProvisionUI.createInput(
+        editor,
+        "Target Inventory Count",
+        -169,
+        5
+    )
+
+    view.saveProvisionButton = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
+    styleButton(view.saveProvisionButton, "primary", 32)
+    ProvisionUI.fitActionButton(view.saveProvisionButton, "Save")
+    view.saveProvisionButton:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -16, 16)
+
+    view.provisionNameInput:SetScript("OnTextChanged", function()
+        ProvisionUI.notifyDraftChanged(view)
+    end)
+    view.provisionTargetInput:SetScript("OnTextChanged", function()
+        ProvisionUI.notifyDraftChanged(view)
+    end)
+    view.saveProvisionButton:SetScript("OnClick", function()
+        if type(RGMS.Provisions) == "table" then
+            RGMS.Provisions.Save()
+        end
+    end)
+    view.provisionDraftValid = false
+    view.provisionDraftChanged = false
+    ProvisionUI.updateControlState(view)
+end
+
+function ProvisionUI.acquireRow(view, index)
+    local line = view.provisionRows[index]
+    if line then
+        return line
+    end
+    local frame = CreateFrame("Button", nil, view.provisionScrollChild, "BackdropTemplate")
+    frame:SetHeight(ProvisionUI.ROW_HEIGHT)
+    flatBackdrop(frame, PALETTE.control, PALETTE.border)
+    local selectionBorder = {}
+    for _, edge in ipairs({ "top", "bottom", "left", "right" }) do
+        local texture = frame:CreateTexture(nil, "OVERLAY")
+        texture:SetTexture(WHITE_TEXTURE)
+        setTextureColor(texture, PALETTE.pink)
+        texture:Hide()
+        selectionBorder[edge] = texture
+    end
+    selectionBorder.top:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    selectionBorder.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    selectionBorder.top:SetHeight(2)
+    selectionBorder.bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    selectionBorder.bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    selectionBorder.bottom:SetHeight(2)
+    selectionBorder.left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    selectionBorder.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    selectionBorder.left:SetWidth(2)
+    selectionBorder.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    selectionBorder.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    selectionBorder.right:SetWidth(2)
+    local icon = frame:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(ProvisionUI.ICON_SIZE, ProvisionUI.ICON_SIZE)
+    icon:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -10)
+    local badge = frame:CreateTexture(nil, "OVERLAY")
+    badge:SetSize(16, 16)
+    badge:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 3, -3)
+    local name = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -1)
+    name:SetPoint("RIGHT", frame, "RIGHT", -8, 0)
+    name:SetJustifyH("LEFT")
+    setFont(name, FONT_SEMIBOLD, 12)
+    setTextColor(name, PALETTE.text)
+    local progress = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    progress:SetSize(ProvisionUI.PROGRESS_WIDTH, ProvisionUI.PROGRESS_HEIGHT)
+    progress:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", 10, 1)
+    flatBackdrop(progress, PALETTE.shell, PALETTE.border)
+    local fill = progress:CreateTexture(nil, "ARTWORK")
+    fill:SetTexture(WHITE_TEXTURE)
+    fill:SetPoint("TOPLEFT", progress, "TOPLEFT", 1, -1)
+    fill:SetPoint("BOTTOMLEFT", progress, "BOTTOMLEFT", 1, 1)
+    fill:SetWidth(1)
+    setTextureColor(fill, PALETTE.pink)
+    local progressText = progress:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    progressText:SetPoint("CENTER", progress, "CENTER", 0, 0)
+    setFont(progressText, FONT_SEMIBOLD, 10)
+    setTextColor(progressText, PALETTE.text)
+    local deleteButton = CreateFrame("Button", nil, frame)
+    deleteButton:SetSize(20, 20)
+    deleteButton:SetPoint("LEFT", progress, "RIGHT", 6, 0)
+    local deleteIcon = deleteButton:CreateTexture(nil, "ARTWORK")
+    deleteIcon:SetAllPoints(deleteButton)
+    if type(deleteIcon.SetAtlas) == "function" then
+        deleteIcon:SetAtlas(TAG_DELETE_ATLAS)
+    end
+    line = {
+        frame = frame,
+        icon = icon,
+        badge = badge,
+        name = name,
+        progress = progress,
+        fill = fill,
+        progressText = progressText,
+        deleteButton = deleteButton,
+        deleteIcon = deleteIcon,
+        selectionBorder = selectionBorder,
+    }
+    frame:SetScript("OnClick", function()
+        if line.row and type(RGMS.Provisions) == "table" then
+            RGMS.Provisions.Select(line.row.id)
+        end
+    end)
+    deleteButton:SetScript("OnClick", function()
+        if line.row and line.deleteEnabled
+            and type(RGMS.Provisions) == "table" then
+            RGMS.Provisions.Delete(line.row.id)
+        end
+    end)
+    deleteButton:SetScript("OnEnter", function(button)
+        if button:IsEnabled() then
+            setTextureColor(line.deleteIcon, PALETTE.pinkHover)
+        end
+        showOwnedTooltip(button, "Delete", "Delete this provision.")
+    end)
+    deleteButton:SetScript("OnLeave", function(button)
+        setTextureColor(
+            line.deleteIcon,
+            button:IsEnabled() and PALETTE.text or PALETTE.disabled
+        )
+        hideOwnedTooltip(button)
+    end)
+    view.provisionRows[index] = line
+    return line
+end
+
 local function refreshVisibleReport(view, tabId)
     if tabId == "roster" then
         if activeRosterMode() == "ByTenure" then
@@ -2896,7 +3343,7 @@ local function createView(parent, tabId)
     view:SetPoint("BOTTOMRIGHT", -CONTENT_PADDING, CONTENT_PADDING)
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    local statusY = tabId == "bank" and -8 or -20
+    local statusY = (tabId == "bank" or tabId == "provisions") and -8 or -20
     view.status:SetPoint(
         "TOPLEFT",
         parent,
@@ -2908,10 +3355,11 @@ local function createView(parent, tabId)
         "TOPRIGHT",
         parent,
         "TOPRIGHT",
-        (tabId == "mainsalts" or tabId == "roster" or tabId == "bank" or tabId == "tags") and -96 or -148,
+        (tabId == "mainsalts" or tabId == "roster" or tabId == "bank"
+            or tabId == "provisions" or tabId == "tags") and -96 or -148,
         statusY
     )
-    if tabId == "bank" then
+    if tabId == "bank" or tabId == "provisions" then
         view.status:SetHeight(40)
         view.status:SetJustifyV("MIDDLE")
     end
@@ -2930,7 +3378,8 @@ local function createView(parent, tabId)
         hideOwnedTooltip(button)
     end)
 
-    if tabId == "roster" or tabId == "mainsalts" or tabId == "bank" then
+    if tabId == "roster" or tabId == "mainsalts" or tabId == "bank"
+        or tabId == "provisions" then
         view.refreshButton = CreateFrame("Button", nil, view)
         view.refreshButton:SetSize(32, 32)
         view.refreshButton:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -56, -12)
@@ -2938,7 +3387,10 @@ local function createView(parent, tabId)
         view.refreshButton.icon:SetSize(18, 18)
         view.refreshButton.icon:SetPoint("CENTER", view.refreshButton, "CENTER", 0, 0)
         view.refreshButton.icon:SetTexture(REFRESH_TEXTURE)
-        setRefreshButtonEnabled(view.refreshButton, tabId ~= "bank")
+            setRefreshButtonEnabled(
+                view.refreshButton,
+                tabId ~= "bank" and tabId ~= "provisions"
+            )
         view.refreshButton:SetScript("OnEnter", function(button)
             if button:IsEnabled() then
                 setTextureColor(button.icon, PALETTE.pinkHover)
@@ -3124,6 +3576,10 @@ local function createView(parent, tabId)
         )
         configureBankText(view.bankMessage)
         view.bankMessage:Hide()
+    end
+
+    if tabId == "provisions" then
+        ProvisionUI.createView(view)
     end
 
     view.scrollFrame:SetScript("OnSizeChanged", function()
@@ -3942,6 +4398,7 @@ local function createWindow()
         setMainsAltsScroll(mainsAltsView, 0)
         frame.views.roster.scrollFrame:SetVerticalScroll(0)
         frame.views.bank.scrollFrame:SetVerticalScroll(0)
+        frame.views.provisions.provisionScrollFrame:SetVerticalScroll(0)
         frame.views.tags.scrollFrame:SetVerticalScroll(0)
         if type(RGMS.PortalState) == "table" then
             RGMS.PortalState.rosterMode = "ByName"
@@ -3949,6 +4406,10 @@ local function createWindow()
         UI.rosterMode = "ByName"
         UI.rosterScroll = { ByName = 0, ByTenure = 0 }
         UI.SelectPrimaryTab("roster")
+        if type(RGMS.Provisions) == "table"
+            and type(RGMS.Provisions.OnWindowClosed) == "function" then
+            RGMS.Provisions.OnWindowClosed()
+        end
         if type(RGMS.PortalState) == "table" then
             RGMS.PortalState:closeWindow()
         end
@@ -3997,6 +4458,7 @@ function UI.Initialize()
         refreshBankTabScrollChild(UI.frame.views[tabId])
     end
     refreshScrollChild(UI.frame.views.mainsalts)
+    ProvisionUI.refreshScrollChild(UI.frame.views.provisions)
 
     if type(UISpecialFrames) == "table" then
         table.insert(UISpecialFrames, "RGMSMainFrame")
@@ -4074,7 +4536,7 @@ function UI.SelectPrimaryTab(tabId)
     end
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster, bank, or tags"
+        return nil, "primary tab must be roster, bank, provisions, or tags"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -4125,6 +4587,11 @@ function UI.SelectPrimaryTab(tabId)
     end
     UI.frame.selectedTab = selectedIndex
     UI.selectedTab = tabId
+    if tabId == "provisions" and previousTabId ~= "provisions"
+        and type(RGMS.Provisions) == "table"
+        and type(RGMS.Provisions.OnTabSelected) == "function" then
+        RGMS.Provisions.OnTabSelected()
+    end
     if tabId == "roster" and mode == "ByName" and previousTabId ~= "roster"
         and type(RGMS.MainsAlts) == "table"
         and type(RGMS.MainsAlts.RequestGuildNotes) == "function" then
@@ -4202,7 +4669,7 @@ end
 function UI.SetViewContent(tabId, content)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster, bank, or tags"
+        return nil, "primary tab must be roster, bank, provisions, or tags"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -4238,6 +4705,13 @@ function UI.SetViewContent(tabId, content)
         end
         refreshBankTabScrollChild(view)
         view.text:Show()
+    elseif tabId == "provisions" then
+        view.provisionsReport = { rows = {} }
+        for _, line in ipairs(view.provisionRows or {}) do
+            line.row = nil
+            line.frame:Hide()
+        end
+        ProvisionUI.refreshScrollChild(view)
     elseif tabId == "tags" then
         hideTagManagementRows(view)
         if view.tagHeader then
@@ -4254,7 +4728,7 @@ end
 function UI.SetViewStatus(tabId, status)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster, mainsalts, bank, or tags"
+        return nil, "primary tab must be roster, mainsalts, bank, provisions, or tags"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -4877,7 +5351,113 @@ function UI.SetBankReport(report)
     return true
 end
 
-local updateBankRefreshButton
+function UI.SelectProvisionRow(id)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    local view = UI.frame.views.provisions
+    view.selectedProvisionId = id
+    for _, line in ipairs(view.provisionRows or {}) do
+        local selected = line.row ~= nil and line.row.id == id
+        for _, edge in pairs(line.selectionBorder or {}) do
+            edge:SetShown(selected)
+        end
+    end
+    ProvisionUI.updateControlState(view)
+    return true
+end
+
+function UI.SetProvisionsReport(report, selectedId)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if type(report) ~= "table" or type(report.rows) ~= "table" then
+        return nil, "provisions report must contain rows"
+    end
+    local view = UI.frame.views.provisions
+    view.provisionsReport = report
+    for index, row in ipairs(report.rows) do
+        local line = ProvisionUI.acquireRow(view, index)
+        line.row = row
+        line.frame:ClearAllPoints()
+        if index == 1 then
+            line.frame:SetPoint("TOPLEFT", view.provisionScrollChild, "TOPLEFT", 0, -2)
+            line.frame:SetPoint("TOPRIGHT", view.provisionScrollChild, "TOPRIGHT", 0, -2)
+        else
+            line.frame:SetPoint(
+                "TOPLEFT",
+                view.provisionRows[index - 1].frame,
+                "BOTTOMLEFT",
+                0,
+                -ProvisionUI.ROW_GAP
+            )
+            line.frame:SetPoint(
+                "TOPRIGHT",
+                view.provisionRows[index - 1].frame,
+                "BOTTOMRIGHT",
+                0,
+                -ProvisionUI.ROW_GAP
+            )
+        end
+        line.icon:SetTexture(row.icon or 134400)
+        line.name:SetText(row.name)
+        line.progressText:SetText(row.progressText)
+        line.fill:SetWidth(math.max(1, (ProvisionUI.PROGRESS_WIDTH - 2) * row.progress))
+        line.fill:SetShown(row.progress > 0)
+        if row.quality == "silver" or row.quality == "gold" then
+            if type(line.badge.SetAtlas) == "function" then
+                line.badge:SetAtlas(
+                    row.quality == "silver"
+                        and ProvisionUI.QUALITY_ATLASES.silver
+                        or ProvisionUI.QUALITY_ATLASES.gold
+                )
+            end
+            line.badge:Show()
+        else
+            line.badge:Hide()
+        end
+        line.frame:Show()
+    end
+    for index = #report.rows + 1, #view.provisionRows do
+        local line = view.provisionRows[index]
+        hideOwnedTooltip(line.deleteButton)
+        line.row = nil
+        line.frame:Hide()
+    end
+    ProvisionUI.refreshScrollChild(view)
+    UI.SelectProvisionRow(selectedId)
+    return true
+end
+
+function UI.SetProvisionsEditor(state)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    state = type(state) == "table" and state or {}
+    local draft = type(state.draft) == "table" and state.draft or {}
+    local view = UI.frame.views.provisions
+    view.settingProvisionEditor = true
+    view.provisionNameInput:SetText(draft.name or "")
+    local qualitySelection
+    if draft.silver == true and draft.gold == true then
+        qualitySelection = "either"
+    elseif draft.silver == true then
+        qualitySelection = "r1"
+    elseif draft.gold == true then
+        qualitySelection = "r2"
+    end
+    ProvisionUI.setQualitySelection(view, qualitySelection, false)
+    view.provisionTargetInput:SetText(draft.targetText or "")
+    view.settingProvisionEditor = false
+    view.selectedProvisionId = state.selectedId
+    view.provisionDraftValid = state.valid == true
+    view.provisionDraftChanged = state.changed == true
+    view.provisionValidationError = state.validationError
+    UI.SelectProvisionRow(state.selectedId)
+    ProvisionUI.updateControlState(view)
+    return true
+end
+
 local updateRosterRefreshButton
 
 updateRosterModeControls = function()
@@ -4936,6 +5516,10 @@ function UI.SetGlobalScanLock(locked)
         if type(view.scrollFrame.EnableMouseWheel) == "function" then
             view.scrollFrame:EnableMouseWheel(not UI.globalScanLocked)
         end
+        if view.provisionScrollFrame then
+            view.provisionScrollFrame:EnableMouse(not UI.globalScanLocked)
+            view.provisionScrollFrame:EnableMouseWheel(not UI.globalScanLocked)
+        end
         if view.rankDropdown then
             view.rankDropdown:SetEnabled(
                 not UI.globalScanLocked and view.rankDropdown.selectedOption ~= nil
@@ -4961,10 +5545,14 @@ function UI.SetGlobalScanLock(locked)
         for _, line in ipairs(view.tagRows or {}) do
             updateTagDeleteButton(line)
         end
+        if tabId == "provisions" then
+            ProvisionUI.updateControlState(view)
+        end
     end
     updateRosterRefreshButton(UI.frame.views.roster)
     updateRosterRefreshButton(UI.frame.views.mainsalts)
-    updateBankRefreshButton(UI.frame.views.bank)
+    ProvisionUI.updateBankRefreshButton(UI.frame.views.bank)
+    ProvisionUI.updateBankRefreshButton(UI.frame.views.provisions)
     updateMainsAltsControlState(UI.frame.views.mainsalts)
     updateRosterModeControls()
     return true
@@ -4999,7 +5587,7 @@ function UI.SetRosterScanInProgress(inProgress)
     return true
 end
 
-updateBankRefreshButton = function(view)
+ProvisionUI.updateBankRefreshButton = function(view)
     setRefreshButtonEnabled(
         view.refreshButton,
         UI.dataEnabled ~= false
@@ -5058,7 +5646,10 @@ function UI.SetGuildBankOpen(isOpen)
 
     local view = UI.frame.views.bank
     view.bankOpen = isOpen == true
-    updateBankRefreshButton(view)
+    ProvisionUI.updateBankRefreshButton(view)
+    local provisionsView = UI.frame.views.provisions
+    provisionsView.bankOpen = isOpen == true
+    ProvisionUI.updateBankRefreshButton(provisionsView)
     return true
 end
 
@@ -5069,7 +5660,10 @@ function UI.SetBankScanInProgress(inProgress)
 
     local view = UI.frame.views.bank
     view.bankScanInProgress = inProgress == true
-    updateBankRefreshButton(view)
+    ProvisionUI.updateBankRefreshButton(view)
+    local provisionsView = UI.frame.views.provisions
+    provisionsView.bankScanInProgress = inProgress == true
+    ProvisionUI.updateBankRefreshButton(provisionsView)
     UI.SetGlobalScanLock(
         view.bankScanInProgress
             or UI.frame.views.roster.rosterScanInProgress == true
@@ -5085,12 +5679,14 @@ function UI.SetDataState(enabled, state)
     UI.dataEnabled = enabled == true
     updateRosterRefreshButton(UI.frame.views.roster)
     updateRosterRefreshButton(UI.frame.views.mainsalts)
-    updateBankRefreshButton(UI.frame.views.bank)
+    ProvisionUI.updateBankRefreshButton(UI.frame.views.bank)
+    ProvisionUI.updateBankRefreshButton(UI.frame.views.provisions)
     updateMainsAltsControlState(UI.frame.views.mainsalts)
     updateRosterModeControls()
     for _, line in ipairs(UI.frame.views.tags.tagRows or {}) do
         updateTagDeleteButton(line)
     end
+    ProvisionUI.updateControlState(UI.frame.views.provisions)
 
     if UI.dataEnabled then
         return true

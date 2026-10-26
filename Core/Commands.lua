@@ -8,6 +8,7 @@ local HELP_LINES = {
     "  /rgms help - Show this command list.",
     "  /rgms debug - Toggle verbose diagnostic logging.",
     "  /rgms scanroster - Scan the guild roster.",
+    "  /rgms dumpbanktab N - Print stored records for guild-bank tab N.",
     "  /rgms reset - Open the reset confirmation.",
 }
 
@@ -36,6 +37,12 @@ function Commands.handle(input, api)
 
     if command == "scanroster" then
         api.Roster.RequestManualScan()
+        return
+    end
+
+    local bankTabIndex = command:match("^dumpbanktab%s+(%d+)$")
+    if bankTabIndex then
+        api.Bank.DumpTab(tonumber(bankTabIndex))
         return
     end
 

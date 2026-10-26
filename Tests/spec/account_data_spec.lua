@@ -39,7 +39,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 5,
+            schemaVersion = 6,
             settings = {
                 minimapPos = 225,
             },
@@ -58,7 +58,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 5,
+            schemaVersion = 6,
             settings = {
                 minimapPos = 225,
             },
@@ -82,7 +82,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 5,
+            schemaVersion = 6,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -108,7 +108,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
@@ -134,10 +134,34 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
         test.assert_nil(migratedGuild.rosterObservation)
         test.assert_equal(migratedGuild.newsSets, {})
         test.assert_nil(originalGuild.newsSets)
+    end),
+
+    test.case("version 5 account data initializes empty per-guild provisions copy-on-write", function()
+        local identity = guild("Night Shift", "area-52")
+        local original = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            completedRoster(identity, "Main")
+        ))
+        original.schemaVersion = 5
+        local originalGuild = accountData.findGuild(original, identity)
+        originalGuild.provisions = nil
+        originalGuild.nextProvisionId = nil
+
+        local state = accountData.load(original)
+        local migratedGuild = accountData.findGuild(state.model, identity)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 5)
+        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(migratedGuild.provisions, {})
+        test.assert_equal(migratedGuild.nextProvisionId, 1)
+        test.assert_nil(originalGuild.provisions)
     end),
 
     test.case("account data validates the saved LibDBIcon position", function()
@@ -417,6 +441,41 @@ return {
             definitions = { me = true },
             assignments = {},
         })
+        test.assert_equal(partition.provisions, {})
+        test.assert_equal(partition.nextProvisionId, 1)
+    end),
+
+    test.case("provisions persist atomically within only their guild partition", function()
+        local firstGuild = guild("Night Shift", "area-52")
+        local secondGuild = guild("Day Shift", "illidan")
+        local model = accountData.newModel()
+        local replacement = assert(accountData.replaceProvisions(
+            model,
+            firstGuild,
+            {
+                { id = 1, name = "Feast", quality = "either", target = 20 },
+                { id = 2, name = "Feast", quality = "either", target = 20 },
+            },
+            3
+        ))
+
+        test.assert_equal(accountData.view(replacement, firstGuild).provisions, {
+            { id = 1, name = "Feast", quality = "either", target = 20 },
+            { id = 2, name = "Feast", quality = "either", target = 20 },
+        })
+        test.assert_equal(accountData.view(replacement, firstGuild).nextProvisionId, 3)
+        test.assert_equal(accountData.view(replacement, secondGuild).provisions, {})
+        test.assert_equal(accountData.view(model, firstGuild).provisions, {})
+
+        local invalid, message = accountData.replaceProvisions(
+            replacement,
+            firstGuild,
+            { { id = 2, name = "x", quality = "either", target = 20 } },
+            3
+        )
+        test.assert_nil(invalid)
+        test.assert_matches(message, "3 through 100")
+        test.assert_equal(#accountData.view(replacement, firstGuild).provisions, 2)
     end),
 
     test.case("replacing groups preserves roster bank notes and tags", function()

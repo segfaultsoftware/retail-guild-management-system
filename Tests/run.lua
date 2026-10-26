@@ -29,6 +29,8 @@ local defaultSuites = {
     "Tests.spec.mains_alts_notes_spec",
     "Tests.spec.mains_alts_notes_adapter_spec",
     "Tests.spec.mains_alts_spec",
+    "Tests.spec.provisions_model_spec",
+    "Tests.spec.provisions_spec",
     "Tests.spec.roster_scanner_spec",
     "Tests.spec.roster_spec",
     "Tests.spec.ui_layout_spec",

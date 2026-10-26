@@ -31,6 +31,9 @@ return {
         test.assert_equal(portal.contextControls("bank"), {
             dropdown = "bankTab", primary = "Refresh", close = true,
         })
+        test.assert_equal(portal.contextControls("provisions"), {
+            primary = "Refresh", close = true,
+        })
         test.assert_equal(portal.contextControls("tags"), { close = true })
     end),
 
@@ -52,6 +55,7 @@ return {
         test.assert_equal(state.scroll, {
             roster = { ByName = 0, ByTenure = 0 },
             bank = 0,
+            provisions = 0,
             tags = 0,
         })
     end),
@@ -65,6 +69,7 @@ return {
         test.assert_equal(state.scroll, {
             roster = { ByName = 12, ByTenure = 56 },
             bank = 0,
+            provisions = 0,
             tags = 0,
         })
         test.assert_true(state:selectionChanged("roster"))
