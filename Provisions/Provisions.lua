@@ -169,17 +169,24 @@ local function reportFailure(action, message)
     return nil, message
 end
 
+local function showSuccess(message)
+    if type(RGMS.UI) == "table" and type(RGMS.UI.ShowToast) == "function" then
+        RGMS.UI.ShowToast(message)
+    end
+end
+
 function Provisions.Save()
     if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
         return nil, "scan-locked"
     end
     ensureGuildSession()
+    local creating = Provisions.selectedId == nil
     local normalized, validationError = Model.normalizeDraft(Provisions.draft)
     if not normalized then
         return nil, validationError
     end
     local items, nextId, selectedId
-    if Provisions.selectedId == nil then
+    if creating then
         items, nextId, selectedId = Model.add(
             currentList(),
             RGMS.DB.nextProvisionId,
@@ -202,6 +209,10 @@ function Provisions.Save()
     end
     clearSession()
     Provisions.RefreshStatus()
+    showSuccess(
+        (creating and "Successfully added " or "Successfully updated ")
+            .. normalized.name
+    )
     return true, selectedId
 end
 
@@ -214,6 +225,7 @@ function Provisions.Delete(id)
     if deleteId == nil then
         return nil, "no provision is selected"
     end
+    local provision = Model.find(currentList(), deleteId)
     local items, deleteError = Model.delete(currentList(), deleteId)
     if not items then
         return reportFailure("delete", deleteError)
@@ -226,6 +238,7 @@ function Provisions.Delete(id)
         clearSession()
     end
     Provisions.RefreshStatus()
+    showSuccess("Removed " .. provision.name .. " from Provisions")
     return true
 end
 

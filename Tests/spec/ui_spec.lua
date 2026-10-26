@@ -255,12 +255,20 @@ local function newRegion(parent)
         self.alpha = alpha
     end
 
+    function region:EnableMouse(enabled)
+        self.mouseEnabled = enabled == true
+    end
+
     function region:SetAtlas(atlas)
         self.atlas = atlas
     end
 
     function region:SetWordWrap(enabled)
         self.wordWrap = enabled == true
+    end
+
+    function region:SetNonSpaceWrap(enabled)
+        self.nonSpaceWrap = enabled == true
     end
 
     function region:SetMaxLines(maximum)
@@ -356,6 +364,13 @@ local function newRegion(parent)
     end
 
     function region:GetStringHeight()
+        if self.wordWrap and self.width and self.width > 0 then
+            local lines = 0
+            for line in string.gmatch((self.text or "") .. "\n", "([^\n]*)\n") do
+                lines = lines + math.max(1, math.ceil(#line * 7 / self.width))
+            end
+            return lines * 14
+        end
         return countLines(self.text) * 14
     end
 
@@ -416,7 +431,6 @@ local function newRegion(parent)
         "SetFrameStrata",
         "SetToplevel",
         "SetMovable",
-        "EnableMouse",
         "EnableMouseWheel",
         "SetClampedToScreen",
         "SetClampRectInsets",
@@ -2648,6 +2662,71 @@ return {
         harness.ui.SetGlobalScanLock(false)
         harness.ui.Hide()
         test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "close")
+    end),
+
+    test.case("success toasts stack newest-first and independently fade reflow and clear", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        harness.ui.Show()
+        local frame = harness.frame()
+
+        local first = assert(harness.ui.ShowToast("Successfully added Feast"))
+        local longest = "Removed " .. string.rep("W", 100) .. " from Provisions"
+        local second = assert(harness.ui.ShowToast(longest))
+
+        test.assert_equal(frame.toasts, { second, first })
+        test.assert_equal(second.point, "TOP")
+        test.assert_equal(second.relativeTo, frame.header)
+        test.assert_equal(second.relativePoint, "TOP")
+        test.assert_equal(second.y, 10)
+        test.assert_equal(first.point, "TOP")
+        test.assert_equal(first.relativeTo, second)
+        test.assert_equal(first.relativePoint, "BOTTOM")
+        test.assert_equal(first.y, -2)
+        test.assert_equal(first:GetWidth(), second:GetWidth())
+        test.assert_true(second:GetWidth() <= frame:GetWidth() - 2)
+        test.assert_true(second:GetParent() == frame)
+        test.assert_true(second.text.wordWrap)
+        test.assert_true(second.text.nonSpaceWrap)
+        test.assert_equal(second.text.maxLines, 0)
+        test.assert_equal(second.text.text, longest)
+        test.assert_true(second:GetHeight() > first:GetHeight())
+        test.assert_equal(second.backdropColor, { 0.059, 0.067, 0.082, 1 })
+        test.assert_equal(second.backdropBorderColor, { 0.204, 0.227, 0.275, 1 })
+        test.assert_equal(second.accent.vertexColor, { 0.925, 0.282, 0.6, 1 })
+        test.assert_equal(second.text.textColor, { 0.957, 0.957, 0.961, 1 })
+        test.assert_false(second.mouseEnabled)
+        test.assert_true(second:GetFrameLevel() > frame:GetFrameLevel())
+        test.assert_true(second:GetFrameLevel() < frame.modalDimmer:GetFrameLevel())
+        test.assert_true(second:GetFrameLevel() < frame.globalDimmer:GetFrameLevel())
+
+        first.scripts.OnUpdate(first, 3)
+        test.assert_equal(first.alpha, 1)
+        second.scripts.OnUpdate(second, 2)
+        test.assert_equal(second.alpha, 1)
+        first.scripts.OnUpdate(first, 0.5)
+        test.assert_equal(first.alpha, 0.5)
+        test.assert_equal(second.alpha, 1)
+
+        harness.ui.SelectPrimaryTab("provisions")
+        harness.ui.SelectPrimaryTab("tags")
+        test.assert_equal(frame.toasts, { second, first })
+        test.assert_equal(first.elapsed, 3.5)
+        test.assert_equal(second.elapsed, 2)
+
+        first.scripts.OnUpdate(first, 0.5)
+        test.assert_equal(frame.toasts, { second })
+        test.assert_false(first:IsShown())
+        test.assert_equal(second.relativeTo, frame.header)
+        test.assert_equal(second.y, 10)
+
+        second.scripts.OnUpdate(second, 2)
+        test.assert_equal(#frame.toasts, 0)
+        test.assert_false(second:IsShown())
+
+        harness.ui.ShowToast("Successfully added Flask")
+        harness.ui.Hide()
+        test.assert_equal(#frame.toasts, 0)
     end),
 
     test.case("disabled saved data explains the recovery path and disables controls", function()

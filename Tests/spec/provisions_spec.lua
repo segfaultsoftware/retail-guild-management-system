@@ -17,6 +17,7 @@ local function newHarness(initialProvisions)
     local messages = {}
     local editorStates = {}
     local reports = {}
+    local toasts = {}
     local locked = false
     local rgms = {
         AccountData = accountData,
@@ -42,6 +43,9 @@ local function newHarness(initialProvisions)
             end,
             SetViewStatus = function() end,
             SelectProvisionRow = function() end,
+            ShowToast = function(message)
+                toasts[#toasts + 1] = message
+            end,
         },
     }
     local chunk = assert(loadfile("Provisions/Provisions.lua"))
@@ -53,6 +57,7 @@ local function newHarness(initialProvisions)
         messages = messages,
         editorStates = editorStates,
         reports = reports,
+        toasts = toasts,
         setLocked = function(value) locked = value == true end,
     }
 end
@@ -78,6 +83,7 @@ return {
         })
         test.assert_equal(harness.rgms.DB.nextProvisionId, 2)
         test.assert_nil(harness.provisions.selectedId)
+        test.assert_equal(harness.toasts[1], "Successfully added Feast")
         test.assert_equal(harness.provisions.draft, {
             name = "",
             silver = false,
@@ -110,11 +116,14 @@ return {
             target = 30,
         })
         test.assert_nil(harness.provisions.selectedId)
+        test.assert_equal(harness.toasts[3], "Successfully updated Updated Feast")
         test.assert_true(harness.provisions.Delete(1))
         test.assert_equal(harness.rgms.DB.provisions, {
             saved(2, "Feast", "either", 20),
         })
         test.assert_nil(harness.provisions.selectedId)
+        test.assert_equal(harness.toasts[4], "Removed Updated Feast from Provisions")
+        test.assert_equal(#harness.messages, 0)
     end),
 
     test.case("selection reload discards drafts while close clears the session", function()
@@ -174,6 +183,7 @@ return {
         test.assert_nil(harness.provisions.Delete())
         test.assert_equal(harness.provisions.draft.name, "Unsaved Feast")
         test.assert_equal(harness.rgms.DB.provisions[1].name, "Feast")
+        test.assert_equal(#harness.toasts, 0)
     end),
 
     test.case("persistence failures retain selection draft and saved data", function()
@@ -198,7 +208,45 @@ return {
         test.assert_equal(harness.provisions.selectedId, 1)
         test.assert_equal(harness.provisions.draft.name, "Unsaved Feast")
         test.assert_matches(harness.messages[1], "Could not save provision")
+        test.assert_equal(#harness.toasts, 0)
+
+        result, message = harness.provisions.Delete()
+        test.assert_nil(result)
+        test.assert_equal(message, "simulated storage failure")
+        test.assert_matches(harness.messages[2], "Could not delete provision")
+        test.assert_equal(#harness.toasts, 0)
 
         harness.rgms.AccountData.replaceProvisions = originalReplace
+    end),
+
+    test.case("selected deletion reports the removed saved name only after persistence", function()
+        local harness = newHarness({ saved(1, "Feast Platter", "silver", 10) })
+        test.assert_true(harness.provisions.Select(1))
+        harness.provisions.SetDraft({
+            name = "Unsaved rename",
+            silver = true,
+            targetText = "10",
+        })
+
+        test.assert_true(harness.provisions.Delete())
+        test.assert_equal(harness.toasts, {
+            "Removed Feast Platter from Provisions",
+        })
+        test.assert_equal(#harness.messages, 0)
+    end),
+
+    test.case("validation rejection produces no success toast", function()
+        local harness = newHarness()
+        harness.provisions.SetDraft({
+            name = "x",
+            silver = true,
+            targetText = "10",
+        })
+
+        local result, message = harness.provisions.Save()
+        test.assert_nil(result)
+        test.assert_equal(message, "item name must contain 3 through 100 characters")
+        test.assert_equal(#harness.toasts, 0)
+        test.assert_equal(#harness.messages, 0)
     end),
 }
