@@ -2604,6 +2604,11 @@ return {
         harness.ui.SetProvisionsReport({ rows = rows }, 7)
         local first = view.provisionRows[1]
         test.assert_equal(first.icon.texture, 134400)
+        test.assert_equal(first.name.text, "Provision 1")
+        test.assert_equal(first.name.points[2].point, "TOPRIGHT")
+        test.assert_equal(first.name.points[2].relativeTo, first.frame)
+        test.assert_equal(first.name.points[2].relativePoint, "TOPRIGHT")
+        test.assert_equal(first.name.points[2].y, -11)
         test.assert_equal(first.badge.atlas, "Professions-Icon-Quality-12-Tier1")
         test.assert_true(first.badge:IsShown())
         test.assert_equal(first.progressText.text, "123 / 10")
@@ -2624,6 +2629,10 @@ return {
         test.assert_false(view.provisionRows[2].selectionBorder.top:IsShown())
         test.assert_false(view.provisionRows[2].fill:IsShown())
         test.assert_true(view.provisionScrollFrame.ScrollBar:IsShown())
+
+        rows[1].name = "Updated Provision"
+        harness.ui.SetProvisionsReport({ rows = rows }, 7)
+        test.assert_equal(view.provisionRows[1].name.text, "Updated Provision")
 
         view.provisionRows[2].frame.scripts.OnClick()
         test.assert_equal(harness.provisionActions[#harness.provisionActions], {
