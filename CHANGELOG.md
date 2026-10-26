@@ -17,6 +17,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the latest committed guild-bank snapshot, with duplicate-safe CRUD, stable
   sorting, scan-aware progress rows, and transactional persistence.
 
+### Fixed
+
+- Kept Provision item names visible and current on initial load and after edits.
+
 ### Changed
 
 - Refined the Provisions editor and list actions, reset the form after saves,
