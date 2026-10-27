@@ -9,7 +9,7 @@ local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
-AccountData.CURRENT_SCHEMA_VERSION = 6
+AccountData.CURRENT_SCHEMA_VERSION = 7
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -738,6 +738,49 @@ function AccountData.load(saved)
         end
         migratedFrom = migratedFrom or 5
         working.schemaVersion = 6
+    end
+    if working.schemaVersion == 6 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for key, guild in pairs(working.guilds) do
+            if type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild partitions must be tables",
+                    saved
+                )
+            end
+            if type(guild.provisions) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild provisions must be a table",
+                    saved
+                )
+            end
+            local provisionsValid, provisionsError = validateProvisions(
+                guild.provisions,
+                guild.nextProvisionId,
+                "account data.guilds[" .. tostring(key) .. "].provisions"
+            )
+            if not provisionsValid then
+                return disabledState("corrupt", provisionsError, saved)
+            end
+            table.sort(guild.provisions, function(left, right)
+                local leftName = string.lower(left.name)
+                local rightName = string.lower(right.name)
+                if leftName ~= rightName then
+                    return leftName < rightName
+                end
+                return left.id < right.id
+            end)
+        end
+        migratedFrom = migratedFrom or 6
+        working.schemaVersion = 7
     end
     local valid, validationError = AccountData.validate(working)
     if not valid then

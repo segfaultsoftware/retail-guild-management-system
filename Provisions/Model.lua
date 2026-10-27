@@ -1,4 +1,4 @@
--- Pure provision validation, mutation, sorting, and guild-bank aggregation.
+-- Pure provision validation, mutation, ordering, and guild-bank aggregation.
 
 local _, RGMS = ...
 
@@ -142,6 +142,28 @@ function Model.delete(provisions, id)
     return result
 end
 
+function Model.reorder(provisions, orderedIds)
+    if type(orderedIds) ~= "table" or #orderedIds ~= #(provisions or {}) then
+        return nil, "provision order must contain every saved provision ID"
+    end
+
+    local byId = {}
+    for _, provision in ipairs(provisions or {}) do
+        byId[provision.id] = provision
+    end
+
+    local result = {}
+    local seen = {}
+    for index, id in ipairs(orderedIds) do
+        if seen[id] or byId[id] == nil then
+            return nil, "provision order must contain every saved provision ID once"
+        end
+        seen[id] = true
+        result[index] = copyProvision(byId[id])
+    end
+    return result
+end
+
 function Model.find(provisions, id)
     for _, provision in ipairs(provisions or {}) do
         if provision.id == id then
@@ -233,14 +255,6 @@ function Model.buildReport(provisions, bank, lower)
         }
     end
 
-    table.sort(rows, function(left, right)
-        local leftName = lower(left.name)
-        local rightName = lower(right.name)
-        if leftName ~= rightName then
-            return leftName < rightName
-        end
-        return left.id < right.id
-    end)
     return { rows = rows }
 end
 

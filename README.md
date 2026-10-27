@@ -24,7 +24,8 @@ migration sources remain per character. It does not send data anywhere.
   remained in the same slot.
 - Tracks unlimited per-guild Provisions targets by localized item name and
   Midnight crafting quality, with progress calculated from the latest complete
-  guild-bank snapshot, including retained inaccessible-tab contents.
+  guild-bank snapshot, including retained inaccessible-tab contents, and lets
+  users drag rows into one persistent account-wide order per guild.
 - Commits roster and bank scans transactionally. A partial, failed, timed-out,
   or canceled scan leaves the previous successful observation unchanged.
 - Shares each guild's roster, bank observations, and Provisions between

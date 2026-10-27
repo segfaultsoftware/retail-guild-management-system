@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 6
+## Account-wide schema: version 7
 
 ```text
 {
-  schemaVersion = 6,
+  schemaVersion = 7,
   settings = {
     minimapPos = number,
   },
@@ -71,7 +71,9 @@ raw-observation baseline, so its first successful scan establishes the baseline
 without manufacturing historical news. Version 5 data gains an empty provision
 list and a next-ID value of 1 for every saved guild. Provision IDs are never
 reused within a partition, so exact duplicates remain independently selectable
-and equal-name sorting retains creation order.
+and movable. Version 6 provision arrays are converted once to the previously
+visible case-insensitive item-name order, with creation ID breaking equal-name
+ties; version 7 preserves that array as the guild's authoritative manual order.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
