@@ -205,6 +205,18 @@ local function qualityMatches(mode, craftingQuality)
     return false
 end
 
+local function usableIcon(icon)
+    return (type(icon) == "number" and icon > 0)
+        or (type(icon) == "string" and icon ~= "")
+end
+
+local function slotPrecedesIcon(slot, item)
+    return item.icon == nil
+        or slot.tabIndex < item.iconTabIndex
+        or (slot.tabIndex == item.iconTabIndex
+            and slot.slotIndex < item.iconSlotIndex)
+end
+
 function Model.buildReport(provisions, bank, lower)
     lower = type(lower) == "function" and lower or string.lower
     bank = type(bank) == "table" and bank or {}
@@ -218,6 +230,12 @@ function Model.buildReport(provisions, bank, lower)
                 if qualities == nil then
                     qualities = { all = 0, silver = 0, gold = 0 }
                     counts[key] = qualities
+                end
+                if usableIcon(slot.icon)
+                    and slotPrecedesIcon(slot, qualities) then
+                    qualities.icon = slot.icon
+                    qualities.iconTabIndex = slot.tabIndex
+                    qualities.iconSlotIndex = slot.slotIndex
                 end
                 local quantity = tonumber(slot.quantity) or 0
                 qualities.all = qualities.all + quantity
@@ -251,7 +269,7 @@ function Model.buildReport(provisions, bank, lower)
             current = current,
             progress = math.min(1, current / provision.target),
             progressText = tostring(current) .. " / " .. tostring(provision.target),
-            icon = Model.FALLBACK_ITEM_ICON,
+            icon = totals and totals.icon or Model.FALLBACK_ITEM_ICON,
         }
     end
 

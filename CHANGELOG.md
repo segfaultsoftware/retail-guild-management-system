@@ -9,6 +9,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Resolved Provision row icons from the first usable same-name item in the
+  active guild's latest committed bank snapshot while preserving the existing
+  placeholder and crafting-quality badges when no usable icon is available.
 - Added persistent per-guild Provision ordering with topmost row drag previews,
   live midpoint reordering, constant-speed auto-scroll inside and beyond the
   list edges, interruption rollback, and atomic drop persistence.

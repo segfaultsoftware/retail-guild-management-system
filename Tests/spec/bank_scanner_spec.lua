@@ -1,6 +1,7 @@
 local datasetOwnership = require("Core.DatasetOwnership")
 local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
+local provisionModel = require("Provisions.Model")
 local savedData = require("Core.SavedData")
 local scannerModule = require("Bank.Scanner")
 local bankState = require("Bank.State")
@@ -14,14 +15,29 @@ local function tab(index, isViewable, name)
     })
 end
 
-local function slot(tabIndex, slotIndex, quantity)
+local function slot(tabIndex, slotIndex, quantity, icon)
     local value = fixtures.bank_slot({
         tabIndex = tabIndex,
         slotIndex = slotIndex,
         quantity = quantity or 1,
     })
+    if icon ~= nil then
+        value.icon = icon
+    end
     value.observedAt = nil
     return value
+end
+
+local function resolvedProvisionIcon(model)
+    local report = provisionModel.buildReport({
+        {
+            id = 1,
+            name = "Refreshing Healing Potion",
+            quality = "either",
+            target = 1,
+        },
+    }, model.bank)
+    return report.rows[1].icon
 end
 
 local function newHarness(options)
@@ -192,10 +208,12 @@ return {
                 tabs = { tab(1, true), tab(2, true) },
             },
             slotsByTab = {
-                [1] = { slot(1, 4, 8) },
+                [1] = { slot(1, 4, 8, 444444) },
                 [2] = { slot(2, 9, 3) },
             },
         })
+
+        test.assert_equal(resolvedProvisionIcon(harness.current()), 236873)
 
         test.assert_true(harness.scanner:Request("automatic"))
         test.assert_equal(harness.requests, { 1 })
@@ -211,6 +229,7 @@ return {
         test.assert_equal(#harness.current().bank.slots, 2)
         test.assert_equal(harness.current().bank.slots[1].tabIndex, 1)
         test.assert_equal(harness.current().bank.slots[2].tabIndex, 2)
+        test.assert_equal(resolvedProvisionIcon(harness.current()), 444444)
         test.assert_equal(
             harness.current().bank.slots[1].observedAt,
             harness.current().bank.scannedAt
@@ -339,6 +358,10 @@ return {
         test.assert_equal(harness.requests, { 1, 1, 1, 1 })
         test.assert_equal(harness.commits(), 1)
         test.assert_equal(#harness.current().bank.slots, 0)
+        test.assert_equal(
+            resolvedProvisionIcon(harness.current()),
+            provisionModel.FALLBACK_ITEM_ICON
+        )
         test.assert_matches(
             harness.debugMessages[#harness.debugMessages - 1],
             "attempt 4/4 returned 0 occupied slots; accepting the tab as empty"
@@ -397,6 +420,7 @@ return {
             },
             timeoutSeconds = 2,
         })
+        local originalIcon = resolvedProvisionIcon(harness.current())
 
         test.assert_true(harness.scanner:Request("manual"))
         test.assert_true(harness.scanner:OnSlotsChanged())
@@ -405,12 +429,14 @@ return {
         test.assert_nil(completed)
         test.assert_equal(reason, "timeout")
         test.assert_equal(harness.current(), harness.original)
+        test.assert_equal(resolvedProvisionIcon(harness.current()), originalIcon)
         test.assert_equal(harness.commits(), 0)
         test.assert_matches(harness.messages[1], "timed out")
     end),
 
     test.case("partial reads wait for completion and cannot leak into saved state", function()
         local harness = newHarness({ partialTab = 1, timeoutSeconds = 1 })
+        local originalIcon = resolvedProvisionIcon(harness.current())
 
         test.assert_true(harness.scanner:Request("manual"))
         local completed, state = harness.scanner:OnSlotsChanged()
@@ -418,6 +444,7 @@ return {
         test.assert_false(completed)
         test.assert_equal(state, "incomplete")
         test.assert_equal(harness.current(), harness.original)
+        test.assert_equal(resolvedProvisionIcon(harness.current()), originalIcon)
         test.assert_true(harness.scanner:IsInProgress())
 
         harness.scanner:Update(1)
@@ -427,6 +454,7 @@ return {
 
     test.case("API failures discard the transaction and report an error", function()
         local harness = newHarness({ captureErrorTab = 1 })
+        local originalIcon = resolvedProvisionIcon(harness.current())
         test.assert_true(harness.scanner:Request("manual"))
 
         local completed, reason = harness.scanner:OnSlotsChanged()
@@ -434,6 +462,7 @@ return {
         test.assert_nil(completed)
         test.assert_equal(reason, "api-failure")
         test.assert_equal(harness.current(), harness.original)
+        test.assert_equal(resolvedProvisionIcon(harness.current()), originalIcon)
         test.assert_equal(harness.commits(), 0)
         test.assert_matches(harness.messages[1], "simulated capture failure")
     end),
@@ -448,12 +477,14 @@ return {
                 [1] = { slot(1, 1, 99) },
             },
         })
+        local originalIcon = resolvedProvisionIcon(harness.current())
         test.assert_true(harness.scanner:Request("manual"))
         test.assert_true(harness.scanner:OnSlotsChanged())
 
         test.assert_true(harness.scanner:Cancel())
 
         test.assert_equal(harness.current(), harness.original)
+        test.assert_equal(resolvedProvisionIcon(harness.current()), originalIcon)
         test.assert_equal(harness.commits(), 0)
         test.assert_equal(harness.messages, {})
         test.assert_equal(harness.progress, { true, false })
