@@ -2627,17 +2627,18 @@ return {
             rows[index] = {
                 id = index == 1 and 7 or index + 10,
                 name = "Provision " .. index,
-                quality = index == 1 and "silver" or "either",
+                quality = index == 1 and "silver"
+                    or (index == 2 and "gold" or "either"),
                 target = 10,
                 current = index == 1 and 123 or 0,
                 progress = index == 1 and 1 or 0,
                 progressText = index == 1 and "123 / 10" or "0 / 10",
-                icon = 134400,
+                icon = index == 1 and 987654 or 134400,
             }
         end
         harness.ui.SetProvisionsReport({ rows = rows }, 7)
         local first = view.provisionRows[1]
-        test.assert_equal(first.icon.texture, 134400)
+        test.assert_equal(first.icon.texture, 987654)
         test.assert_equal(first.name.text, "Provision 1")
         test.assert_equal(first.name.points[2].point, "TOPRIGHT")
         test.assert_equal(first.name.points[2].relativeTo, first.frame)
@@ -2659,7 +2660,13 @@ return {
         test.assert_true(first.selectionBorder.right:IsShown())
         test.assert_equal(first.selectionBorder.top:GetHeight(), 2)
         test.assert_equal(first.selectionBorder.left:GetWidth(), 2)
-        test.assert_false(view.provisionRows[2].badge:IsShown())
+        test.assert_equal(view.provisionRows[2].icon.texture, 134400)
+        test.assert_equal(
+            view.provisionRows[2].badge.atlas,
+            "Professions-Icon-Quality-12-Tier2"
+        )
+        test.assert_true(view.provisionRows[2].badge:IsShown())
+        test.assert_false(view.provisionRows[3].badge:IsShown())
         test.assert_false(view.provisionRows[2].selectionBorder.top:IsShown())
         test.assert_false(view.provisionRows[2].fill:IsShown())
         test.assert_true(view.provisionScrollFrame.ScrollBar:IsShown())
@@ -2715,7 +2722,14 @@ return {
         view.provisionScrollFrame.bottom = 100
         view.provisionScrollFrame:SetSize(300, 150)
         local rows = {
-            { id = 1, name = "Feast", quality = "either", progress = 0, progressText = "0 / 10" },
+            {
+                id = 1,
+                name = "Feast",
+                quality = "either",
+                progress = 0,
+                progressText = "0 / 10",
+                icon = 765432,
+            },
             { id = 2, name = "Flask", quality = "gold", progress = 0.5, progressText = "5 / 10" },
             { id = 3, name = "Oil", quality = "silver", progress = 1, progressText = "10 / 10" },
         }
@@ -2752,6 +2766,7 @@ return {
         test.assert_equal(view.provisionDragPreview.frame.frameStrata, "TOOLTIP")
         test.assert_equal(view.provisionDragPreview.frame:GetFrameLevel(), 10000)
         test.assert_equal(view.provisionDragPreview.name.text, "Feast")
+        test.assert_equal(view.provisionDragPreview.icon.texture, 765432)
         test.assert_equal(view.provisionDragPreview.frame.x, 100)
         test.assert_equal(view.provisionsReport.rows[1].id, 2)
         test.assert_equal(view.provisionsReport.rows[2].id, 1)
