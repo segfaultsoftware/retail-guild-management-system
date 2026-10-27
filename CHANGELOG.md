@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Displayed the latest successfully scanned guild-bank gold, silver, and copper
+  amount in the Provisions tab with the native Retail money presentation.
 - Resolved Provision row icons from the first usable same-name item in the
   active guild's latest committed bank snapshot while preserving the existing
   placeholder and crafting-quality badges when no usable icon is available.

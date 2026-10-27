@@ -560,6 +560,16 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
         end
         return frame
     end
+    SmallMoneyFrame_OnLoad = function(frame)
+        frame.moneyFrameLoaded = true
+    end
+    MoneyFrame_SetType = function(frame, moneyType)
+        frame.moneyType = moneyType
+    end
+    MoneyFrame_Update = function(frame, money, forceShow)
+        frame.money = money
+        frame.moneyForceShow = forceShow
+    end
     PanelTemplates_SetNumTabs = function(frame, numberOfTabs)
         frame.numTabs = numberOfTabs
     end
@@ -925,6 +935,18 @@ return {
             frame.views.provisions.addProvisionButton.parent,
             frame.views.provisions.provisionAddRow
         )
+        test.assert_equal(
+            frame.views.provisions.provisionMoneyFrame.templateName,
+            "SmallMoneyFrameTemplate"
+        )
+        test.assert_true(frame.views.provisions.provisionMoneyFrame.moneyFrameLoaded)
+        test.assert_equal(
+            frame.views.provisions.provisionMoneyFrame.moneyType,
+            "GUILD_REPAIR"
+        )
+        test.assert_equal(frame.views.provisions.provisionMoneyFrame.point, "LEFT")
+        test.assert_equal(frame.views.provisions.provisionMoneyFrame.x, 10)
+        test.assert_false(frame.views.provisions.provisionMoneyFrame:IsShown())
         test.assert_equal(
             frame.views.provisions.provisionAddRow:GetHeight(),
             64
@@ -2578,6 +2600,13 @@ return {
         test.assert_true(view.refreshButton:IsEnabled())
         view.refreshButton.scripts.OnClick()
         test.assert_equal(harness.bankRefreshRequests(), 1)
+
+        test.assert_true(harness.ui.SetProvisionsMoney(1233452412))
+        test.assert_true(view.provisionMoneyFrame:IsShown())
+        test.assert_equal(view.provisionMoneyFrame.money, 1233452412)
+        test.assert_true(view.provisionMoneyFrame.moneyForceShow)
+        test.assert_true(harness.ui.SetProvisionsMoney(nil))
+        test.assert_false(view.provisionMoneyFrame:IsShown())
 
         harness.ui.SetProvisionsEditor({
             selectedId = 7,

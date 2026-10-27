@@ -122,6 +122,11 @@ function State.reduce(previousDataset, snapshot, dateTime)
     if not observedDate then
         return nil, dateError
     end
+    if type(snapshot.money) ~= "number"
+        or snapshot.money < 0
+        or snapshot.money ~= math.floor(snapshot.money) then
+        return nil, "completed bank snapshot money must be a non-negative integer"
+    end
 
     local tabs, tabError = indexTabs(snapshot.tabs)
     if not tabs then
@@ -149,6 +154,7 @@ function State.reduce(previousDataset, snapshot, dateTime)
     local nextDataset, copyError = deepCopy({
         guild = snapshot.guild,
         scannedAt = snapshot.scannedAt,
+        money = snapshot.money,
         tabs = snapshot.tabs,
         slots = snapshot.slots,
     })

@@ -677,7 +677,8 @@ local function validateDataset(
     value,
     path,
     collectionValidators,
-    requireCanonicalRealm
+    requireCanonicalRealm,
+    optionalFieldValidators
 )
     local allowedKeys = {
         guild = true,
@@ -685,6 +686,9 @@ local function validateDataset(
     }
     for collectionName in pairs(collectionValidators) do
         allowedKeys[collectionName] = true
+    end
+    for fieldName in pairs(optionalFieldValidators or {}) do
+        allowedKeys[fieldName] = true
     end
 
     local valid, validationError = validateExactTable(value, allowedKeys, path)
@@ -721,6 +725,19 @@ local function validateDataset(
             return nil, validationError
         end
         if #value[collectionName] > 0 then
+            hasObservations = true
+        end
+    end
+
+    for fieldName, validator in pairs(optionalFieldValidators or {}) do
+        if value[fieldName] ~= nil then
+            valid, validationError = validator(
+                value[fieldName],
+                path .. "." .. fieldName
+            )
+            if not valid then
+                return nil, validationError
+            end
             hasObservations = true
         end
     end
@@ -773,7 +790,11 @@ function SavedData.validate(model)
     valid, validationError = validateDataset(model.bank, "saved data.bank", {
         tabs = validateBankTab,
         slots = validateBankSlot,
-    }, true)
+    }, true, {
+        money = function(value, path)
+            return requireInteger(value, path, 0)
+        end,
+    })
     if not valid then
         return nil, validationError
     end

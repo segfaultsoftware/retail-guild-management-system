@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 7
+## Account-wide schema: version 8
 
 ```text
 {
-  schemaVersion = 7,
+  schemaVersion = 8,
   settings = {
     minimapPos = number,
   },
@@ -74,6 +74,9 @@ reused within a partition, so exact duplicates remain independently selectable
 and movable. Version 6 provision arrays are converted once to the previously
 visible case-insensitive item-name order, with creation ID breaking equal-name
 ties; version 7 preserves that array as the guild's authoritative manual order.
+Version 8 permits the latest successful bank snapshot to retain its total money
+in copper. Older snapshots migrate without an invented amount and remain blank
+in the Provisions view until the next successful bank scan.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
@@ -148,14 +151,15 @@ shared account-wide.
 
 ## Dataset shapes
 
-Roster and bank dataset records retain the existing schema-7 shapes. A
+Roster and bank dataset records retain the existing schema-8 shapes. A
 successful observation includes its guild identity and scan timestamp. An
 empty uninitialized or reset dataset has empty collections and no guild or
 timestamp.
 
 Roster members retain canonical `Name-Realm`, rank, online, observation,
 rank-tenure, and missing-member fields. Bank tabs retain access state and
-last-access timestamps; occupied bank slots retain item, quantity, icon,
+last-access timestamps; a completed bank snapshot retains its total money in
+copper; occupied bank slots retain item, quantity, icon,
 observation, and stable-since fields. New observations may also retain the
 native Midnight reagent crafting-quality tier used by Provisions matching.
 Detailed validation and legacy migration rules remain implemented in

@@ -198,6 +198,16 @@ local function createRetailApi()
         return timestamp
     end
 
+    function api:captureMoney()
+        local money = GetGuildBankMoney()
+        if type(money) ~= "number"
+            or money < 0
+            or money ~= math.floor(money) then
+            return incomplete("the guild-bank money amount is unavailable")
+        end
+        return money
+    end
+
     return api
 end
 

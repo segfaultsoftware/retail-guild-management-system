@@ -17,6 +17,7 @@ local function newHarness(initialProvisions)
     local messages = {}
     local editorStates = {}
     local reports = {}
+    local moneyStates = {}
     local toasts = {}
     local dragCancellations = 0
     local locked = false
@@ -42,6 +43,9 @@ local function newHarness(initialProvisions)
             SetProvisionsReport = function(report, selectedId)
                 reports[#reports + 1] = { report = report, selectedId = selectedId }
             end,
+            SetProvisionsMoney = function(money)
+                moneyStates[#moneyStates + 1] = { money = money }
+            end,
             SetViewStatus = function() end,
             SelectProvisionRow = function() end,
             ShowToast = function(message)
@@ -61,6 +65,7 @@ local function newHarness(initialProvisions)
         messages = messages,
         editorStates = editorStates,
         reports = reports,
+        moneyStates = moneyStates,
         toasts = toasts,
         dragCancellations = function() return dragCancellations end,
         setLocked = function(value) locked = value == true end,
@@ -159,6 +164,17 @@ return {
 
         test.assert_equal(harness.dragCancellations(), 1)
         test.assert_equal(harness.rgms.DB.provisions[1].id, 1)
+    end),
+
+    test.case("refresh publishes only the latest committed bank money", function()
+        local harness = newHarness()
+
+        harness.provisions.RefreshStatus()
+        test.assert_nil(harness.moneyStates[1].money)
+
+        harness.rgms.DB.bank.money = 1233452412
+        harness.provisions.RefreshStatus()
+        test.assert_equal(harness.moneyStates[2].money, 1233452412)
     end),
 
     test.case("row deletion preserves a different selected provision and draft", function()

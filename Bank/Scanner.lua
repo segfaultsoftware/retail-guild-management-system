@@ -89,6 +89,24 @@ function Scanner.create(dependencies)
     end
 
     function scanner:Complete()
+        local moneyCaptured, money, moneyState, moneyError = pcall(function()
+            return dependencies.api:captureMoney()
+        end)
+        if not moneyCaptured then
+            return self:FinishFailure(
+                "the game client could not provide the guild-bank money ("
+                    .. tostring(money)
+                    .. ")",
+                "api-failure"
+            )
+        end
+        if money == nil then
+            return self:FinishFailure(
+                moneyError or "the game client could not provide the guild-bank money",
+                moneyState or "api-failure"
+            )
+        end
+
         local captured, scannedAt, timestampState, timestampError = pcall(function()
             return dependencies.api:captureTimestamp()
         end)
@@ -114,6 +132,7 @@ function Scanner.create(dependencies)
         local snapshot = {
             guild = self.work.guild,
             scannedAt = scannedAt,
+            money = money,
             tabs = self.work.tabs,
             slots = self.work.slots,
         }

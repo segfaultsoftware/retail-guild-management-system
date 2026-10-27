@@ -42,6 +42,7 @@ local function newSession(options)
         bankCatalog = nil,
         bankSlots = {},
         bankTimestamp = nil,
+        bankMoney = options.bankMoney or 1233452412,
         rosterRequests = 0,
         bankRequests = {},
         ui = {
@@ -121,6 +122,9 @@ local function newSession(options)
             end,
             captureTimestamp = function()
                 return session.bankTimestamp
+            end,
+            captureMoney = function()
+                return session.bankMoney
             end,
         },
         ownership = session.ownership,
