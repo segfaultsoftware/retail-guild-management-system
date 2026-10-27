@@ -39,7 +39,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 7,
+            schemaVersion = 8,
             settings = {
                 minimapPos = 225,
             },
@@ -58,7 +58,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 7,
+            schemaVersion = 8,
             settings = {
                 minimapPos = 225,
             },
@@ -82,7 +82,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 7,
+            schemaVersion = 8,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -108,7 +108,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
@@ -134,7 +134,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_nil(migratedGuild.rosterObservation)
         test.assert_equal(migratedGuild.newsSets, {})
         test.assert_nil(originalGuild.newsSets)
@@ -158,7 +158,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(migratedGuild.provisions, {})
         test.assert_equal(migratedGuild.nextProvisionId, 1)
         test.assert_nil(originalGuild.provisions)
@@ -183,12 +183,62 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
         test.assert_equal(migratedGuild.provisions[1].id, 1)
         test.assert_equal(migratedGuild.provisions[2].id, 3)
         test.assert_equal(migratedGuild.provisions[3].id, 4)
         test.assert_equal(accountData.findGuild(original, identity).provisions[1].id, 4)
         test.assert_equal(migratedGuild.nextProvisionId, 5)
+    end),
+
+    test.case("version 7 account data keeps older bank scans without invented money", function()
+        local identity = guild("Night Shift", "area-52")
+        local original = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "bank",
+            {
+                guild = identity,
+                scannedAt = fixtures.timestamp(),
+                tabs = {},
+                slots = {},
+            }
+        ))
+        original.schemaVersion = 7
+
+        local state = accountData.load(original)
+        local migratedBank = accountData.findGuild(state.model, identity).bank
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 7)
+        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_nil(migratedBank.money)
+        test.assert_equal(original.schemaVersion, 7)
+    end),
+
+    test.case("bank money round trips within only its guild partition", function()
+        local identity = guild("Night Shift", "area-52")
+        local model = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "bank",
+            {
+                guild = identity,
+                scannedAt = fixtures.timestamp(),
+                money = 1233452412,
+                tabs = {},
+                slots = {},
+            }
+        ))
+
+        local reloaded = accountData.load(model)
+
+        test.assert_true(reloaded.enabled)
+        test.assert_equal(
+            accountData.view(reloaded.model, identity, {}).bank.money,
+            1233452412
+        )
+        test.assert_nil(accountData.view(reloaded.model, nil, {}).bank.money)
     end),
 
     test.case("account data validates the saved LibDBIcon position", function()

@@ -108,6 +108,15 @@ local function newHarness(options)
                 iso8601 = "2024-06-01T12:35:56Z",
             })
         end,
+        captureMoney = function()
+            if options.moneyError then
+                error(options.moneyError)
+            end
+            if options.moneyUnavailable then
+                return nil, "incomplete", "guild-bank money is unavailable"
+            end
+            return options.money or 1233452412
+        end,
     }
 
     local scanner = scannerModule.create({
@@ -227,6 +236,7 @@ return {
         test.assert_equal(harness.commits(), 1)
         test.assert_equal(#harness.current().bank.tabs, 2)
         test.assert_equal(#harness.current().bank.slots, 2)
+        test.assert_equal(harness.current().bank.money, 1233452412)
         test.assert_equal(harness.current().bank.slots[1].tabIndex, 1)
         test.assert_equal(harness.current().bank.slots[2].tabIndex, 2)
         test.assert_equal(resolvedProvisionIcon(harness.current()), 444444)
@@ -465,6 +475,20 @@ return {
         test.assert_equal(resolvedProvisionIcon(harness.current()), originalIcon)
         test.assert_equal(harness.commits(), 0)
         test.assert_matches(harness.messages[1], "simulated capture failure")
+    end),
+
+    test.case("unavailable guild-bank money cannot replace the prior snapshot", function()
+        local harness = newHarness({ moneyUnavailable = true })
+        local original = harness.current()
+        test.assert_true(harness.scanner:Request("manual"))
+
+        local completed, reason = completeEmptyTab(harness)
+
+        test.assert_nil(completed)
+        test.assert_equal(reason, "incomplete")
+        test.assert_true(harness.current() == original)
+        test.assert_equal(harness.commits(), 0)
+        test.assert_matches(harness.messages[1], "money is unavailable")
     end),
 
     test.case("cancellation is silent and preserves the prior report", function()

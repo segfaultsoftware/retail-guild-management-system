@@ -457,4 +457,25 @@ return {
         test.assert_equal(state.status, "corrupt")
         test.assert_matches(state.error, "unexpected field dailySnapshots")
     end),
+
+    test.case("bank money is optional but must be non-negative whole copper", function()
+        local model = fixtures.saved_model()
+        test.assert_true(savedData.validate(model))
+
+        model.bank.money = 1233452412
+        test.assert_true(savedData.validate(model))
+
+        for _, money in ipairs({ -1, 1.5, "100" }) do
+            model.bank.money = money
+            local valid, message = savedData.validate(model)
+            test.assert_nil(valid)
+            test.assert_matches(message, "money")
+        end
+
+        local empty = savedData.newModel()
+        empty.bank.money = 0
+        local valid, message = savedData.validate(empty)
+        test.assert_nil(valid)
+        test.assert_matches(message, "observations require guild identity")
+    end),
 }

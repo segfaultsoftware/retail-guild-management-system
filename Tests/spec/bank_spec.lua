@@ -341,4 +341,26 @@ return {
         })
         harness.restore()
     end),
+
+    test.case("the Retail adapter captures valid guild-bank money in copper", function()
+        local previousGetGuildBankMoney = GetGuildBankMoney
+        GetGuildBankMoney = function()
+            return 1233452412
+        end
+        local harness = newHarness()
+        local api = harness.bank.CreateRetailApi()
+
+        test.assert_equal(api:captureMoney(), 1233452412)
+
+        GetGuildBankMoney = function()
+            return -1
+        end
+        local money, state, message = api:captureMoney()
+        test.assert_nil(money)
+        test.assert_equal(state, "incomplete")
+        test.assert_matches(message, "money amount is unavailable")
+
+        GetGuildBankMoney = previousGetGuildBankMoney
+        harness.restore()
+    end),
 }

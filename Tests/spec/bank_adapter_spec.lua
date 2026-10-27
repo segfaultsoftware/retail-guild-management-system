@@ -11,6 +11,7 @@ local GLOBAL_NAMES = {
     "GetCurrentRegion",
     "GetGuildBankItemInfo",
     "GetGuildBankItemLink",
+    "GetGuildBankMoney",
     "GetGuildBankTabInfo",
     "GetGuildInfo",
     "GetNormalizedRealmName",
@@ -104,6 +105,9 @@ local function withRetailStubs(callback)
         end
         return nil
     end
+    GetGuildBankMoney = function()
+        return 1233452412
+    end
     QueryGuildBankTab = function(tabIndex)
         requested[#requested + 1] = tabIndex
     end
@@ -187,6 +191,7 @@ return {
             model.bank = assert(bankState.reduce(model.bank, {
                 guild = catalog.guild,
                 scannedAt = scannedAt,
+                money = assert(harness.api:captureMoney()),
                 tabs = catalog.tabs,
                 slots = slots,
             }, dateTime))

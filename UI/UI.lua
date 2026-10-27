@@ -3227,6 +3227,25 @@ function ProvisionUI.createView(view)
         end
     end)
 
+    view.provisionMoneyFrame = CreateFrame(
+        "Frame",
+        "RGMSProvisionsMoneyFrame",
+        view.provisionAddRow,
+        "SmallMoneyFrameTemplate"
+    )
+    SmallMoneyFrame_OnLoad(view.provisionMoneyFrame)
+    -- This static preset shares the guild-bank denomination behavior without
+    -- subscribing the saved snapshot to live guild-bank money updates.
+    MoneyFrame_SetType(view.provisionMoneyFrame, "GUILD_REPAIR")
+    view.provisionMoneyFrame:SetPoint(
+        "LEFT",
+        view.provisionAddRow,
+        "LEFT",
+        10,
+        0
+    )
+    view.provisionMoneyFrame:Hide()
+
     view.provisionScrollFrame = CreateFrame(
         "ScrollFrame",
         nil,
@@ -5937,6 +5956,26 @@ function UI.SetProvisionsReport(report, selectedId)
     end
     ProvisionUI.refreshScrollChild(view)
     UI.SelectProvisionRow(selectedId)
+    return true
+end
+
+function UI.SetProvisionsMoney(money)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+    if money ~= nil
+        and (type(money) ~= "number"
+            or money < 0
+            or money ~= math.floor(money)) then
+        return nil, "provisions money must be a non-negative integer or absent"
+    end
+    local moneyFrame = UI.frame.views.provisions.provisionMoneyFrame
+    if money == nil then
+        moneyFrame:Hide()
+        return true
+    end
+    MoneyFrame_Update(moneyFrame, money, true)
+    moneyFrame:Show()
     return true
 end
 

@@ -9,7 +9,7 @@ local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
-AccountData.CURRENT_SCHEMA_VERSION = 7
+AccountData.CURRENT_SCHEMA_VERSION = 8
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -781,6 +781,10 @@ function AccountData.load(saved)
         end
         migratedFrom = migratedFrom or 6
         working.schemaVersion = 7
+    end
+    if working.schemaVersion == 7 then
+        migratedFrom = migratedFrom or 7
+        working.schemaVersion = 8
     end
     local valid, validationError = AccountData.validate(working)
     if not valid then

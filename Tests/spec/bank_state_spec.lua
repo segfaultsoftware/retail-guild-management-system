@@ -27,7 +27,7 @@ local function slot(tabIndex, slotIndex, itemId, quantity, observedAt)
     return value
 end
 
-local function snapshot(day, tabs, slots, guild)
+local function snapshot(day, tabs, slots, guild, money)
     local scannedAt = assert(dateTime.utcTimestamp(STARTED_AT + day * 24 * 60 * 60))
     for _, observedSlot in ipairs(slots) do
         observedSlot.observedAt = scannedAt
@@ -35,6 +35,7 @@ local function snapshot(day, tabs, slots, guild)
     return {
         guild = guild or fixtures.guild_identity(),
         scannedAt = scannedAt,
+        money = money or 123456,
         tabs = tabs,
         slots = slots,
     }
@@ -75,6 +76,7 @@ return {
         })
         local first = reduce(emptyDataset(), firstSnapshot)
         test.assert_equal(first.tabs[1].lastAccessibleAt, firstSnapshot.scannedAt)
+        test.assert_equal(first.money, 123456)
         test.assert_equal(first.slots, {
             expectedSlot(firstSnapshot.slots[1], "2024-06-01"),
             expectedSlot(firstSnapshot.slots[2], "2024-06-01"),
@@ -245,5 +247,20 @@ return {
         test.assert_equal(first, second)
         test.assert_equal(previous.slots, {})
         test.assert_nil(completedSnapshot.slots[1].stableSinceDate)
+    end),
+
+    test.case("completed snapshots require a valid non-negative money amount", function()
+        for _, money in ipairs({ -1, 1.5, "100" }) do
+            local completedSnapshot = snapshot(0, { tab(1, true) }, {})
+            completedSnapshot.money = money
+            local result, message = state.reduce(
+                emptyDataset(),
+                completedSnapshot,
+                dateTime
+            )
+
+            test.assert_nil(result)
+            test.assert_matches(message, "money")
+        end
     end),
 }

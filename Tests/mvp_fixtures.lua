@@ -221,6 +221,7 @@ function MvpFixtures.expected_bank_after_access_returns()
     return {
         guild = MvpFixtures.guild_a(),
         scannedAt = observedAt,
+        money = 1233452412,
         tabs = tabs,
         slots = { slot },
     }
