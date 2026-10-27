@@ -39,7 +39,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 6,
+            schemaVersion = 7,
             settings = {
                 minimapPos = 225,
             },
@@ -58,7 +58,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 6,
+            schemaVersion = 7,
             settings = {
                 minimapPos = 225,
             },
@@ -82,7 +82,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 6,
+            schemaVersion = 7,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -108,7 +108,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
@@ -134,7 +134,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_nil(migratedGuild.rosterObservation)
         test.assert_equal(migratedGuild.newsSets, {})
         test.assert_nil(originalGuild.newsSets)
@@ -158,10 +158,37 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
         test.assert_equal(migratedGuild.provisions, {})
         test.assert_equal(migratedGuild.nextProvisionId, 1)
         test.assert_nil(originalGuild.provisions)
+    end),
+
+    test.case("version 6 account data converts the visible provision order copy-on-write", function()
+        local identity = guild("Night Shift", "area-52")
+        local original = assert(accountData.replaceProvisions(
+            accountData.newModel(),
+            identity,
+            {
+                { id = 4, name = "zeta", quality = "either", target = 1 },
+                { id = 3, name = "Alpha", quality = "silver", target = 2 },
+                { id = 1, name = "alpha", quality = "gold", target = 3 },
+            },
+            5
+        ))
+        original.schemaVersion = 6
+
+        local state = accountData.load(original)
+        local migratedGuild = accountData.findGuild(state.model, identity)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 6)
+        test.assert_equal(state.model.schemaVersion, 7)
+        test.assert_equal(migratedGuild.provisions[1].id, 1)
+        test.assert_equal(migratedGuild.provisions[2].id, 3)
+        test.assert_equal(migratedGuild.provisions[3].id, 4)
+        test.assert_equal(accountData.findGuild(original, identity).provisions[1].id, 4)
+        test.assert_equal(migratedGuild.nextProvisionId, 5)
     end),
 
     test.case("account data validates the saved LibDBIcon position", function()

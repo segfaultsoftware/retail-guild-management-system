@@ -142,6 +142,10 @@ local function newRegion(parent)
         return self.bottom
     end
 
+    function region:GetTop()
+        return self.top or (self.bottom and self.bottom + self.height or nil)
+    end
+
     function region:GetRect()
         return self.left, self.bottom, self.width, self.height
     end
@@ -292,6 +296,10 @@ local function newRegion(parent)
         self.frameLevel = frameLevel
     end
 
+    function region:SetFrameStrata(frameStrata)
+        self.frameStrata = frameStrata
+    end
+
     function region:GetFrameLevel()
         return self.frameLevel or 0
     end
@@ -428,7 +436,6 @@ local function newRegion(parent)
     end
 
     local noOpMethods = {
-        "SetFrameStrata",
         "SetToplevel",
         "SetMovable",
         "EnableMouseWheel",
@@ -466,6 +473,9 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     local tagDeleteRequests = {}
     local tagRefreshRequests = 0
     local provisionActions = {}
+    local provisionReorderFailure
+    local cursorX, cursorY = 0, 0
+    local leftMouseDown = false
     local shownPopup
     local tooltip = {
         lines = {},
@@ -499,6 +509,12 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
     uiParent.height = screenHeight or 1080
 
     UIParent = uiParent
+    GetCursorPosition = function()
+        return cursorX, cursorY
+    end
+    IsMouseButtonDown = function(button)
+        return button == "LeftButton" and leftMouseDown
+    end
     GameTooltip = tooltip
     RAID_CLASS_COLORS = {
         DRUID = { r = 1, g = 0.49, b = 0.04 },
@@ -630,6 +646,16 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 }
                 return true
             end,
+            Reorder = function(ids)
+                provisionActions[#provisionActions + 1] = {
+                    action = "reorder",
+                    ids = ids,
+                }
+                if provisionReorderFailure then
+                    return nil, provisionReorderFailure
+                end
+                return true
+            end,
             SetDraft = function(draft)
                 provisionActions[#provisionActions + 1] = {
                     action = "draft",
@@ -750,6 +776,14 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
             return tagRefreshRequests
         end,
         provisionActions = provisionActions,
+        setCursor = function(x, y, down)
+            cursorX = x
+            cursorY = y
+            leftMouseDown = down == true
+        end,
+        setProvisionReorderFailure = function(message)
+            provisionReorderFailure = message
+        end,
         shownPopup = function()
             return shownPopup
         end,
@@ -2671,6 +2705,246 @@ return {
         harness.ui.SetGlobalScanLock(false)
         harness.ui.Hide()
         test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "close")
+    end),
+
+    test.case("Provision row drag threshold preserves clicks and changed outside drops reorder once", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.provisions
+        view.provisionScrollFrame.left = 100
+        view.provisionScrollFrame.bottom = 100
+        view.provisionScrollFrame:SetSize(300, 150)
+        local rows = {
+            { id = 1, name = "Feast", quality = "either", progress = 0, progressText = "0 / 10" },
+            { id = 2, name = "Flask", quality = "gold", progress = 0.5, progressText = "5 / 10" },
+            { id = 3, name = "Oil", quality = "silver", progress = 1, progressText = "10 / 10" },
+        }
+        harness.ui.SetProvisionsReport({ rows = rows }, 2)
+        harness.ui.SetProvisionsEditor({
+            selectedId = 2,
+            draft = { name = "Unsaved Flask", gold = true, targetText = "11" },
+            valid = true,
+            changed = true,
+        })
+
+        local first = view.provisionRows[1]
+        harness.setCursor(150, 216, true)
+        first.frame.scripts.OnMouseDown(first.frame, "LeftButton")
+        harness.setCursor(153, 216, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+        test.assert_false(view.provisionDrag.dragging)
+        harness.setCursor(153, 216, false)
+        first.frame.scripts.OnMouseUp(first.frame, "LeftButton")
+        first.frame.scripts.OnClick(first.frame)
+        test.assert_equal(harness.provisionActions[#harness.provisionActions], {
+            action = "select",
+            id = 1,
+        })
+
+        local actionCount = #harness.provisionActions
+        harness.setCursor(150, 216, true)
+        first.frame.scripts.OnMouseDown(first.frame, "LeftButton")
+        harness.setCursor(150, 130, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+        test.assert_true(view.provisionDrag.dragging)
+        test.assert_true(view.provisionDragPreview.frame:IsShown())
+        test.assert_true(view.provisionDragPreview.frame.parent == UIParent)
+        test.assert_equal(view.provisionDragPreview.frame.frameStrata, "TOOLTIP")
+        test.assert_equal(view.provisionDragPreview.frame:GetFrameLevel(), 10000)
+        test.assert_equal(view.provisionDragPreview.name.text, "Feast")
+        test.assert_equal(view.provisionDragPreview.frame.x, 100)
+        test.assert_equal(view.provisionsReport.rows[1].id, 2)
+        test.assert_equal(view.provisionsReport.rows[2].id, 1)
+        test.assert_equal(view.provisionRows[2].frame.alpha, 0)
+        test.assert_nil(first.frame.scripts.OnDragStart)
+        test.assert_nil(first.deleteButton.scripts.OnMouseDown)
+        test.assert_nil(first.deleteButton.scripts.OnDragStart)
+        test.assert_false(harness.frame().moving == true)
+
+        harness.setCursor(500, 80, false)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+        test.assert_nil(view.provisionDrag)
+        test.assert_false(view.provisionDragPreview.frame:IsShown())
+        test.assert_equal(harness.provisionActions[#harness.provisionActions], {
+            action = "reorder",
+            ids = { 2, 1, 3 },
+        })
+        test.assert_equal(view.provisionNameInput:GetText(), "Unsaved Flask")
+        test.assert_equal(view.selectedProvisionId, 2)
+
+        first.frame.scripts.OnClick(first.frame)
+        test.assert_equal(#harness.provisionActions, actionCount + 1)
+
+        local reorderCountBefore = 0
+        for _, action in ipairs(harness.provisionActions) do
+            if action.action == "reorder" then
+                reorderCountBefore = reorderCountBefore + 1
+            end
+        end
+        local currentFirst = view.provisionRows[1]
+        harness.setCursor(150, 216, true)
+        currentFirst.frame.scripts.OnMouseDown(currentFirst.frame, "LeftButton")
+        harness.setCursor(160, 216, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+        harness.setCursor(160, 216, false)
+        currentFirst.frame.scripts.OnMouseUp(currentFirst.frame, "LeftButton")
+        local reorderCountAfter = 0
+        for _, action in ipairs(harness.provisionActions) do
+            if action.action == "reorder" then
+                reorderCountAfter = reorderCountAfter + 1
+            end
+        end
+        test.assert_equal(reorderCountAfter, reorderCountBefore)
+    end),
+
+    test.case("Provision drag auto-scrolls beyond both edges and keeps updating its drop", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local view = harness.frame().views.provisions
+        view.provisionScrollFrame.left = 100
+        view.provisionScrollFrame.bottom = 100
+        view.provisionScrollFrame:SetSize(300, 140)
+        local rows = {}
+        for index = 1, 10 do
+            rows[index] = {
+                id = index,
+                name = "Provision " .. index,
+                quality = "either",
+                progress = 0,
+                progressText = "0 / 10",
+            }
+        end
+        harness.ui.SetProvisionsReport({ rows = rows })
+
+        local first = view.provisionRows[1]
+        harness.setCursor(150, 205, true)
+        first.frame.scripts.OnMouseDown(first.frame, "LeftButton")
+        harness.setCursor(150, 50, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.5)
+        test.assert_equal(view.provisionScrollFrame:GetVerticalScroll(), 60)
+        test.assert_true(view.provisionsReport.rows[1].id ~= 1)
+        local firstOutsideIndex
+        for index, row in ipairs(view.provisionsReport.rows) do
+            if row.id == 1 then
+                firstOutsideIndex = index
+            end
+        end
+
+        harness.setCursor(150, -500, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.5)
+        test.assert_equal(view.provisionScrollFrame:GetVerticalScroll(), 120)
+        local secondOutsideIndex
+        for index, row in ipairs(view.provisionsReport.rows) do
+            if row.id == 1 then
+                secondOutsideIndex = index
+            end
+        end
+        test.assert_true(secondOutsideIndex > firstOutsideIndex)
+
+        harness.setCursor(500, -500, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 1)
+        test.assert_equal(view.provisionScrollFrame:GetVerticalScroll(), 120)
+        test.assert_equal(view.provisionsReport.rows[secondOutsideIndex].id, 1)
+
+        harness.setCursor(150, 300, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 1)
+        test.assert_equal(view.provisionScrollFrame:GetVerticalScroll(), 0)
+        test.assert_equal(view.provisionsReport.rows[1].id, 1)
+
+        local maximum = view.provisionScrollChild:GetHeight()
+            - view.provisionScrollFrame:GetHeight()
+        view.provisionScrollFrame:SetVerticalScroll(maximum)
+        harness.setCursor(150, 50, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 1)
+        test.assert_equal(view.provisionScrollFrame:GetVerticalScroll(), maximum)
+
+        harness.setCursor(150, 280, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+        test.assert_true(view.provisionDragPreview.frame.y > 240)
+        test.assert_true(view.provisionDragPreview.frame.parent == UIParent)
+        harness.ui.CancelProvisionDrag()
+        test.assert_false(view.provisionDragPreview.frame:IsShown())
+    end),
+
+    test.case("Provision drag interruptions and persistence failures restore visual state", function()
+        local function preparedHarness()
+            local harness = newHarness()
+            harness.ui.Initialize()
+            local view = harness.frame().views.provisions
+            view.provisionScrollFrame.left = 100
+            view.provisionScrollFrame.bottom = 100
+            view.provisionScrollFrame:SetSize(300, 150)
+            harness.ui.SetProvisionsReport({ rows = {
+                { id = 1, name = "Feast", quality = "either", progress = 0, progressText = "0 / 10" },
+                { id = 2, name = "Flask", quality = "gold", progress = 0, progressText = "0 / 10" },
+                { id = 3, name = "Oil", quality = "silver", progress = 0, progressText = "0 / 10" },
+            } }, 2)
+            harness.ui.SetProvisionsEditor({
+                selectedId = 2,
+                draft = { name = "Unsaved Flask", gold = true, targetText = "11" },
+                valid = true,
+                changed = true,
+            })
+            return harness, view
+        end
+        local function startChangedDrag(harness, view)
+            local first = view.provisionRows[1]
+            harness.setCursor(150, 216, true)
+            first.frame.scripts.OnMouseDown(first.frame, "LeftButton")
+            harness.setCursor(150, 130, true)
+            view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+            test.assert_equal(view.provisionsReport.rows[1].id, 2)
+        end
+        local function assertRestored(harness, view)
+            test.assert_nil(view.provisionDrag)
+            test.assert_equal(view.provisionsReport.rows[1].id, 1)
+            test.assert_equal(view.provisionsReport.rows[2].id, 2)
+            test.assert_equal(view.provisionRows[1].frame.alpha, 1)
+            test.assert_equal(view.provisionNameInput:GetText(), "Unsaved Flask")
+            test.assert_equal(view.selectedProvisionId, 2)
+            for _, action in ipairs(harness.provisionActions) do
+                test.assert_false(action.action == "reorder")
+            end
+        end
+
+        local harness, view = preparedHarness()
+        startChangedDrag(harness, view)
+        harness.ui.SetGlobalScanLock(true)
+        assertRestored(harness, view)
+        harness.ui.SetGlobalScanLock(false)
+
+        harness.ui.Show()
+        harness.ui.SelectPrimaryTab("provisions")
+        startChangedDrag(harness, view)
+        harness.ui.SelectPrimaryTab("tags")
+        assertRestored(harness, view)
+
+        harness.ui.SelectPrimaryTab("provisions")
+        startChangedDrag(harness, view)
+        harness.ui.Hide()
+        assertRestored(harness, view)
+
+        harness, view = preparedHarness()
+        startChangedDrag(harness, view)
+        harness.ui.SetDataState(false, "corrupt")
+        test.assert_nil(view.provisionDrag)
+        for _, action in ipairs(harness.provisionActions) do
+            test.assert_false(action.action == "reorder")
+        end
+
+        harness, view = preparedHarness()
+        harness.setProvisionReorderFailure("simulated storage failure")
+        startChangedDrag(harness, view)
+        harness.setCursor(500, 80, false)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+        test.assert_equal(view.provisionsReport.rows[1].id, 1)
+        test.assert_equal(view.provisionsReport.rows[2].id, 2)
+        test.assert_equal(view.provisionNameInput:GetText(), "Unsaved Flask")
+        test.assert_equal(view.selectedProvisionId, 2)
+        test.assert_equal(harness.provisionActions[#harness.provisionActions], {
+            action = "reorder",
+            ids = { 2, 1, 3 },
+        })
     end),
 
     test.case("success toasts stack newest-first and independently fade reflow and clear", function()

@@ -9,6 +9,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Added persistent per-guild Provision ordering with topmost row drag previews,
+  live midpoint reordering, constant-speed auto-scroll inside and beyond the
+  list edges, interruption rollback, and atomic drop persistence.
 - Added transient, stacked success toasts for completed Provision creates,
   updates, and deletions, with independent hold-and-fade timing and
   window-bound lifecycle and layering.

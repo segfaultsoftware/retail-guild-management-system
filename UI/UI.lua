@@ -130,6 +130,10 @@ local ProvisionUI = {
     ICON_SIZE = 38,
     PROGRESS_WIDTH = 180,
     PROGRESS_HEIGHT = 18,
+    DRAG_THRESHOLD = 5,
+    DRAG_EDGE_ZONE = 28,
+    DRAG_SCROLL_SPEED = 120,
+    DRAG_FRAME_LEVEL = 10000,
     TOAST_FRAME_LEVEL_OFFSET = 50,
     TOAST_MAX_WIDTH = 560,
     TOAST_BORDER_INSET = 1,
@@ -153,6 +157,9 @@ local ProvisionUI = {
 -- queue and presentation model do not provide RGMS's window-relative anchor,
 -- exact dimmer layering, or tested close lifecycle, so the small native stack
 -- remains within the existing adapter instead of adding a bundled dependency.
+-- Blizzard's ScrollUtil linear drag behavior was evaluated for manual ordering,
+-- but it requires a ScrollBox/data-provider rewrite. Provisions intentionally
+-- stays on RGMS's fixed-row ScrollFrame, so its small drag adapter remains local.
 local CHARACTER_NOTE_LIMIT = 5500
 local GUILD_NOTE_LIMIT = 31
 local CHARACTER_NOTE_TEXTURE = "Interface\\AddOns\\RGMS\\assets\\icons\\notebook-pen.png"
@@ -3069,6 +3076,98 @@ function ProvisionUI.refreshScrollChild(view)
     setScrollBarShown(view.provisionScrollFrame, contentHeight > viewportHeight)
 end
 
+function ProvisionUI.createRowVisual(parent)
+    local frame = createFrame("Button", nil, parent, "BackdropTemplate")
+    frame:SetHeight(ProvisionUI.ROW_HEIGHT)
+    flatBackdrop(frame, PALETTE.control, PALETTE.border)
+    local selectionBorder = {}
+    for _, edge in ipairs({ "top", "bottom", "left", "right" }) do
+        local texture = frame:CreateTexture(nil, "OVERLAY")
+        texture:SetTexture(WHITE_TEXTURE)
+        setTextureColor(texture, PALETTE.pink)
+        texture:Hide()
+        selectionBorder[edge] = texture
+    end
+    selectionBorder.top:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    selectionBorder.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    selectionBorder.top:SetHeight(2)
+    selectionBorder.bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    selectionBorder.bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    selectionBorder.bottom:SetHeight(2)
+    selectionBorder.left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    selectionBorder.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    selectionBorder.left:SetWidth(2)
+    selectionBorder.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    selectionBorder.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    selectionBorder.right:SetWidth(2)
+    local icon = frame:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(ProvisionUI.ICON_SIZE, ProvisionUI.ICON_SIZE)
+    icon:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -10)
+    local badge = frame:CreateTexture(nil, "OVERLAY")
+    badge:SetSize(16, 16)
+    badge:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 3, -3)
+    local name = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -1)
+    name:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -11)
+    name:SetJustifyH("LEFT")
+    setFont(name, FONT_SEMIBOLD, 12)
+    setTextColor(name, PALETTE.text)
+    local progress = createFrame("Frame", nil, frame, "BackdropTemplate")
+    progress:SetSize(ProvisionUI.PROGRESS_WIDTH, ProvisionUI.PROGRESS_HEIGHT)
+    progress:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", 10, 1)
+    flatBackdrop(progress, PALETTE.shell, PALETTE.border)
+    local fill = progress:CreateTexture(nil, "ARTWORK")
+    fill:SetTexture(WHITE_TEXTURE)
+    fill:SetPoint("TOPLEFT", progress, "TOPLEFT", 1, -1)
+    fill:SetPoint("BOTTOMLEFT", progress, "BOTTOMLEFT", 1, 1)
+    fill:SetWidth(1)
+    setTextureColor(fill, PALETTE.pink)
+    local progressText = progress:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    progressText:SetPoint("CENTER", progress, "CENTER", 0, 0)
+    setFont(progressText, FONT_SEMIBOLD, 10)
+    setTextColor(progressText, PALETTE.text)
+    local deleteButton = createFrame("Button", nil, frame)
+    deleteButton:SetSize(20, 20)
+    deleteButton:SetPoint("LEFT", progress, "RIGHT", 6, 0)
+    local deleteIcon = deleteButton:CreateTexture(nil, "ARTWORK")
+    deleteIcon:SetAllPoints(deleteButton)
+    if type(deleteIcon.SetAtlas) == "function" then
+        deleteIcon:SetAtlas(TAG_DELETE_ATLAS)
+    end
+    return {
+        frame = frame,
+        icon = icon,
+        badge = badge,
+        name = name,
+        progress = progress,
+        fill = fill,
+        progressText = progressText,
+        deleteButton = deleteButton,
+        deleteIcon = deleteIcon,
+        selectionBorder = selectionBorder,
+    }
+end
+
+function ProvisionUI.renderRow(line, row)
+    line.icon:SetTexture(row.icon or 134400)
+    line.name:SetText(row.name)
+    line.progressText:SetText(row.progressText)
+    line.fill:SetWidth(math.max(1, (ProvisionUI.PROGRESS_WIDTH - 2) * row.progress))
+    line.fill:SetShown(row.progress > 0)
+    if row.quality == "silver" or row.quality == "gold" then
+        if type(line.badge.SetAtlas) == "function" then
+            line.badge:SetAtlas(
+                row.quality == "silver"
+                    and ProvisionUI.QUALITY_ATLASES.silver
+                    or ProvisionUI.QUALITY_ATLASES.gold
+            )
+        end
+        line.badge:Show()
+    else
+        line.badge:Hide()
+    end
+end
+
 function ProvisionUI.createView(view)
     view.scrollFrame:Hide()
     view.text:Hide()
@@ -3154,6 +3253,10 @@ function ProvisionUI.createView(view)
     view.provisionScrollChild:SetSize(1, 1)
     view.provisionScrollFrame:SetScrollChild(view.provisionScrollChild)
     view.provisionRows = {}
+    view.provisionDragWatcher = createFrame("Frame", nil, UIParent)
+    view.provisionDragWatcher:SetScript("OnUpdate", function(_, elapsed)
+        ProvisionUI.updateDrag(view, elapsed)
+    end)
     view.provisionScrollFrame:SetScript("OnSizeChanged", function()
         ProvisionUI.refreshScrollChild(view)
     end)
@@ -3234,78 +3337,26 @@ function ProvisionUI.acquireRow(view, index)
     if line then
         return line
     end
-    local frame = CreateFrame("Button", nil, view.provisionScrollChild, "BackdropTemplate")
-    frame:SetHeight(ProvisionUI.ROW_HEIGHT)
-    flatBackdrop(frame, PALETTE.control, PALETTE.border)
-    local selectionBorder = {}
-    for _, edge in ipairs({ "top", "bottom", "left", "right" }) do
-        local texture = frame:CreateTexture(nil, "OVERLAY")
-        texture:SetTexture(WHITE_TEXTURE)
-        setTextureColor(texture, PALETTE.pink)
-        texture:Hide()
-        selectionBorder[edge] = texture
-    end
-    selectionBorder.top:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    selectionBorder.top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    selectionBorder.top:SetHeight(2)
-    selectionBorder.bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-    selectionBorder.bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    selectionBorder.bottom:SetHeight(2)
-    selectionBorder.left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    selectionBorder.left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-    selectionBorder.left:SetWidth(2)
-    selectionBorder.right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    selectionBorder.right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    selectionBorder.right:SetWidth(2)
-    local icon = frame:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(ProvisionUI.ICON_SIZE, ProvisionUI.ICON_SIZE)
-    icon:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -10)
-    local badge = frame:CreateTexture(nil, "OVERLAY")
-    badge:SetSize(16, 16)
-    badge:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 3, -3)
-    local name = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -1)
-    name:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -11)
-    name:SetJustifyH("LEFT")
-    setFont(name, FONT_SEMIBOLD, 12)
-    setTextColor(name, PALETTE.text)
-    local progress = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    progress:SetSize(ProvisionUI.PROGRESS_WIDTH, ProvisionUI.PROGRESS_HEIGHT)
-    progress:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", 10, 1)
-    flatBackdrop(progress, PALETTE.shell, PALETTE.border)
-    local fill = progress:CreateTexture(nil, "ARTWORK")
-    fill:SetTexture(WHITE_TEXTURE)
-    fill:SetPoint("TOPLEFT", progress, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", progress, "BOTTOMLEFT", 1, 1)
-    fill:SetWidth(1)
-    setTextureColor(fill, PALETTE.pink)
-    local progressText = progress:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    progressText:SetPoint("CENTER", progress, "CENTER", 0, 0)
-    setFont(progressText, FONT_SEMIBOLD, 10)
-    setTextColor(progressText, PALETTE.text)
-    local deleteButton = CreateFrame("Button", nil, frame)
-    deleteButton:SetSize(20, 20)
-    deleteButton:SetPoint("LEFT", progress, "RIGHT", 6, 0)
-    local deleteIcon = deleteButton:CreateTexture(nil, "ARTWORK")
-    deleteIcon:SetAllPoints(deleteButton)
-    if type(deleteIcon.SetAtlas) == "function" then
-        deleteIcon:SetAtlas(TAG_DELETE_ATLAS)
-    end
-    line = {
-        frame = frame,
-        icon = icon,
-        badge = badge,
-        name = name,
-        progress = progress,
-        fill = fill,
-        progressText = progressText,
-        deleteButton = deleteButton,
-        deleteIcon = deleteIcon,
-        selectionBorder = selectionBorder,
-    }
+    line = ProvisionUI.createRowVisual(view.provisionScrollChild)
+    local frame = line.frame
+    local deleteButton = line.deleteButton
     frame:SetScript("OnClick", function()
+        if line.suppressNextClick then
+            line.suppressNextClick = nil
+            return
+        end
         if line.row and type(RGMS.Provisions) == "table" then
             RGMS.Provisions.Select(line.row.id)
+        end
+    end)
+    frame:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" then
+            ProvisionUI.pressRow(view, line)
+        end
+    end)
+    frame:SetScript("OnMouseUp", function(_, button)
+        if button == "LeftButton" then
+            ProvisionUI.finishDrag(view)
         end
     end)
     deleteButton:SetScript("OnClick", function()
@@ -3329,6 +3380,328 @@ function ProvisionUI.acquireRow(view, index)
     end)
     view.provisionRows[index] = line
     return line
+end
+
+function ProvisionUI.copyRows(rows)
+    local copied = {}
+    for index, row in ipairs(rows or {}) do
+        copied[index] = row
+    end
+    return copied
+end
+
+function ProvisionUI.cursorPosition()
+    if type(GetCursorPosition) ~= "function" then
+        return 0, 0
+    end
+    local x, y = GetCursorPosition()
+    local scale = type(UIParent.GetEffectiveScale) == "function"
+        and UIParent:GetEffectiveScale()
+        or 1
+    if type(scale) ~= "number" or scale <= 0 then
+        scale = 1
+    end
+    return x / scale, y / scale
+end
+
+function ProvisionUI.frameRect(frame)
+    if not frame or type(frame.GetLeft) ~= "function"
+        or type(frame.GetBottom) ~= "function" then
+        return nil
+    end
+    local left = frame:GetLeft()
+    local bottom = frame:GetBottom()
+    if type(left) ~= "number" or type(bottom) ~= "number" then
+        return nil
+    end
+    local width = frame:GetWidth()
+    local height = frame:GetHeight()
+    local top = type(frame.GetTop) == "function" and frame:GetTop() or nil
+    top = type(top) == "number" and top or bottom + height
+    return left, bottom, left + width, top
+end
+
+function ProvisionUI.setRowsAlpha(view, alpha)
+    for _, line in ipairs(view.provisionRows or {}) do
+        line.frame:SetAlpha(alpha)
+    end
+end
+
+function ProvisionUI.ensureDragPreview(view)
+    if view.provisionDragPreview then
+        return view.provisionDragPreview
+    end
+    local preview = ProvisionUI.createRowVisual(UIParent)
+    preview.frame:SetFrameStrata("TOOLTIP")
+    preview.frame:SetFrameLevel(ProvisionUI.DRAG_FRAME_LEVEL)
+    preview.frame:EnableMouse(false)
+    preview.deleteButton:EnableMouse(false)
+    preview.frame:Hide()
+    view.provisionDragPreview = preview
+    return preview
+end
+
+function ProvisionUI.positionDragPreview(view, x, y)
+    local drag = view.provisionDrag
+    if not drag or not drag.dragging then
+        return
+    end
+    local preview = ProvisionUI.ensureDragPreview(view)
+    local left = ProvisionUI.frameRect(view.provisionScrollFrame)
+    left = left or drag.previewLeft or 0
+    drag.previewLeft = left
+    preview.frame:ClearAllPoints()
+    preview.frame:SetPoint(
+        "TOPLEFT",
+        UIParent,
+        "BOTTOMLEFT",
+        left,
+        y + drag.grabOffset
+    )
+end
+
+function ProvisionUI.findRowIndex(rows, id)
+    for index, row in ipairs(rows or {}) do
+        if row.id == id then
+            return index
+        end
+    end
+    return nil
+end
+
+function ProvisionUI.applyProspectiveOrder(view)
+    local drag = view.provisionDrag
+    if not drag then
+        return
+    end
+    ProvisionUI.setRowsAlpha(view, 1)
+    view.applyingProvisionDrag = true
+    UI.SetProvisionsReport({ rows = drag.rows }, view.selectedProvisionId)
+    view.applyingProvisionDrag = nil
+    local index = ProvisionUI.findRowIndex(drag.rows, drag.sourceId)
+    local line = index and view.provisionRows[index] or nil
+    if line then
+        line.frame:SetAlpha(0)
+    end
+end
+
+function ProvisionUI.beginDrag(view, x, y)
+    local drag = view.provisionDrag
+    if not drag or drag.dragging then
+        return
+    end
+    drag.dragging = true
+    drag.line.suppressNextClick = true
+    local preview = ProvisionUI.ensureDragPreview(view)
+    ProvisionUI.renderRow(preview, drag.sourceRow)
+    for _, edge in pairs(preview.selectionBorder) do
+        edge:SetShown(drag.sourceId == view.selectedProvisionId)
+    end
+    preview.frame:SetWidth(math.max(1, view.provisionScrollChild:GetWidth()))
+    local sourceTop = type(drag.line.frame.GetTop) == "function"
+        and drag.line.frame:GetTop()
+        or nil
+    drag.grabOffset = type(sourceTop) == "number"
+        and sourceTop - y
+        or ProvisionUI.ROW_HEIGHT / 2
+    preview.frame:Show()
+    ProvisionUI.applyProspectiveOrder(view)
+    ProvisionUI.positionDragPreview(view, x, y)
+end
+
+function ProvisionUI.pressRow(view, line)
+    if UI.dataEnabled == false or UI.globalScanLocked == true
+        or not line.row or view.provisionDrag then
+        return nil
+    end
+    line.suppressNextClick = nil
+    local rows = type(view.provisionsReport) == "table"
+        and view.provisionsReport.rows
+        or nil
+    local sourceIndex = ProvisionUI.findRowIndex(rows, line.row.id)
+    if not sourceIndex then
+        return nil
+    end
+    local x, y = ProvisionUI.cursorPosition()
+    view.provisionDrag = {
+        dragging = false,
+        sourceId = line.row.id,
+        sourceRow = line.row,
+        sourceIndex = sourceIndex,
+        line = line,
+        startX = x,
+        startY = y,
+        rows = ProvisionUI.copyRows(rows),
+        originalRows = ProvisionUI.copyRows(rows),
+    }
+    return true
+end
+
+function ProvisionUI.updateProspectiveIndex(view, x, y)
+    local drag = view.provisionDrag
+    local left, bottom, right, top = ProvisionUI.frameRect(view.provisionScrollFrame)
+    if not left or x < left or x > right then
+        return false
+    end
+    local index = ProvisionUI.findRowIndex(drag.rows, drag.sourceId)
+    if not index then
+        return false
+    end
+    local pitch = ProvisionUI.ROW_HEIGHT + ProvisionUI.ROW_GAP
+    local boundedY = math.max(bottom, math.min(top, y))
+    local contentY = top - boundedY + view.provisionScrollFrame:GetVerticalScroll()
+    local changed = false
+    while index > 1 do
+        local previousMidpoint = 2 + (index - 2) * pitch + ProvisionUI.ROW_HEIGHT / 2
+        if contentY >= previousMidpoint then
+            break
+        end
+        drag.rows[index], drag.rows[index - 1] = drag.rows[index - 1], drag.rows[index]
+        index = index - 1
+        changed = true
+    end
+    while index < #drag.rows do
+        local nextMidpoint = 2 + index * pitch + ProvisionUI.ROW_HEIGHT / 2
+        if contentY <= nextMidpoint then
+            break
+        end
+        drag.rows[index], drag.rows[index + 1] = drag.rows[index + 1], drag.rows[index]
+        index = index + 1
+        changed = true
+    end
+    if changed then
+        ProvisionUI.applyProspectiveOrder(view)
+    end
+    return changed
+end
+
+function ProvisionUI.updateAutoScroll(view, x, y, elapsed)
+    local left, bottom, right, top = ProvisionUI.frameRect(view.provisionScrollFrame)
+    if not left or x < left or x > right then
+        return false
+    end
+    local direction = 0
+    if y >= top - ProvisionUI.DRAG_EDGE_ZONE then
+        direction = -1
+    elseif y <= bottom + ProvisionUI.DRAG_EDGE_ZONE then
+        direction = 1
+    end
+    if direction == 0 then
+        return false
+    end
+    local maximum = math.max(
+        0,
+        view.provisionScrollChild:GetHeight() - view.provisionScrollFrame:GetHeight()
+    )
+    local current = view.provisionScrollFrame:GetVerticalScroll()
+    local target = math.max(
+        0,
+        math.min(maximum, current + direction * ProvisionUI.DRAG_SCROLL_SPEED * elapsed)
+    )
+    if target == current then
+        return false
+    end
+    view.provisionScrollFrame:SetVerticalScroll(target)
+    return true
+end
+
+function ProvisionUI.updateDrag(view, elapsed)
+    local drag = view.provisionDrag
+    if not drag then
+        return
+    end
+    local x, y = ProvisionUI.cursorPosition()
+    if not drag.dragging then
+        local dx = x - drag.startX
+        local dy = y - drag.startY
+        if dx * dx + dy * dy >= ProvisionUI.DRAG_THRESHOLD * ProvisionUI.DRAG_THRESHOLD then
+            ProvisionUI.beginDrag(view, x, y)
+        end
+    end
+    if drag.dragging then
+        ProvisionUI.updateAutoScroll(view, x, y, elapsed or 0)
+        ProvisionUI.updateProspectiveIndex(view, x, y)
+        ProvisionUI.positionDragPreview(view, x, y)
+    end
+    if type(IsMouseButtonDown) == "function" and not IsMouseButtonDown("LeftButton") then
+        ProvisionUI.finishDrag(view)
+    end
+end
+
+function ProvisionUI.orderIds(rows)
+    local ids = {}
+    for index, row in ipairs(rows or {}) do
+        ids[index] = row.id
+    end
+    return ids
+end
+
+function ProvisionUI.orderChanged(drag)
+    for index, row in ipairs(drag.rows) do
+        if drag.originalRows[index] ~= row then
+            return true
+        end
+    end
+    return false
+end
+
+function ProvisionUI.finishDrag(view)
+    local drag = view.provisionDrag
+    if not drag then
+        return false
+    end
+    if not drag.dragging then
+        view.provisionDrag = nil
+        return false
+    end
+
+    local changed = ProvisionUI.orderChanged(drag)
+    ProvisionUI.setRowsAlpha(view, 1)
+    if view.provisionDragPreview then
+        view.provisionDragPreview.frame:Hide()
+    end
+    view.provisionDrag = nil
+    if not changed then
+        view.applyingProvisionDrag = true
+        UI.SetProvisionsReport({ rows = drag.originalRows }, view.selectedProvisionId)
+        view.applyingProvisionDrag = nil
+        return false
+    end
+
+    local reordered, reorderError
+    if type(RGMS.Provisions) == "table"
+        and type(RGMS.Provisions.Reorder) == "function" then
+        reordered, reorderError = RGMS.Provisions.Reorder(ProvisionUI.orderIds(drag.rows))
+    else
+        reorderError = "provision reordering is unavailable"
+    end
+    if not reordered then
+        view.applyingProvisionDrag = true
+        UI.SetProvisionsReport({ rows = drag.originalRows }, view.selectedProvisionId)
+        view.applyingProvisionDrag = nil
+        return nil, reorderError
+    end
+    return true
+end
+
+function UI.CancelProvisionDrag()
+    if not UI.frame then
+        return false
+    end
+    local view = UI.frame.views.provisions
+    local drag = view and view.provisionDrag
+    if not drag then
+        return false
+    end
+    ProvisionUI.setRowsAlpha(view, 1)
+    if view.provisionDragPreview then
+        view.provisionDragPreview.frame:Hide()
+    end
+    view.provisionDrag = nil
+    view.applyingProvisionDrag = true
+    UI.SetProvisionsReport({ rows = drag.originalRows }, view.selectedProvisionId)
+    view.applyingProvisionDrag = nil
+    return true
 end
 
 local function refreshVisibleReport(view, tabId)
@@ -4450,6 +4823,7 @@ local function createWindow()
         refreshVisibleReport(frame.views[UI.selectedTab], UI.selectedTab)
     end)
     frame:SetScript("OnHide", function()
+        UI.CancelProvisionDrag()
         UI.ClearToasts()
         local mainsAltsView = frame.views.mainsalts
         cancelMainsAltsScrollWork(mainsAltsView)
@@ -4690,6 +5064,9 @@ function UI.SelectPrimaryTab(tabId)
     if UI.globalScanLocked == true and UI.frame:IsShown() then
         return nil, "scan-locked"
     end
+    if previousTabId == "provisions" and tabId ~= "provisions" then
+        UI.CancelProvisionDrag()
+    end
 
     if UI.selectedTab and UI.frame.views[UI.selectedTab] then
         if UI.selectedTab == "roster" then
@@ -4852,6 +5229,7 @@ function UI.SetViewContent(tabId, content)
         refreshBankTabScrollChild(view)
         view.text:Show()
     elseif tabId == "provisions" then
+        UI.CancelProvisionDrag()
         view.provisionsReport = { rows = {} }
         for _, line in ipairs(view.provisionRows or {}) do
             line.row = nil
@@ -5521,6 +5899,9 @@ function UI.SetProvisionsReport(report, selectedId)
         return nil, "provisions report must contain rows"
     end
     local view = UI.frame.views.provisions
+    if view.provisionDrag and not view.applyingProvisionDrag then
+        UI.CancelProvisionDrag()
+    end
     view.provisionsReport = report
     for index, row in ipairs(report.rows) do
         local line = ProvisionUI.acquireRow(view, index)
@@ -5545,23 +5926,7 @@ function UI.SetProvisionsReport(report, selectedId)
                 -ProvisionUI.ROW_GAP
             )
         end
-        line.icon:SetTexture(row.icon or 134400)
-        line.name:SetText(row.name)
-        line.progressText:SetText(row.progressText)
-        line.fill:SetWidth(math.max(1, (ProvisionUI.PROGRESS_WIDTH - 2) * row.progress))
-        line.fill:SetShown(row.progress > 0)
-        if row.quality == "silver" or row.quality == "gold" then
-            if type(line.badge.SetAtlas) == "function" then
-                line.badge:SetAtlas(
-                    row.quality == "silver"
-                        and ProvisionUI.QUALITY_ATLASES.silver
-                        or ProvisionUI.QUALITY_ATLASES.gold
-                )
-            end
-            line.badge:Show()
-        else
-            line.badge:Hide()
-        end
+        ProvisionUI.renderRow(line, row)
         line.frame:Show()
     end
     for index = #report.rows + 1, #view.provisionRows do
@@ -5635,6 +6000,9 @@ function UI.SetGlobalScanLock(locked)
         return nil, "the RGMS window has not been initialized"
     end
     UI.globalScanLocked = locked == true
+    if UI.globalScanLocked then
+        UI.CancelProvisionDrag()
+    end
     UI.frame.globalDimmer:SetShown(UI.globalScanLocked)
     UI.frame.newsWindow.dimmer:SetShown(UI.globalScanLocked)
     UI.frame.closeButton:SetFrameLevel(
@@ -5823,6 +6191,9 @@ function UI.SetDataState(enabled, state)
     end
 
     UI.dataEnabled = enabled == true
+    if not UI.dataEnabled then
+        UI.CancelProvisionDrag()
+    end
     updateRosterRefreshButton(UI.frame.views.roster)
     updateRosterRefreshButton(UI.frame.views.mainsalts)
     ProvisionUI.updateBankRefreshButton(UI.frame.views.bank)

@@ -18,6 +18,7 @@ local function newHarness(initialProvisions)
     local editorStates = {}
     local reports = {}
     local toasts = {}
+    local dragCancellations = 0
     local locked = false
     local rgms = {
         AccountData = accountData,
@@ -46,6 +47,9 @@ local function newHarness(initialProvisions)
             ShowToast = function(message)
                 toasts[#toasts + 1] = message
             end,
+            CancelProvisionDrag = function()
+                dragCancellations = dragCancellations + 1
+            end,
         },
     }
     local chunk = assert(loadfile("Provisions/Provisions.lua"))
@@ -58,6 +62,7 @@ local function newHarness(initialProvisions)
         editorStates = editorStates,
         reports = reports,
         toasts = toasts,
+        dragCancellations = function() return dragCancellations end,
         setLocked = function(value) locked = value == true end,
     }
 end
@@ -147,6 +152,15 @@ return {
         test.assert_equal(harness.provisions.draft.name, "")
     end),
 
+    test.case("guild changes cancel an active provision drag before refreshing", function()
+        local harness = newHarness({ saved(1, "Feast", "silver", 10) })
+
+        test.assert_true(harness.provisions.OnGuildChanged())
+
+        test.assert_equal(harness.dragCancellations(), 1)
+        test.assert_equal(harness.rgms.DB.provisions[1].id, 1)
+    end),
+
     test.case("row deletion preserves a different selected provision and draft", function()
         local harness = newHarness({
             saved(1, "Feast", "silver", 10),
@@ -181,9 +195,74 @@ return {
         test.assert_nil(harness.provisions.Select(1))
         test.assert_nil(harness.provisions.Save())
         test.assert_nil(harness.provisions.Delete())
+        test.assert_nil(harness.provisions.Reorder({ 1 }))
         test.assert_equal(harness.provisions.draft.name, "Unsaved Feast")
         test.assert_equal(harness.rgms.DB.provisions[1].name, "Feast")
         test.assert_equal(#harness.toasts, 0)
+    end),
+
+    test.case("reorder atomically preserves values next ID selection and draft", function()
+        local harness = newHarness({
+            saved(1, "Feast", "either", 10),
+            saved(2, "Feast", "either", 20),
+            saved(3, "Flask", "gold", 30),
+        })
+        harness.provisions.Select(2)
+        harness.provisions.SetDraft({
+            name = "Unsaved Feast",
+            silver = true,
+            gold = true,
+            targetText = "21",
+        })
+        local calls = 0
+        local originalReplace = harness.rgms.AccountData.replaceProvisions
+        harness.rgms.AccountData.replaceProvisions = function(...)
+            calls = calls + 1
+            return originalReplace(...)
+        end
+
+        test.assert_true(harness.provisions.Reorder({ 3, 2, 1 }))
+
+        test.assert_equal(calls, 1)
+        test.assert_equal(harness.rgms.DB.provisions, {
+            saved(3, "Flask", "gold", 30),
+            saved(2, "Feast", "either", 20),
+            saved(1, "Feast", "either", 10),
+        })
+        test.assert_equal(harness.rgms.DB.nextProvisionId, 4)
+        test.assert_equal(harness.provisions.selectedId, 2)
+        test.assert_equal(harness.provisions.draft.name, "Unsaved Feast")
+        test.assert_equal(#harness.toasts, 0)
+    end),
+
+    test.case("reorder persistence failure leaves saved state selection and draft unchanged", function()
+        local harness = newHarness({
+            saved(1, "Feast", "silver", 10),
+            saved(2, "Flask", "gold", 20),
+        })
+        harness.provisions.Select(1)
+        harness.provisions.SetDraft({
+            name = "Unsaved Feast",
+            silver = true,
+            targetText = "11",
+        })
+        local originalAccount = harness.rgms.AccountDataState.model
+        local originalReplace = harness.rgms.AccountData.replaceProvisions
+        harness.rgms.AccountData.replaceProvisions = function()
+            return nil, "simulated storage failure"
+        end
+
+        local result, message = harness.provisions.Reorder({ 2, 1 })
+
+        test.assert_nil(result)
+        test.assert_equal(message, "simulated storage failure")
+        test.assert_true(harness.rgms.AccountDataState.model == originalAccount)
+        test.assert_equal(harness.rgms.DB.provisions[1].id, 1)
+        test.assert_equal(harness.provisions.selectedId, 1)
+        test.assert_equal(harness.provisions.draft.name, "Unsaved Feast")
+        test.assert_matches(harness.messages[1], "Could not reorder provision")
+        test.assert_equal(#harness.toasts, 0)
+        harness.rgms.AccountData.replaceProvisions = originalReplace
     end),
 
     test.case("persistence failures retain selection draft and saved data", function()

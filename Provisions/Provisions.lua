@@ -242,6 +242,23 @@ function Provisions.Delete(id)
     return true
 end
 
+function Provisions.Reorder(orderedIds)
+    if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
+        return nil, "scan-locked"
+    end
+    ensureGuildSession()
+    local items, reorderError = Model.reorder(currentList(), orderedIds)
+    if not items then
+        return reportFailure("reorder", reorderError)
+    end
+    local reordered, persistenceError = persist(items, RGMS.DB.nextProvisionId)
+    if not reordered then
+        return reportFailure("reorder", persistenceError)
+    end
+    Provisions.RefreshStatus()
+    return true
+end
+
 function Provisions.OnTabSelected()
     ensureGuildSession()
     local selected = Model.find(currentList(), Provisions.selectedId)
@@ -259,6 +276,10 @@ function Provisions.OnWindowClosed()
 end
 
 function Provisions.OnGuildChanged()
+    if type(RGMS.UI) == "table"
+        and type(RGMS.UI.CancelProvisionDrag) == "function" then
+        RGMS.UI.CancelProvisionDrag()
+    end
     Provisions.activeGuildKey = nil
     ensureGuildSession()
     return Provisions.RefreshStatus()

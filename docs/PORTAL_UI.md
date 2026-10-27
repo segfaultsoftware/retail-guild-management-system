@@ -48,7 +48,11 @@ The implementation was checked against the maintained Retail sources on the
   duplicate the portal's scan lock, control styling, and lifecycle without
   providing bank-snapshot aggregation or atomic per-guild mutations. Crafting
   quality uses Blizzard's `C_TradeSkillUI.GetItemReagentQualityByItemInfo`
-  instead of a third-party item database.
+  instead of a third-party item database. Blizzard's maintained
+  `ScrollUtil.AddLinearDragBehavior` was also evaluated for manual ordering,
+  but it requires replacing this fixed-row `ScrollFrame` with a ScrollBox data
+  provider. The local adapter instead adds only threshold detection, floating
+  row preview, midpoint movement, and edge auto-scroll to the existing view.
 - AceGUI, Details Framework, LibDropDownMenu, lib-ScrollingTable,
   LibSharedMedia, and other UI frameworks were rejected because the ticket
   explicitly excludes them and the maintained Blizzard menu API covers the

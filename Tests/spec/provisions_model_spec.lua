@@ -93,15 +93,32 @@ return {
         })
     end),
 
-    test.case("rows sort case-insensitively with creation order ties", function()
+    test.case("rows retain the authoritative saved manual order", function()
         local report = model.buildReport({
             provision(4, "zeta", "either", 1),
             provision(3, "Alpha", "silver", 1),
             provision(1, "alpha", "gold", 1),
         }, { tabs = {}, slots = {} })
-        test.assert_equal(report.rows[1].id, 1)
+        test.assert_equal(report.rows[1].id, 4)
         test.assert_equal(report.rows[2].id, 3)
-        test.assert_equal(report.rows[3].id, 4)
+        test.assert_equal(report.rows[3].id, 1)
+    end),
+
+    test.case("reordering preserves duplicate values by stable ID", function()
+        local source = {
+            provision(1, "Feast", "either", 10),
+            provision(2, "Feast", "either", 10),
+            provision(3, "Flask", "gold", 20),
+        }
+        local reordered = assert(model.reorder(source, { 2, 3, 1 }))
+        test.assert_equal(reordered, {
+            provision(2, "Feast", "either", 10),
+            provision(3, "Flask", "gold", 20),
+            provision(1, "Feast", "either", 10),
+        })
+        test.assert_equal(source[1].id, 1)
+        test.assert_nil(model.reorder(source, { 1, 1, 3 }))
+        test.assert_nil(model.reorder(source, { 1, 2 }))
     end),
 
     test.case("committed bank stacks aggregate by name and crafting quality", function()
