@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Added a compact RGMS-styled **Dismiss** tooltip at the mouse cursor when
+  hovering over News item dismissal controls.
 - Added optional Auctionator shopping-list creation from active-guild
   Provision shortages, preserving exact item names, crafting-quality tiers,
   requested quantities, duplicate rows, and manual order.
