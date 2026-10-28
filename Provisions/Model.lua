@@ -217,11 +217,22 @@ local function slotPrecedesIcon(slot, item)
             and slot.slotIndex < item.iconSlotIndex)
 end
 
+local function viewableTabs(bank)
+    local result = {}
+    for _, tab in ipairs(bank.tabs or {}) do
+        if type(tab) == "table" and tab.isViewable == true then
+            result[tab.index] = true
+        end
+    end
+    return result
+end
+
 function Model.buildReport(provisions, bank, lower)
     lower = type(lower) == "function" and lower or string.lower
     bank = type(bank) == "table" and bank or {}
     local counts = {}
-    if bank.scannedAt ~= nil and type(bank.slots) == "table" then
+    local accessibleTabs = viewableTabs(bank)
+    if type(bank.scannedAt) == "table" and type(bank.slots) == "table" then
         for _, slot in ipairs(bank.slots) do
             local name = itemNameFromLink(slot.itemLink)
             if name then
@@ -237,12 +248,14 @@ function Model.buildReport(provisions, bank, lower)
                     qualities.iconTabIndex = slot.tabIndex
                     qualities.iconSlotIndex = slot.slotIndex
                 end
-                local quantity = tonumber(slot.quantity) or 0
-                qualities.all = qualities.all + quantity
-                if slot.craftingQuality == Model.SILVER_QUALITY then
-                    qualities.silver = qualities.silver + quantity
-                elseif slot.craftingQuality == Model.GOLD_QUALITY then
-                    qualities.gold = qualities.gold + quantity
+                if accessibleTabs[slot.tabIndex] then
+                    local quantity = tonumber(slot.quantity) or 0
+                    qualities.all = qualities.all + quantity
+                    if slot.craftingQuality == Model.SILVER_QUALITY then
+                        qualities.silver = qualities.silver + quantity
+                    elseif slot.craftingQuality == Model.GOLD_QUALITY then
+                        qualities.gold = qualities.gold + quantity
+                    end
                 end
             end
         end
@@ -273,7 +286,42 @@ function Model.buildReport(provisions, bank, lower)
         }
     end
 
-    return { rows = rows }
+    local hasShortage = false
+    for _, row in ipairs(rows) do
+        if row.current < row.target then
+            hasShortage = true
+            break
+        end
+    end
+
+    return {
+        rows = rows,
+        canCreateShoppingList = type(bank.scannedAt) == "table"
+            and #rows > 0
+            and hasShortage,
+    }
+end
+
+function Model.buildAuctionatorTerms(provisions, bank, lower)
+    local report = Model.buildReport(provisions, bank, lower)
+    local terms = {}
+    for _, row in ipairs(report.rows) do
+        if row.current < row.target then
+            local tier
+            if row.quality == "silver" then
+                tier = 1
+            elseif row.quality == "gold" then
+                tier = 2
+            end
+            terms[#terms + 1] = {
+                searchString = row.name,
+                isExact = true,
+                tier = tier,
+                quantity = row.target - row.current,
+            }
+        end
+    end
+    return terms
 end
 
 function Model.qualityMatches(mode, craftingQuality)

@@ -4,6 +4,9 @@ local Provisions = RGMS.Provisions or {}
 local Model = type(RGMS.ProvisionModel) == "table"
     and RGMS.ProvisionModel
     or require("Provisions.Model")
+local AuctionatorIntegration = type(RGMS.AuctionatorIntegration) == "table"
+    and RGMS.AuctionatorIntegration
+    or require("Provisions.Auctionator")
 
 Provisions.selectedId = nil
 Provisions.draft = Model.toDraft(nil)
@@ -172,6 +175,53 @@ local function showSuccess(message)
     if type(RGMS.UI) == "table" and type(RGMS.UI.ShowToast) == "function" then
         RGMS.UI.ShowToast(message)
     end
+end
+
+local function reportAuctionatorFailure(message)
+    if type(RGMS.Print) == "function" then
+        RGMS.Print(
+            "Could not create Auctionator shopping list: "
+                .. tostring(message)
+                .. "."
+        )
+    end
+    return nil, message
+end
+
+function Provisions.CreateAuctionatorShoppingList()
+    if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
+        return nil, "scan-locked"
+    end
+    ensureGuildSession()
+    if type(RGMS.AccountDataState) ~= "table"
+        or RGMS.AccountDataState.enabled ~= true
+        or type(RGMS.ActiveGuildIdentity) ~= "table" then
+        return nil, "saved data is unavailable"
+    end
+    if not AuctionatorIntegration.IsAvailable() then
+        return reportAuctionatorFailure(
+            "Auctionator v1 shopping-list API is unavailable"
+        )
+    end
+
+    local bank = type(RGMS.DB) == "table" and RGMS.DB.bank or {}
+    if type(bank.scannedAt) ~= "table" then
+        return nil, "the active guild has no successful bank scan"
+    end
+    if #currentList() == 0 then
+        return nil, "there are no saved provisions"
+    end
+    local terms = Model.buildAuctionatorTerms(currentList(), bank)
+    if #terms == 0 then
+        return nil, "every provision target is satisfied"
+    end
+
+    local created, creationError = AuctionatorIntegration.CreateShoppingList(terms)
+    if not created then
+        return reportAuctionatorFailure(creationError)
+    end
+    showSuccess("Successfully created RGMS Provisions shopping list")
+    return true
 end
 
 function Provisions.Save()

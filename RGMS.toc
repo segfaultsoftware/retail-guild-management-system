@@ -7,6 +7,7 @@
 ## X-Curse-Project-ID: 1741733
 ## SavedVariables: RGMSAccountDB
 ## SavedVariablesPerCharacter: RGMSCharacterDB
+## OptionalDeps: Auctionator
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
@@ -31,6 +32,7 @@ MainsAlts\Search.lua
 MainsAlts\Tags.lua
 MainsAlts\Notes.lua
 Provisions\Model.lua
+Provisions\Auctionator.lua
 UI\UI.lua
 Provisions\Provisions.lua
 Roster\Report.lua

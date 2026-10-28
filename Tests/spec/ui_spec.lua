@@ -463,7 +463,7 @@ local function newRegion(parent)
     return region
 end
 
-local function newHarness(savedPosition, screenWidth, screenHeight)
+local function newHarness(savedPosition, screenWidth, screenHeight, auctionatorAvailable)
     local mainFrame
     local fonts = {}
     local refreshRequests = 0
@@ -674,12 +674,23 @@ local function newHarness(savedPosition, screenWidth, screenHeight)
                 end
                 return true
             end,
+            CreateAuctionatorShoppingList = function()
+                provisionActions[#provisionActions + 1] = {
+                    action = "auctionator",
+                }
+                return true
+            end,
             SetDraft = function(draft)
                 provisionActions[#provisionActions + 1] = {
                     action = "draft",
                     draft = draft,
                 }
                 return true
+            end,
+        },
+        AuctionatorIntegration = {
+            IsAvailable = function()
+                return auctionatorAvailable == true
             end,
         },
         MainsAlts = {
@@ -2764,6 +2775,55 @@ return {
         test.assert_false(view.guildBankBalanceFrame:IsShown())
         harness.ui.Hide()
         test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "close")
+    end),
+
+    test.case("Auctionator Provision control is conditional positioned and shortage-aware", function()
+        local unavailable = newHarness()
+        unavailable.ui.Initialize()
+        test.assert_nil(
+            unavailable.frame().views.provisions.auctionatorShoppingListButton
+        )
+
+        local harness = newHarness(nil, nil, nil, true)
+        harness.ui.Initialize()
+        local view = harness.frame().views.provisions
+        local button = view.auctionatorShoppingListButton
+        test.assert_not_nil(button)
+        test.assert_equal(button:GetText(), "Create Auctionator Shopping List")
+        test.assert_equal(button.relativeTo, view.newProvisionButton)
+        test.assert_equal(button.relativePoint, "RIGHT")
+        test.assert_equal(button.x, 8)
+        test.assert_equal(view.status.points[1].x, 424)
+        test.assert_false(button:IsEnabled())
+
+        harness.ui.SetProvisionsReport({
+            canCreateShoppingList = true,
+            rows = {
+                {
+                    id = 1,
+                    name = "Argentleaf",
+                    quality = "silver",
+                    target = 50,
+                    current = 10,
+                    progress = 0.2,
+                    progressText = "10 / 50",
+                    icon = 134400,
+                },
+            },
+        })
+        test.assert_true(button:IsEnabled())
+        button.scripts.OnClick()
+        test.assert_equal(
+            harness.provisionActions[#harness.provisionActions].action,
+            "auctionator"
+        )
+
+        harness.ui.SetGlobalScanLock(true)
+        test.assert_false(button:IsEnabled())
+        harness.ui.SetGlobalScanLock(false)
+        test.assert_true(button:IsEnabled())
+        harness.ui.SetDataState(false, "corrupt")
+        test.assert_false(button:IsEnabled())
     end),
 
     test.case("Provision row drag threshold preserves clicks and changed outside drops reorder once", function()
