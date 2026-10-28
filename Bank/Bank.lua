@@ -250,6 +250,9 @@ function Bank.RefreshStatus()
         if type(RGMS.UI.SetDataState) == "function" then
             RGMS.UI.SetDataState(false, disabledState.status)
         end
+        if type(RGMS.UI.SetGuildBankBalance) == "function" then
+            RGMS.UI.SetGuildBankBalance(nil)
+        end
         return
     end
 
@@ -265,6 +268,10 @@ function Bank.RefreshStatus()
     local scannedAt = type(RGMS.DB) == "table"
         and type(RGMS.DB.bank) == "table"
         and RGMS.DB.bank.scannedAt
+    if type(RGMS.UI.SetGuildBankBalance) == "function" then
+        local balance = scannedAt ~= nil and RGMS.DB.bank.money or nil
+        RGMS.UI.SetGuildBankBalance(balance)
+    end
     local builtReport
     if type(RGMS.UI.SetBankReport) == "function"
         and type(RGMS.BankReport) == "table"
