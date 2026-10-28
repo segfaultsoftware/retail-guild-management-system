@@ -259,6 +259,14 @@ local function newRegion(parent)
         self.alpha = alpha
     end
 
+    function region:SetScale(scale)
+        self.scale = scale
+    end
+
+    function region:GetScale()
+        return self.scale or 1
+    end
+
     function region:EnableMouse(enabled)
         self.mouseEnabled = enabled == true
     end
@@ -922,39 +930,39 @@ return {
         test.assert_false(frame.views.provisions.provisionR1:GetChecked())
         test.assert_false(frame.views.provisions.provisionR2:GetChecked())
         test.assert_false(frame.views.provisions.provisionEither:GetChecked())
-        test.assert_equal(frame.views.provisions.addProvisionButton.text, "Add")
+        test.assert_equal(
+            frame.views.provisions.newProvisionButton.text,
+            "New Provision"
+        )
         test.assert_equal(frame.views.provisions.saveProvisionButton.text, "Save")
         test.assert_nil(frame.views.provisions.deleteProvisionButton)
-        test.assert_equal(frame.views.provisions.addProvisionButton:GetWidth(), 35)
+        test.assert_nil(frame.views.provisions.provisionAddRow)
+        test.assert_nil(frame.views.provisions.addProvisionButton)
+        test.assert_equal(frame.views.provisions.newProvisionButton:GetWidth(), 105)
         test.assert_equal(frame.views.provisions.saveProvisionButton:GetWidth(), 42)
         test.assert_equal(
-            frame.views.provisions.addProvisionButton.point,
-            "RIGHT"
+            frame.views.provisions.newProvisionButton.point,
+            "TOPLEFT"
         )
         test.assert_equal(
-            frame.views.provisions.addProvisionButton.parent,
-            frame.views.provisions.provisionAddRow
+            frame.views.provisions.newProvisionButton.relativeTo,
+            frame
         )
-        test.assert_equal(
-            frame.views.provisions.provisionMoneyFrame.templateName,
-            "SmallMoneyFrameTemplate"
-        )
-        test.assert_true(frame.views.provisions.provisionMoneyFrame.moneyFrameLoaded)
-        test.assert_equal(
-            frame.views.provisions.provisionMoneyFrame.moneyType,
-            "GUILD_REPAIR"
-        )
-        test.assert_equal(frame.views.provisions.provisionMoneyFrame.point, "LEFT")
-        test.assert_equal(frame.views.provisions.provisionMoneyFrame.x, 10)
-        test.assert_false(frame.views.provisions.provisionMoneyFrame:IsShown())
-        test.assert_equal(
-            frame.views.provisions.provisionAddRow:GetHeight(),
-            64
-        )
-        test.assert_equal(
-            frame.views.provisions.provisionAddRow.points[2].x,
-            -28
-        )
+        test.assert_equal(frame.views.provisions.newProvisionButton.x, 64)
+        test.assert_equal(frame.views.provisions.newProvisionButton.y, -12)
+        for _, tabId in ipairs({ "bank", "provisions" }) do
+            local moneyFrame = frame.views[tabId].guildBankBalanceFrame
+            test.assert_equal(moneyFrame.templateName, "SmallMoneyFrameTemplate")
+            test.assert_true(moneyFrame.moneyFrameLoaded)
+            test.assert_equal(moneyFrame.moneyType, "GUILD_REPAIR")
+            test.assert_equal(moneyFrame.point, "TOPRIGHT")
+            test.assert_equal(moneyFrame.x, -84)
+            test.assert_equal(moneyFrame.y, -29)
+            test.assert_equal(moneyFrame:GetScale(), 1)
+            test.assert_false(moneyFrame:IsShown())
+            test.assert_equal(frame.views[tabId].status:GetHeight(), 40)
+            test.assert_equal(frame.views[tabId].status.justifyV, "MIDDLE")
+        end
         test.assert_equal(frame.views.provisions.saveProvisionButton.point, "BOTTOMRIGHT")
         test.assert_equal(frame.views.provisions.provisionNameLabel.y, -16)
         test.assert_equal(frame.views.provisions.provisionQualityLabel.y, -99)
@@ -962,12 +970,14 @@ return {
         test.assert_equal(frame.views.provisions.provisionTargetLabel.y, -169)
         test.assert_equal(
             frame.views.provisions.provisionScrollFrame.points[1].relativeTo,
-            frame.views.provisions.provisionAddRow
+            frame.views.provisions.provisionStatusPane
         )
         test.assert_equal(
             frame.views.provisions.provisionScrollFrame.points[1].relativePoint,
-            "BOTTOMLEFT"
+            "TOPLEFT"
         )
+        test.assert_equal(frame.views.provisions.provisionScrollFrame.points[1].x, 10)
+        test.assert_equal(frame.views.provisions.provisionScrollFrame.points[1].y, -10)
         test.assert_equal(
             frame.views.provisions.provisionScrollFrame.points[2].relativeTo,
             frame.views.provisions.provisionStatusPane
@@ -976,10 +986,7 @@ return {
             frame.views.provisions.provisionScrollFrame.points[2].x,
             -10
         )
-        test.assert_equal(
-            frame.views.provisions.provisionAddRow.backdropColor,
-            { 0.133, 0.149, 0.18, 1 }
-        )
+        test.assert_equal(frame.views.provisions.provisionScrollFrame.points[2].y, -10)
         test.assert_equal(frame.views.tags.text.text, "No tags yet")
         test.assert_equal(frame.views.tags.status.text, "No tags yet")
         test.assert_nil(frame.views.tags.refreshButton)
@@ -2593,7 +2600,7 @@ return {
         harness.ui.Initialize()
         local view = harness.frame().views.provisions
 
-        test.assert_true(view.addProvisionButton:IsEnabled())
+        test.assert_true(view.newProvisionButton:IsEnabled())
         test.assert_false(view.saveProvisionButton:IsEnabled())
         test.assert_false(view.refreshButton:IsEnabled())
         harness.ui.SetGuildBankOpen(true)
@@ -2601,12 +2608,24 @@ return {
         view.refreshButton.scripts.OnClick()
         test.assert_equal(harness.bankRefreshRequests(), 1)
 
-        test.assert_true(harness.ui.SetProvisionsMoney(1233452412))
-        test.assert_true(view.provisionMoneyFrame:IsShown())
-        test.assert_equal(view.provisionMoneyFrame.money, 1233452412)
-        test.assert_true(view.provisionMoneyFrame.moneyForceShow)
-        test.assert_true(harness.ui.SetProvisionsMoney(nil))
-        test.assert_false(view.provisionMoneyFrame:IsShown())
+        test.assert_true(harness.ui.SetGuildBankBalance(1233452412))
+        for _, tabId in ipairs({ "bank", "provisions" }) do
+            local balance = harness.frame().views[tabId].guildBankBalanceFrame
+            test.assert_true(balance:IsShown())
+            test.assert_equal(balance.money, 1233452412)
+            test.assert_true(balance.moneyForceShow)
+            test.assert_equal(harness.frame().views[tabId].status:GetHeight(), 18)
+        end
+        test.assert_true(harness.ui.SetGuildBankBalance(nil))
+        for _, tabId in ipairs({ "bank", "provisions" }) do
+            test.assert_false(
+                harness.frame().views[tabId].guildBankBalanceFrame:IsShown()
+            )
+            test.assert_equal(harness.frame().views[tabId].status:GetHeight(), 40)
+        end
+        test.assert_true(harness.ui.SetGuildBankBalance(0))
+        test.assert_true(view.guildBankBalanceFrame:IsShown())
+        test.assert_equal(view.guildBankBalanceFrame.money, 0)
 
         harness.ui.SetProvisionsEditor({
             selectedId = 7,
@@ -2709,7 +2728,7 @@ return {
             action = "select",
             id = 12,
         })
-        view.addProvisionButton.scripts.OnClick()
+        view.newProvisionButton.scripts.OnClick()
         test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "new")
         view.saveProvisionButton.scripts.OnClick()
         test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "save")
@@ -2734,11 +2753,15 @@ return {
 
         local preservedName = view.provisionNameInput:GetText()
         harness.ui.SetGlobalScanLock(true)
-        test.assert_false(view.addProvisionButton:IsEnabled())
+        test.assert_false(view.newProvisionButton:IsEnabled())
         test.assert_false(view.saveProvisionButton:IsEnabled())
         test.assert_false(view.provisionRows[1].deleteButton:IsEnabled())
         test.assert_equal(view.provisionNameInput:GetText(), preservedName)
         harness.ui.SetGlobalScanLock(false)
+        test.assert_true(view.newProvisionButton:IsEnabled())
+        harness.ui.SetDataState(false, "corrupt")
+        test.assert_false(view.newProvisionButton:IsEnabled())
+        test.assert_false(view.guildBankBalanceFrame:IsShown())
         harness.ui.Hide()
         test.assert_equal(harness.provisionActions[#harness.provisionActions].action, "close")
     end),

@@ -102,7 +102,11 @@ function Portal.contextControls(view, rosterMode)
     elseif view == "bank" then
         return { dropdown = "bankTab", primary = "Refresh", close = true }
     elseif view == "provisions" then
-        return { primary = "Refresh", close = true }
+        return {
+            secondary = "New Provision",
+            primary = "Refresh",
+            close = true,
+        }
     elseif view == "tags" then
         return { close = true }
     end

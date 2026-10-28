@@ -124,7 +124,14 @@ local TAG_PILL_GAP = 6
 local TAG_POPOVER_PADDING = 8
 local ProvisionUI = {
     PANE_GAP = 16,
-    ADD_ROW_GAP = 10,
+    CONTEXT_STATUS_LEFT = 280,
+    CONTEXT_STATUS_RIGHT = -96,
+    CONTEXT_STATUS_TOP = -8,
+    CONTEXT_STATUS_HEIGHT = 40,
+    CONTEXT_STATUS_STACK_HEIGHT = 18,
+    CONTEXT_BALANCE_RIGHT = -84,
+    CONTEXT_BALANCE_TOP = -29,
+    CONTEXT_BALANCE_SCALE = 1,
     ROW_HEIGHT = 64,
     ROW_GAP = 6,
     ICON_SIZE = 38,
@@ -2923,11 +2930,11 @@ function ProvisionUI.draft(view)
 end
 
 function ProvisionUI.updateControlState(view)
-    if not view or not view.addProvisionButton then
+    if not view or not view.newProvisionButton then
         return
     end
     local available = UI.dataEnabled ~= false and UI.globalScanLocked ~= true
-    view.addProvisionButton:SetEnabled(available)
+    view.newProvisionButton:SetEnabled(available)
     view.saveProvisionButton:SetEnabled(
         available and view.provisionDraftValid == true
             and view.provisionDraftChanged == true
@@ -3183,69 +3190,6 @@ function ProvisionUI.createView(view)
     )
     flatBackdrop(view.provisionStatusPane, PALETTE.surface, PALETTE.border)
 
-    view.provisionAddRow = CreateFrame(
-        "Frame",
-        nil,
-        view.provisionStatusPane,
-        "BackdropTemplate"
-    )
-    view.provisionAddRow:SetPoint(
-        "TOPLEFT",
-        view.provisionStatusPane,
-        "TOPLEFT",
-        10,
-        -10
-    )
-    view.provisionAddRow:SetPoint(
-        "TOPRIGHT",
-        view.provisionStatusPane,
-        "TOPRIGHT",
-        -28,
-        -10
-    )
-    view.provisionAddRow:SetHeight(ProvisionUI.ROW_HEIGHT)
-    flatBackdrop(view.provisionAddRow, PALETTE.control, PALETTE.border)
-
-    view.addProvisionButton = CreateFrame(
-        "Button",
-        nil,
-        view.provisionAddRow,
-        "UIPanelButtonTemplate"
-    )
-    styleButton(view.addProvisionButton, "secondary", 32)
-    ProvisionUI.fitActionButton(view.addProvisionButton, "Add")
-    view.addProvisionButton:SetPoint(
-        "RIGHT",
-        view.provisionAddRow,
-        "RIGHT",
-        -10,
-        0
-    )
-    view.addProvisionButton:SetScript("OnClick", function()
-        if type(RGMS.Provisions) == "table" then
-            RGMS.Provisions.New()
-        end
-    end)
-
-    view.provisionMoneyFrame = CreateFrame(
-        "Frame",
-        "RGMSProvisionsMoneyFrame",
-        view.provisionAddRow,
-        "SmallMoneyFrameTemplate"
-    )
-    SmallMoneyFrame_OnLoad(view.provisionMoneyFrame)
-    -- This static preset shares the guild-bank denomination behavior without
-    -- subscribing the saved snapshot to live guild-bank money updates.
-    MoneyFrame_SetType(view.provisionMoneyFrame, "GUILD_REPAIR")
-    view.provisionMoneyFrame:SetPoint(
-        "LEFT",
-        view.provisionAddRow,
-        "LEFT",
-        10,
-        0
-    )
-    view.provisionMoneyFrame:Hide()
-
     view.provisionScrollFrame = CreateFrame(
         "ScrollFrame",
         nil,
@@ -3255,17 +3199,17 @@ function ProvisionUI.createView(view)
     styleScrollFrame(view.provisionScrollFrame)
     view.provisionScrollFrame:SetPoint(
         "TOPLEFT",
-        view.provisionAddRow,
-        "BOTTOMLEFT",
-        0,
-        -ProvisionUI.ADD_ROW_GAP
+        view.provisionStatusPane,
+        "TOPLEFT",
+        10,
+        -10
     )
     view.provisionScrollFrame:SetPoint(
         "TOPRIGHT",
         view.provisionStatusPane,
         "TOPRIGHT",
         -10,
-        -(10 + ProvisionUI.ROW_HEIGHT + ProvisionUI.ADD_ROW_GAP)
+        -10
     )
     view.provisionScrollFrame:SetPoint("BOTTOMRIGHT", view.provisionStatusPane, "BOTTOMRIGHT", -10, 10)
     view.provisionScrollChild = CreateFrame("Frame", nil, view.provisionScrollFrame)
@@ -3787,10 +3731,60 @@ local function createByRankControl(view, checked, relativeTo, point, relativePoi
     return control
 end
 
+function ProvisionUI.setContextStatusLayout(view, hasBalance)
+    view.status:ClearAllPoints()
+    view.status:SetPoint(
+        "TOPLEFT",
+        view.contextParent,
+        "TOPLEFT",
+        view.contextStatusLeft,
+        ProvisionUI.CONTEXT_STATUS_TOP
+    )
+    view.status:SetPoint(
+        "TOPRIGHT",
+        view.contextParent,
+        "TOPRIGHT",
+        ProvisionUI.CONTEXT_STATUS_RIGHT,
+        ProvisionUI.CONTEXT_STATUS_TOP
+    )
+    view.status:SetHeight(
+        hasBalance and ProvisionUI.CONTEXT_STATUS_STACK_HEIGHT
+            or ProvisionUI.CONTEXT_STATUS_HEIGHT
+    )
+    view.status:SetJustifyV("MIDDLE")
+end
+
+function ProvisionUI.createGuildBankBalanceFrame(view, tabId)
+    local frame = CreateFrame(
+        "Frame",
+        tabId == "bank" and "RGMSBankBalanceFrame" or "RGMSProvisionsBalanceFrame",
+        view,
+        "SmallMoneyFrameTemplate"
+    )
+    SmallMoneyFrame_OnLoad(frame)
+    -- This static preset preserves Retail's denomination and coin-icon
+    -- presentation without subscribing saved snapshots to live bank money.
+    MoneyFrame_SetType(frame, "GUILD_REPAIR")
+    frame:SetScale(ProvisionUI.CONTEXT_BALANCE_SCALE)
+    frame:SetPoint(
+        "TOPRIGHT",
+        view.contextParent,
+        "TOPRIGHT",
+        ProvisionUI.CONTEXT_BALANCE_RIGHT,
+        ProvisionUI.CONTEXT_BALANCE_TOP
+    )
+    frame:Hide()
+    view.guildBankBalanceFrame = frame
+    ProvisionUI.setContextStatusLayout(view, false)
+end
+
 local function createView(parent, tabId)
     local view = CreateFrame("Frame", nil, parent)
     view:SetPoint("TOPLEFT", SIDEBAR_WIDTH + CONTENT_PADDING, -HEADER_HEIGHT - CONTENT_PADDING)
     view:SetPoint("BOTTOMRIGHT", -CONTENT_PADDING, CONTENT_PADDING)
+    view.contextParent = parent
+    view.contextStatusLeft = (tabId == "mainsalts" or tabId == "roster")
+        and 680 or ProvisionUI.CONTEXT_STATUS_LEFT
 
     view.status = view:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     local statusY = (tabId == "bank" or tabId == "provisions") and -8 or -20
@@ -3798,7 +3792,7 @@ local function createView(parent, tabId)
         "TOPLEFT",
         parent,
         "TOPLEFT",
-        (tabId == "mainsalts" or tabId == "roster") and 680 or 280,
+        view.contextStatusLeft,
         statusY
     )
     view.status:SetPoint(
@@ -3827,6 +3821,33 @@ local function createView(parent, tabId)
     view.statusHitbox:SetScript("OnLeave", function(button)
         hideOwnedTooltip(button)
     end)
+
+    if tabId == "bank" or tabId == "provisions" then
+        ProvisionUI.createGuildBankBalanceFrame(view, tabId)
+    end
+
+    if tabId == "provisions" then
+        view.newProvisionButton = CreateFrame(
+            "Button",
+            nil,
+            view,
+            "UIPanelButtonTemplate"
+        )
+        styleButton(view.newProvisionButton, "secondary", 32)
+        ProvisionUI.fitActionButton(view.newProvisionButton, "New Provision")
+        view.newProvisionButton:SetPoint(
+            "TOPLEFT",
+            parent,
+            "TOPLEFT",
+            64,
+            -12
+        )
+        view.newProvisionButton:SetScript("OnClick", function()
+            if type(RGMS.Provisions) == "table" then
+                RGMS.Provisions.New()
+            end
+        end)
+    end
 
     if tabId == "roster" or tabId == "mainsalts" or tabId == "bank"
         or tabId == "provisions" then
@@ -5959,7 +5980,7 @@ function UI.SetProvisionsReport(report, selectedId)
     return true
 end
 
-function UI.SetProvisionsMoney(money)
+function UI.SetGuildBankBalance(money)
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
     end
@@ -5967,17 +5988,25 @@ function UI.SetProvisionsMoney(money)
         and (type(money) ~= "number"
             or money < 0
             or money ~= math.floor(money)) then
-        return nil, "provisions money must be a non-negative integer or absent"
+        return nil, "guild-bank balance must be a non-negative integer or absent"
     end
-    local moneyFrame = UI.frame.views.provisions.provisionMoneyFrame
-    if money == nil then
-        moneyFrame:Hide()
-        return true
+    for _, tabId in ipairs({ "bank", "provisions" }) do
+        local view = UI.frame.views[tabId]
+        local moneyFrame = view.guildBankBalanceFrame
+        ProvisionUI.setContextStatusLayout(view, money ~= nil)
+        if money == nil then
+            moneyFrame:Hide()
+        else
+            MoneyFrame_Update(moneyFrame, money, true)
+            moneyFrame:Show()
+        end
     end
-    MoneyFrame_Update(moneyFrame, money, true)
-    moneyFrame:Show()
     return true
 end
+
+-- Retain the old internal entry point for callers that may still be loaded
+-- during an addon upgrade; the balance is now shared by both relevant tabs.
+UI.SetProvisionsMoney = UI.SetGuildBankBalance
 
 function UI.SetProvisionsEditor(state)
     if not UI.frame then
@@ -6232,6 +6261,7 @@ function UI.SetDataState(enabled, state)
     UI.dataEnabled = enabled == true
     if not UI.dataEnabled then
         UI.CancelProvisionDrag()
+        UI.SetGuildBankBalance(nil)
     end
     updateRosterRefreshButton(UI.frame.views.roster)
     updateRosterRefreshButton(UI.frame.views.mainsalts)

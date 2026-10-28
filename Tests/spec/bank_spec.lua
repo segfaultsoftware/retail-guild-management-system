@@ -78,6 +78,9 @@ local function newHarness(options)
             SetBankReport = function(report)
                 actions[#actions + 1] = { action = "report", report = report }
             end,
+            SetGuildBankBalance = function(money)
+                actions[#actions + 1] = { action = "balance", money = money }
+            end,
             SetViewStatus = function(tabId, status)
                 actions[#actions + 1] = {
                     action = "status",
@@ -126,6 +129,7 @@ return {
         local projected = { tabs = { { index = 1, rows = {} } } }
         local dataset = {
             scannedAt = { unixSeconds = 100 },
+            money = 0,
             tabs = {},
             slots = {},
         }
@@ -149,6 +153,7 @@ return {
 
         test.assert_equal(harness.actions, {
             { action = "bank-open", value = true },
+            { action = "balance", money = 0 },
             { action = "report", report = projected },
             {
                 action = "status",
@@ -165,6 +170,7 @@ return {
             database = {
                 bank = {
                     scannedAt = { unixSeconds = 100 },
+                    money = 1233452412,
                     tabs = {},
                     slots = {},
                 },
@@ -184,6 +190,10 @@ return {
 
         harness.bank.RefreshStatus()
 
+        test.assert_equal(harness.actions[2], {
+            action = "balance",
+            money = 1233452412,
+        })
         test.assert_equal(harness.actions[#harness.actions], {
             action = "status",
             tabId = "bank",
@@ -198,6 +208,7 @@ return {
             guildBankShown = false,
             database = {
                 bank = {
+                    money = 999,
                     tabs = {},
                     slots = {},
                 },
@@ -216,6 +227,7 @@ return {
         test.assert_equal(builds, 0)
         test.assert_equal(harness.actions, {
             { action = "bank-open", value = false },
+            { action = "balance", money = nil },
             {
                 action = "status",
                 tabId = "bank",

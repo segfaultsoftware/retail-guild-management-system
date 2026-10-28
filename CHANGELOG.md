@@ -7,6 +7,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Changed
+
+- Moved **New Provision** into the Provisions contextual bar, reclaimed the
+  removed sticky-row space for Provision entries, and stacked the latest saved
+  guild-bank balance at its native size beneath scan status on both Guild Bank
+  and Provisions.
+
 ## 1.1.0
 
 ### Added

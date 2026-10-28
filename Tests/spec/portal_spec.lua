@@ -32,7 +32,7 @@ return {
             dropdown = "bankTab", primary = "Refresh", close = true,
         })
         test.assert_equal(portal.contextControls("provisions"), {
-            primary = "Refresh", close = true,
+            secondary = "New Provision", primary = "Refresh", close = true,
         })
         test.assert_equal(portal.contextControls("tags"), { close = true })
     end),

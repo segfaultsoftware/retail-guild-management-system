@@ -67,10 +67,6 @@ function Provisions.RefreshStatus()
     if type(RGMS.UI.SetProvisionsReport) == "function" then
         RGMS.UI.SetProvisionsReport(report, Provisions.selectedId)
     end
-    if type(RGMS.UI.SetProvisionsMoney) == "function" then
-        RGMS.UI.SetProvisionsMoney(bank.money)
-    end
-
     local status = "No bank scan yet"
     if type(bank.scannedAt) == "table"
         and type(RGMS.DateTime) == "table"
