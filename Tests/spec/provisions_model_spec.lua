@@ -136,8 +136,8 @@ return {
         }))
         test.assert_equal(report.rows[1].current, 4)
         test.assert_equal(report.rows[2].current, 7)
-        test.assert_equal(report.rows[3].current, 14)
-        test.assert_equal(report.rows[3].progressText, "14 / 10")
+        test.assert_equal(report.rows[3].current, 11)
+        test.assert_equal(report.rows[3].progressText, "11 / 10")
         test.assert_equal(report.rows[3].progress, 1)
         test.assert_equal(report.rows[1].icon, 236873)
         test.assert_equal(report.rows[2].icon, 236873)
@@ -201,8 +201,72 @@ return {
             slot(2, 7, "Retained Item", 4, nil, 777),
         }))
 
-        test.assert_equal(report.rows[1].current, 4)
+        test.assert_equal(report.rows[1].current, 0)
         test.assert_equal(report.rows[1].icon, 777)
+    end),
+
+    test.case("Auctionator shortages preserve order duplicates tiers and accessible counts", function()
+        local terms = model.buildAuctionatorTerms({
+            provision(1, "Argentleaf", "silver", 50),
+            provision(2, "Argentleaf", "silver", 30),
+            provision(3, "Peacebloom", "gold", 20),
+            provision(4, "Silverleaf", "either", 10),
+            provision(5, "Satisfied", "either", 4),
+        }, bank({
+            slot(1, 1, "Argentleaf", 10, 1),
+            slot(2, 1, "Argentleaf", 99, 1),
+            slot(1, 2, "Peacebloom", 5, 2),
+            slot(1, 3, "Silverleaf", 3, 1),
+            slot(1, 4, "Silverleaf", 2, 2),
+            slot(1, 5, "Satisfied", 4, nil),
+        }))
+
+        test.assert_equal(terms, {
+            {
+                searchString = "Argentleaf",
+                isExact = true,
+                tier = 1,
+                quantity = 40,
+            },
+            {
+                searchString = "Argentleaf",
+                isExact = true,
+                tier = 1,
+                quantity = 20,
+            },
+            {
+                searchString = "Peacebloom",
+                isExact = true,
+                tier = 2,
+                quantity = 15,
+            },
+            {
+                searchString = "Silverleaf",
+                isExact = true,
+                quantity = 5,
+            },
+        })
+    end),
+
+    test.case("shopping-list eligibility requires a successful scan saved rows and shortages", function()
+        local provisions = { provision(1, "Herb", "either", 10) }
+        test.assert_false(model.buildReport(provisions, {
+            tabs = {},
+            slots = {},
+        }).canCreateShoppingList)
+        test.assert_false(model.buildReport({}, bank({})).canCreateShoppingList)
+        test.assert_false(model.buildReport(provisions, bank({
+            slot(1, 1, "Herb", 10, nil),
+        })).canCreateShoppingList)
+        test.assert_true(model.buildReport(provisions, {
+            scannedAt = fixtures.timestamp(),
+            tabs = {
+                fixtures.bank_tab({ index = 1, isViewable = false }),
+            },
+            slots = {
+                slot(1, 1, "Herb", 10, nil),
+            },
+        }).canCreateShoppingList)
     end),
 
     test.case("successful committed datasets replace and remove resolved icons", function()

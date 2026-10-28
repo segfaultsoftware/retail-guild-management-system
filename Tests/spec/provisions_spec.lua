@@ -5,7 +5,8 @@ local model = require("Provisions.Model")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
 
-local function newHarness(initialProvisions)
+local function newHarness(initialProvisions, options)
+    options = options or {}
     local identity = fixtures.guild_identity()
     local account = accountData.newModel()
     account = assert(accountData.replaceProvisions(
@@ -33,6 +34,9 @@ local function newHarness(initialProvisions)
             IsAvailable = function() return true end,
         },
         ProvisionModel = model,
+        AuctionatorIntegration = options.auctionatorIntegration or {
+            IsAvailable = function() return false end,
+        },
         IsScanLocked = function() return locked end,
         Print = function(message) messages[#messages + 1] = message end,
         UI = {
@@ -351,5 +355,79 @@ return {
         test.assert_equal(message, "item name must contain 3 through 100 characters")
         test.assert_equal(#harness.toasts, 0)
         test.assert_equal(#harness.messages, 0)
+    end),
+
+    test.case("Auctionator creation reads click-time shortages and reports success", function()
+        local capturedTerms
+        local integration = {
+            IsAvailable = function() return true end,
+            CreateShoppingList = function(terms)
+                capturedTerms = terms
+                return true
+            end,
+        }
+        local harness = newHarness({
+            saved(1, "Argentleaf", "silver", 50),
+            saved(2, "Peacebloom", "either", 10),
+        }, { auctionatorIntegration = integration })
+        harness.rgms.DB.bank = {
+            scannedAt = fixtures.timestamp(),
+            tabs = { fixtures.bank_tab({ index = 1, isViewable = true }) },
+            slots = {},
+        }
+        harness.rgms.DB.bank.slots = {
+            fixtures.bank_slot({
+                tabIndex = 1,
+                slotIndex = 1,
+                itemLink = "|Hitem:1|h[Argentleaf]|h",
+                quantity = 10,
+                craftingQuality = 1,
+            }),
+        }
+
+        test.assert_true(harness.provisions.CreateAuctionatorShoppingList())
+
+        test.assert_equal(capturedTerms, {
+            {
+                searchString = "Argentleaf",
+                isExact = true,
+                tier = 1,
+                quantity = 40,
+            },
+            {
+                searchString = "Peacebloom",
+                isExact = true,
+                quantity = 10,
+            },
+        })
+        test.assert_equal(harness.toasts[#harness.toasts],
+            "Successfully created RGMS Provisions shopping list")
+        test.assert_equal(#harness.messages, 0)
+    end),
+
+    test.case("Auctionator rejection is printed and never shows success", function()
+        local integration = {
+            IsAvailable = function() return true end,
+            CreateShoppingList = function()
+                return nil, "simulated API rejection"
+            end,
+        }
+        local harness = newHarness({
+            saved(1, "Argentleaf", "silver", 50),
+        }, { auctionatorIntegration = integration })
+        harness.rgms.DB.bank = {
+            scannedAt = fixtures.timestamp(),
+            tabs = {},
+            slots = {},
+        }
+
+        local result, message = harness.provisions.CreateAuctionatorShoppingList()
+
+        test.assert_nil(result)
+        test.assert_equal(message, "simulated API rejection")
+        test.assert_equal(#harness.toasts, 0)
+        test.assert_equal(harness.messages, {
+            "Could not create Auctionator shopping list: simulated API rejection.",
+        })
     end),
 }

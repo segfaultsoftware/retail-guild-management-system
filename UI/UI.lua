@@ -125,6 +125,7 @@ local TAG_POPOVER_PADDING = 8
 local ProvisionUI = {
     PANE_GAP = 16,
     CONTEXT_STATUS_LEFT = 280,
+    CONTEXT_AUCTIONATOR_STATUS_LEFT = 424,
     CONTEXT_STATUS_RIGHT = -96,
     CONTEXT_STATUS_TOP = -8,
     CONTEXT_STATUS_HEIGHT = 40,
@@ -2935,6 +2936,13 @@ function ProvisionUI.updateControlState(view)
     end
     local available = UI.dataEnabled ~= false and UI.globalScanLocked ~= true
     view.newProvisionButton:SetEnabled(available)
+    if view.auctionatorShoppingListButton then
+        view.auctionatorShoppingListButton:SetEnabled(
+            available
+                and type(view.provisionsReport) == "table"
+                and view.provisionsReport.canCreateShoppingList == true
+        )
+    end
     view.saveProvisionButton:SetEnabled(
         available and view.provisionDraftValid == true
             and view.provisionDraftChanged == true
@@ -3847,6 +3855,39 @@ local function createView(parent, tabId)
                 RGMS.Provisions.New()
             end
         end)
+
+        local auctionatorAvailable = type(RGMS.AuctionatorIntegration) == "table"
+            and type(RGMS.AuctionatorIntegration.IsAvailable) == "function"
+            and RGMS.AuctionatorIntegration.IsAvailable()
+        if auctionatorAvailable then
+            view.auctionatorShoppingListButton = CreateFrame(
+                "Button",
+                nil,
+                view,
+                "UIPanelButtonTemplate"
+            )
+            styleButton(view.auctionatorShoppingListButton, "secondary", 32)
+            ProvisionUI.fitActionButton(
+                view.auctionatorShoppingListButton,
+                "Create Auctionator Shopping List"
+            )
+            view.auctionatorShoppingListButton:SetPoint(
+                "LEFT",
+                view.newProvisionButton,
+                "RIGHT",
+                8,
+                0
+            )
+            view.contextStatusLeft = ProvisionUI.CONTEXT_AUCTIONATOR_STATUS_LEFT
+            ProvisionUI.setContextStatusLayout(view, false)
+            view.auctionatorShoppingListButton:SetScript("OnClick", function()
+                if type(RGMS.Provisions) == "table"
+                    and type(RGMS.Provisions.CreateAuctionatorShoppingList)
+                        == "function" then
+                    RGMS.Provisions.CreateAuctionatorShoppingList()
+                end
+            end)
+        end
     end
 
     if tabId == "roster" or tabId == "mainsalts" or tabId == "bank"
