@@ -1079,6 +1079,23 @@ return {
             { 1, 0.82, 0.2, 1 }
         )
         test.assert_true(drawer.blocks[1].check.icon.desaturated)
+        UIParent.effectiveScale = 2
+        harness.setCursor(642, 1308, false)
+        drawer.blocks[1].check.scripts.OnEnter(drawer.blocks[1].check)
+        local tooltip = harness.frame().ownedTooltip
+        test.assert_true(tooltip:IsShown())
+        test.assert_true(tooltip.owner == drawer.blocks[1].check)
+        test.assert_equal(tooltip.title.text, "Dismiss")
+        test.assert_equal(tooltip.body.text, "")
+        test.assert_equal(tooltip:GetWidth(), 69)
+        test.assert_equal(tooltip:GetHeight(), 30)
+        test.assert_equal(tooltip.point, "TOPLEFT")
+        test.assert_true(tooltip.relativeTo == UIParent)
+        test.assert_equal(tooltip.relativePoint, "BOTTOMLEFT")
+        test.assert_equal(tooltip.x, 321)
+        test.assert_equal(tooltip.y, 654)
+        drawer.blocks[1].check.scripts.OnLeave(drawer.blocks[1].check)
+        test.assert_false(tooltip:IsShown())
         test.assert_equal(drawer.blocks[2].setId, "older")
         test.assert_equal(drawer.blocks[2].text.text, "Delta-Area52 joined the guild.")
 

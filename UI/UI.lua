@@ -1026,9 +1026,9 @@ local function hideTooltipIfOwned(owner)
     end
 end
 
-showOwnedTooltip = function(owner, title, body)
+showOwnedTooltip = function(owner, title, body, options)
     if type(UI.ShowTooltip) == "function" then
-        UI.ShowTooltip(owner, title, body)
+        UI.ShowTooltip(owner, title, body, options)
         return
     end
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
@@ -4578,6 +4578,15 @@ local function acquireNewsBlock(newsWindow, index)
         block.check.icon:SetDesaturated(true)
     end
     block.check.icon:SetVertexColor(1, 0.82, 0.2, 1)
+    block.check:SetScript("OnEnter", function(button)
+        showOwnedTooltip(button, "Dismiss", nil, {
+            compact = true,
+            anchorAtCursor = true,
+        })
+    end)
+    block.check:SetScript("OnLeave", function(button)
+        hideOwnedTooltip(button)
+    end)
 
     block.text = block.panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     block.text:SetPoint("TOPLEFT", block.panel, "TOPLEFT", 12, -10)
@@ -6338,12 +6347,15 @@ function UI.GetContentHost(tabId)
     return UI.frame.views[tabId].scrollChild
 end
 
-function UI.ShowTooltip(owner, title, body)
+function UI.ShowTooltip(owner, title, body, options)
     if not UI.frame or not UI.frame.ownedTooltip then
         return false
     end
     local tooltip = UI.frame.ownedTooltip
     local hasTitle = type(title) == "string" and title ~= ""
+    local compact = type(options) == "table" and options.compact == true
+    local anchorAtCursor = type(options) == "table"
+        and options.anchorAtCursor == true
     tooltip.owner = owner
     tooltip.title:SetText(tostring(title or ""))
     tooltip.title:SetShown(hasTitle)
@@ -6356,12 +6368,39 @@ function UI.ShowTooltip(owner, title, body)
         tooltip.body:SetPoint("TOPLEFT", tooltip, "TOPLEFT", 10, -8)
         tooltip.body:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", -10, -8)
     end
-    tooltip:SetHeight(math.max(
-        44,
-        tooltip.body:GetStringHeight() + (hasTitle and 34 or 16)
-    ))
+    if compact then
+        tooltip:SetWidth(math.ceil(tooltip.title:GetStringWidth())
+            + 20)
+        tooltip:SetHeight(math.max(
+            30,
+            tooltip.title:GetStringHeight() + 16
+        ))
+    else
+        tooltip:SetWidth(280)
+        tooltip:SetHeight(math.max(
+            44,
+            tooltip.body:GetStringHeight() + (hasTitle and 34 or 16)
+        ))
+    end
     tooltip:ClearAllPoints()
-    tooltip:SetPoint("BOTTOMLEFT", owner, "TOPRIGHT", 8, 8)
+    if anchorAtCursor and type(GetCursorPosition) == "function" then
+        local cursorX, cursorY = GetCursorPosition()
+        local scale = type(UIParent.GetEffectiveScale) == "function"
+            and UIParent:GetEffectiveScale()
+            or 1
+        if type(scale) ~= "number" or scale <= 0 then
+            scale = 1
+        end
+        tooltip:SetPoint(
+            "TOPLEFT",
+            UIParent,
+            "BOTTOMLEFT",
+            cursorX / scale,
+            cursorY / scale
+        )
+    else
+        tooltip:SetPoint("BOTTOMLEFT", owner, "TOPRIGHT", 8, 8)
+    end
     tooltip:Show()
     return true
 end
