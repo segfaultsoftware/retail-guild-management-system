@@ -23,6 +23,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Refactored the Retail UI adapter into single-responsibility window, widget,
+  roster, tag, bank, provision, notes, news, tooltip, and toast modules while
+  preserving the existing `RGMS.UI` contract and saved-data format.
 - Adopted the standard LibDBIcon tooltip styling and screen-aware positioning
   for the minimap button while reducing its content to the RGMS name.
 - Moved **New Provision** into the Provisions contextual bar, reclaimed the
