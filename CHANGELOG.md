@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## 1.1.1
+
 ### Added
 
 - Added a compact RGMS-styled **Dismiss** tooltip at the mouse cursor when
