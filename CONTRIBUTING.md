@@ -34,7 +34,12 @@ Lua load order.
 | Bank Retail adapter and event wiring | `Bank/Bank.lua` | `Tests/spec/bank_adapter_spec.lua`, `Tests/spec/bank_spec.lua` |
 | Bank scan coordinator | `Bank/Scanner.lua` | `Tests/spec/bank_scanner_spec.lua` |
 | Bank slot stability and report model | `Bank/State.lua`, `Bank/Report.lua` | `Tests/spec/bank_state_spec.lua`, `Tests/spec/bank_report_spec.lua` |
-| Window rendering and interaction | `UI/UI.lua` | `Tests/spec/ui_spec.lua` |
+| UI facade and cross-feature coordination | `UI/UI.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua`, `docs/PORTAL_UI.md` |
+| Root window, navigation, positioning, and scan overlay | `UI/Window.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
+| Shared UI widgets and styling | `UI/Widgets.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
+| Roster ByName, ByTenure, and tag popovers | `UI/Roster/ByName.lua`, `UI/Roster/ByTenure.lua`, `UI/Roster/TagPopovers.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
+| Tags, bank, and provisions views | `UI/Tags.lua`, `UI/Bank.lua`, `UI/Provisions.lua`, `UI/ProvisionDrag.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
+| Notes, News, tooltips, and toasts | `UI/Notes.lua`, `UI/News.lua`, `UI/Tooltip.lua`, `UI/Toast.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
 | Pure window geometry | `UI/Layout.lua` | `Tests/spec/ui_layout_spec.lua` |
 | Minimap button and placement | `Core/Minimap.lua` | `Tests/spec/minimap_spec.lua` |
 | Cross-subsystem MVP scenarios | all layers | `Tests/spec/mvp_integration_spec.lua`, `Tests/mvp_fixtures.lua`, `docs/MVP_SCENARIO_CHECKLIST.md` |
@@ -62,8 +67,10 @@ plain-Lua snapshots and wire Retail events to the scan coordinators.
 
 Do not move WoW globals into reducers, report builders, or scanners. A new WoW
 API dependency should be wrapped by the relevant adapter and represented by the
-smallest explicit test stub in an adapter test. UI-only frame APIs remain in
-`UI/UI.lua`; pure placement calculations remain in `UI/Layout.lua`.
+smallest explicit test stub in an adapter test. UI-only frame APIs belong in
+the component identified in `docs/PORTAL_UI.md`; the `UI/UI.lua` facade retains
+only cross-feature coordination. Pure placement calculations remain in
+`UI/Layout.lua`.
 
 ### Transactions and pure state
 
@@ -134,10 +141,10 @@ The exact installation and SavedVariables paths are in
 
 ## Automated tests
 
-Run the full suite from the repository root:
+On Windows, run the full suite from Git Bash at the repository root:
 
 ```text
-lua Tests/run.lua
+lua.exe Tests/run.lua
 ```
 
 Expected result: exit status `0` and a summary with zero failed tests. CI runs

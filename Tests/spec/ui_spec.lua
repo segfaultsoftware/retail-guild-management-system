@@ -772,8 +772,24 @@ local function newHarness(savedPosition, screenWidth, screenHeight, auctionatorA
             end,
         },
     }
-    local chunk = assert(loadfile("UI/UI.lua"))
-    local ui = chunk("RGMS", rgms)
+    for _, path in ipairs({
+        "UI/Widgets.lua",
+        "UI/Provisions.lua",
+        "UI/ProvisionDrag.lua",
+        "UI/Tooltip.lua",
+        "UI/Toast.lua",
+        "UI/Roster/ByName.lua",
+        "UI/Roster/ByTenure.lua",
+        "UI/Roster/TagPopovers.lua",
+        "UI/Tags.lua",
+        "UI/Bank.lua",
+        "UI/Notes.lua",
+        "UI/News.lua",
+        "UI/Window.lua",
+    }) do
+        assert(loadfile(path))("RGMS", rgms)
+    end
+    local ui = assert(loadfile("UI/UI.lua"))("RGMS", rgms)
     rgms.UI = ui
 
     return {
@@ -825,6 +841,10 @@ end
 return {
     test.case("window initializes hidden at a fixed size with explicit fresh states", function()
         local harness = newHarness()
+        test.assert_equal(
+            harness.ui.SetProvisionsMoney,
+            harness.ui.SetGuildBankBalance
+        )
         test.assert_true(harness.ui.Initialize())
 
         local frame = harness.frame()
