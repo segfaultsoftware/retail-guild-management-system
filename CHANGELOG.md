@@ -23,6 +23,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Guild-bank item tenure now resets when a stack decreases in the same slot,
+  while stack additions preserve the original tenure.
 - Refactored the Retail UI adapter into single-responsibility window, widget,
   roster, tag, bank, provision, notes, news, tooltip, and toast modules while
   preserving the existing `RGMS.UI` contract and saved-data format.

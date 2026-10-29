@@ -192,7 +192,7 @@ function State.reduce(previousDataset, snapshot, dateTime)
         local previous = previousSlots[slotKey(slot.tabIndex, slot.slotIndex)]
         if previous ~= nil
             and previous.itemId == slot.itemId
-            and previous.quantity == slot.quantity then
+            and previous.quantity <= slot.quantity then
             slot.stableSinceDate = previous.stableSinceDate
         else
             slot.stableSinceDate = observedDate
