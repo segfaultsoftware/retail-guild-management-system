@@ -4,6 +4,7 @@ local MinimapButton = {}
 
 local DEFAULT_POSITION = 225
 local DISPLAY_NAME = "Retail Guild Management System"
+local TOOLTIP_TEXT = "RGMS"
 
 local function currentSettings()
     local state = type(RGMS) == "table" and RGMS.AccountDataState or nil
@@ -34,26 +35,10 @@ local function toggleRGMS(_, mouseButton)
 end
 
 local function showTooltip(tooltip)
-    if type(RGMS) == "table"
-        and type(RGMS.UI) == "table"
-        and type(RGMS.UI.ShowTooltip) == "function"
-        and MinimapButton.button ~= nil then
-        if type(tooltip.Hide) == "function" then
-            tooltip:Hide()
-        end
-        RGMS.UI.ShowTooltip(
-            MinimapButton.button,
-            DISPLAY_NAME,
-            "Left-click to open or close RGMS.\nDrag to reposition this button."
-        )
-        return
-    end
     if type(tooltip) ~= "table" or type(tooltip.AddLine) ~= "function" then
         return
     end
-    tooltip:AddLine(DISPLAY_NAME)
-    tooltip:AddLine("Left-click to open or close RGMS.", 1, 1, 1)
-    tooltip:AddLine("Drag to reposition this button.", 0.7, 0.7, 0.7)
+    tooltip:AddLine(TOOLTIP_TEXT)
 end
 
 function MinimapButton.Initialize()
@@ -93,13 +78,6 @@ function MinimapButton.Initialize()
 
     MinimapButton.dataObject = dataObject
     MinimapButton.button = button
-    if type(button.HookScript) == "function"
-        and type(RGMS.UI) == "table"
-        and type(RGMS.UI.HideTooltip) == "function" then
-        button:HookScript("OnLeave", function()
-            RGMS.UI.HideTooltip(button)
-        end)
-    end
     return true
 end
 
