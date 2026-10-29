@@ -111,7 +111,7 @@ return {
         harness.restore()
     end),
 
-    test.case("broker callbacks toggle RGMS and populate the tooltip", function()
+    test.case("broker callbacks toggle RGMS and populate the standard tooltip", function()
         local harness = loadHarness()
         test.assert_true(harness.minimap.Initialize())
         local object = harness.dataObjects[1].object
@@ -126,9 +126,8 @@ return {
                 lines[#lines + 1] = { ... }
             end,
         })
-        test.assert_equal(lines[1][1], "Retail Guild Management System")
-        test.assert_equal(lines[2][1], "Left-click to open or close RGMS.")
-        test.assert_equal(lines[3][1], "Drag to reposition this button.")
+        test.assert_equal(#lines, 1)
+        test.assert_equal(lines[1][1], "RGMS")
         harness.restore()
     end),
 

@@ -20,6 +20,7 @@ local function withLibraryHarness(callback)
 
     local eventFrame
     local createdButtons = {}
+    local tooltip
     local minimapWidth = 200
     local minimapHeight = 120
 
@@ -41,10 +42,14 @@ local function withLibraryHarness(callback)
     local function newFrame(frameType, name, parent)
         local frame = {
             frameType = frameType,
+            lines = {},
             name = name,
             parent = parent,
             scripts = {},
         }
+        function frame:AddLine(...)
+            self.lines[#self.lines + 1] = { ... }
+        end
         function frame:CreateAnimationGroup()
             return {
                 CreateAnimation = function()
@@ -67,6 +72,9 @@ local function withLibraryHarness(callback)
         function frame:GetName()
             return self.name
         end
+        function frame:GetCenter()
+            return self.centerX or 960, self.centerY or 540
+        end
         function frame:GetOwner()
             return self.owner
         end
@@ -87,8 +95,9 @@ local function withLibraryHarness(callback)
         function frame:SetFrameLevel() end
         function frame:SetFrameStrata() end
         function frame:SetHighlightTexture() end
-        function frame:SetOwner(owner)
+        function frame:SetOwner(owner, anchor)
             self.owner = owner
+            self.ownerAnchor = anchor
         end
         function frame:SetPoint(...)
             self.point = { ... }
@@ -129,6 +138,8 @@ local function withLibraryHarness(callback)
         local frame = newFrame(frameType, name, parent)
         if frameType == "Button" then
             createdButtons[#createdButtons + 1] = frame
+        elseif frameType == "GameTooltip" then
+            tooltip = frame
         elseif frameType == "Frame" then
             eventFrame = frame
         end
@@ -144,6 +155,7 @@ local function withLibraryHarness(callback)
         callback({
             createdButtons = createdButtons,
             eventFrame = eventFrame,
+            tooltip = tooltip,
             resizeMinimap = function(width, height)
                 minimapWidth = width
                 minimapHeight = height
@@ -185,6 +197,37 @@ return {
             dbIcon:Refresh("RGMS")
             test.assert_equal(button.point[4], 155)
             test.assert_equal(button.point[5], 0)
+        end)
+    end),
+
+    test.case("vendored LibDBIcon anchors top-edge tooltips below the button", function()
+        withLibraryHarness(function(harness)
+            local dataBroker = LibStub:GetLibrary("LibDataBroker-1.1")
+            local dbIcon = LibStub:GetLibrary("LibDBIcon-1.0")
+            local object = dataBroker:NewDataObject("RGMS", {
+                type = "launcher",
+                icon = "rgms-icon",
+                OnTooltipShow = function(activeTooltip)
+                    activeTooltip:AddLine("RGMS")
+                end,
+            })
+
+            dbIcon:Register("RGMS", object, { minimapPos = 0 })
+            local button = harness.createdButtons[1]
+            button.centerX = 960
+            button.centerY = 1000
+            button.scripts.OnEnter(button)
+
+            test.assert_true(harness.tooltip.owner == button)
+            test.assert_equal(harness.tooltip.ownerAnchor, "ANCHOR_NONE")
+            test.assert_equal(harness.tooltip.point[1], "TOP")
+            test.assert_true(harness.tooltip.point[2] == button)
+            test.assert_equal(harness.tooltip.point[3], "BOTTOM")
+            test.assert_equal(harness.tooltip.lines, { { "RGMS" } })
+            test.assert_true(harness.tooltip:IsShown())
+
+            button.scripts.OnLeave(button)
+            test.assert_false(harness.tooltip:IsShown())
         end)
     end),
 }
