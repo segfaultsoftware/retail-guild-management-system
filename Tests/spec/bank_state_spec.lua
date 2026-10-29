@@ -69,7 +69,7 @@ local function expectedSlot(observedSlot, stableSinceDate)
 end
 
 return {
-    test.case("multi-scan slot changes reset only the affected numeric location", function()
+    test.case("deposits preserve tenure while withdrawals and replacements reset it", function()
         local firstSnapshot = snapshot(0, { tab(1, true) }, {
             slot(1, 1, 100, 5),
             slot(1, 2, 100, 5),
@@ -108,7 +108,7 @@ return {
         })
         local changed = reduce(unchanged, changedSnapshot)
         test.assert_equal(changed.slots, {
-            expectedSlot(changedSnapshot.slots[1], "2024-06-04"),
+            expectedSlot(changedSnapshot.slots[1], "2024-06-01"),
             expectedSlot(changedSnapshot.slots[2], "2024-06-04"),
         })
 
@@ -202,13 +202,13 @@ return {
         test.assert_equal(hidden.slots, {})
     end),
 
-    test.case("restored access resets state only when contents differ", function()
+    test.case("restored access resets state when a stack decreased", function()
         local first = reduce(emptyDataset(), snapshot(0, { tab(1, true) }, {
             slot(1, 1, 500, 10),
         }))
         local hidden = reduce(first, snapshot(1, { tab(1, false) }, {}))
         local changedSnapshot = snapshot(3, { tab(1, true) }, {
-            slot(1, 1, 500, 11),
+            slot(1, 1, 500, 9),
         })
         local restored = reduce(hidden, changedSnapshot)
 
