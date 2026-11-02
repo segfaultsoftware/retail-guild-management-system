@@ -710,14 +710,19 @@ function Model.buildPlot(history, chartType, today, width, height, selections)
     if not series then
         return nil, seriesError
     end
-    local firstDay = lastDay - Model.RETENTION_DAYS + 1
-    local finalDay = lastDay
+    local firstDay
+    local finalDay
     local maximum = 0
     for _, entry in ipairs(series) do
         for _, point in ipairs(entry.points) do
+            local dayNumber = DateTime.calendarDayNumber(point.date)
+            firstDay = firstDay and math.min(firstDay, dayNumber) or dayNumber
+            finalDay = finalDay and math.max(finalDay, dayNumber) or dayNumber
             maximum = math.max(maximum, point.value)
         end
     end
+    firstDay = firstDay or lastDay
+    finalDay = finalDay or lastDay
     local daySpan = finalDay - firstDay
     local dotRadius = Model.DOT_SIZE / 2
     local horizontalPadding = math.min(
@@ -730,6 +735,9 @@ function Model.buildPlot(history, chartType, today, width, height, selections)
     )
     local interiorWidth = width - horizontalPadding * 2
     local function plotX(dayNumber)
+        if daySpan == 0 then
+            return width / 2
+        end
         return horizontalPadding
             + interiorWidth * (dayNumber - firstDay) / daySpan
     end

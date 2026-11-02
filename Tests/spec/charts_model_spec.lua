@@ -187,26 +187,26 @@ return {
         test.assert_nil(sparse[3])
     end),
 
-    test.case("plot math fixes and pads the date domain scales values and clips regression", function()
+    test.case("plot math fits the displayed date domain scales values and clips regression", function()
         local history = charts.newHistory()
         history.gold = {
             point("2024-01-01", 999),
-            point("2024-01-03", 0),
-            point("2024-04-02", 90),
-            point("2024-06-30", 179),
+            point("2024-04-03", 0),
+            point("2024-05-03", 90),
+            point("2024-06-02", 180),
         }
         local plot = assert(charts.buildPlot(history, "gold", "2024-06-30", 189, 104))
-        test.assert_equal(plot.firstDate, "2024-01-03")
-        test.assert_equal(plot.lastDate, "2024-06-30")
+        test.assert_equal(plot.firstDate, "2024-04-03")
+        test.assert_equal(plot.lastDate, "2024-06-02")
         test.assert_equal(#plot.series[1].plotPoints, 3)
-        test.assert_equal(plot.maximum, 179)
+        test.assert_equal(plot.maximum, 180)
         test.assert_equal(plot.dotSize, 7)
         test.assert_equal(plot.horizontalPadding, 8.5)
         test.assert_equal(plot.verticalPadding, 5.5)
         test.assert_equal(plot.series[1].plotPoints[1].x, 8.5)
         test.assert_equal(
             plot.series[1].plotPoints[2].x,
-            8.5 + 172 * 90 / 179
+            8.5 + 172 * 30 / 60
         )
         test.assert_equal(plot.series[1].plotPoints[3].x, 180.5)
         test.assert_equal(plot.series[1].plotPoints[1].y, 5.5)
@@ -227,21 +227,21 @@ return {
             plot.height - plot.series[1].plotPoints[3].y - plot.dotSize / 2,
             2
         )
-        test.assert_equal(#plot.monthBoundaries, 5)
+        test.assert_equal(#plot.monthBoundaries, 2)
         test.assert_equal(plot.monthBoundaries[1], {
-            date = "2024-02-01",
-            x = 8.5 + 172 * 29 / 179,
+            date = "2024-05-01",
+            x = 8.5 + 172 * 28 / 60,
         })
-        test.assert_equal(plot.monthBoundaries[5], {
+        test.assert_equal(plot.monthBoundaries[2], {
             date = "2024-06-01",
-            x = 8.5 + 172 * 150 / 179,
+            x = 8.5 + 172 * 59 / 60,
         })
         test.assert_true(plot.series[1].regression ~= nil)
         test.assert_equal(plot.series[1].regression.x1, 8.5)
         test.assert_equal(plot.series[1].regression.x2, 180.5)
 
         local singleHistory = charts.newHistory()
-        singleHistory.gold = { point("2024-06-30", 7) }
+        singleHistory.gold = { point("2024-06-15", 7) }
         local singlePlot = assert(charts.buildPlot(
             singleHistory,
             "gold",
@@ -249,9 +249,45 @@ return {
             189,
             104
         ))
-        test.assert_equal(singlePlot.firstDate, "2024-01-03")
-        test.assert_equal(singlePlot.lastDate, "2024-06-30")
-        test.assert_equal(singlePlot.series[1].plotPoints[1].x, 180.5)
+        test.assert_equal(singlePlot.firstDate, "2024-06-15")
+        test.assert_equal(singlePlot.lastDate, "2024-06-15")
+        test.assert_equal(singlePlot.series[1].plotPoints[1].x, 94.5)
+
+        local itemHistory = charts.newHistory()
+        itemHistory.items = {
+            { itemId = 1, name = "First", icon = 1, points = {
+                point("2024-05-10", 1),
+            } },
+            { itemId = 2, name = "Second", icon = 2, points = {
+                point("2024-06-10", 2),
+            } },
+            { itemId = 3, name = "Hidden", icon = 3, points = {
+                point("2024-04-10", 3),
+            } },
+        }
+        local itemPlot = assert(charts.buildPlot(
+            itemHistory,
+            "items",
+            "2024-06-30",
+            189,
+            104,
+            { 1, 2 }
+        ))
+        test.assert_equal(itemPlot.firstDate, "2024-05-10")
+        test.assert_equal(itemPlot.lastDate, "2024-06-10")
+        test.assert_equal(itemPlot.series[1].plotPoints[1].x, 8.5)
+        test.assert_equal(itemPlot.series[2].plotPoints[1].x, 180.5)
+
+        local emptyPlot = assert(charts.buildPlot(
+            charts.newHistory(),
+            "gold",
+            "2024-06-30",
+            189,
+            104
+        ))
+        test.assert_equal(emptyPlot.firstDate, "2024-06-30")
+        test.assert_equal(emptyPlot.lastDate, "2024-06-30")
+        test.assert_equal(emptyPlot.points, {})
 
         local zeroHistory = charts.newHistory()
         zeroHistory.gold = {
