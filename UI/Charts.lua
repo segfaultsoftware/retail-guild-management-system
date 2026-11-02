@@ -4,11 +4,6 @@ local Runtime = assert(RGMS.UIRuntime, "UI/Widgets.lua must load first")
 
 Runtime.Register("Charts", function()
 local CHART_TYPE_OPTIONS = RGMS.ChartModel.CHART_TYPES
-local CHART_SELECTOR_COLORS = {
-    PALETTE.pink,
-    PALETTE.success,
-    PALETTE.warning,
-}
 local MEMBER_COLORS = {
     PALETTE.pink,
     PALETTE.success,
@@ -25,19 +20,8 @@ local CHART_PLOT_HEIGHT = 306
 local DOT_SIZE = RGMS.ChartModel.DOT_SIZE
 local HALO_SIZE = 14
 
-local function badgeAtlas(quality)
-    if quality == 1 then
-        return "Professions-Icon-Quality-12-Tier1"
-    elseif quality == 2 then
-        return "Professions-Icon-Quality-12-Tier2"
-    end
-    return nil
-end
-
 local function colorFor(chartType, colorIndex)
-    if chartType == "items" then
-        return CHART_SELECTOR_COLORS[colorIndex] or PALETTE.pink
-    elseif chartType == "members" then
+    if chartType == "members" then
         return MEMBER_COLORS[((colorIndex - 2) % #MEMBER_COLORS) + 1]
     end
     return PALETTE.pink
@@ -147,15 +131,6 @@ local function resetDrawing(view)
     view.chartTooltip:Hide()
 end
 
-local function findOption(options, itemId)
-    for _, option in ipairs(options or {}) do
-        if option.itemId == itemId or option.index == itemId then
-            return option
-        end
-    end
-    return nil
-end
-
 local function findChartTypeOption(chartType)
     for _, option in ipairs(CHART_TYPE_OPTIONS) do
         if option.index == chartType then
@@ -163,63 +138,6 @@ local function findChartTypeOption(chartType)
         end
     end
     return nil
-end
-
-local function decoratedItemOptions(options)
-    local result = {}
-    for _, option in ipairs(options or {}) do
-        result[#result + 1] = {
-            index = option.index,
-            itemId = option.itemId,
-            name = option.name,
-            label = option.label,
-            icon = option.icon,
-            craftingQuality = option.craftingQuality,
-            badgeAtlas = badgeAtlas(option.craftingQuality),
-            series = option.series,
-        }
-    end
-    return result
-end
-
-local function updateSelectorOptions(view)
-    view.chartSelectorOptions = { {}, {}, {} }
-    for position = 1, 3 do
-        for _, option in ipairs(view.chartItemOptions or {}) do
-            local selectedElsewhere = false
-            for otherPosition = 1, 3 do
-                if otherPosition ~= position
-                    and view.chartItemSelections[otherPosition] == option.itemId then
-                    selectedElsewhere = true
-                end
-            end
-            if not selectedElsewhere
-                or view.chartItemSelections[position] == option.itemId then
-                view.chartSelectorOptions[position][#view.chartSelectorOptions[position] + 1]
-                    = option
-            end
-        end
-    end
-end
-
-local function updateSelectors(view)
-    local shown = view.chartType == "items"
-    for position = 1, 3 do
-        local label = view.chartItemLabels[position]
-        local dropdown = view.chartItemDropdowns[position]
-        label:SetShown(shown)
-        dropdown:SetShown(shown)
-        local option = findOption(
-            view.chartItemOptions,
-            view.chartItemSelections[position]
-        )
-        updateDropdownLabel(dropdown, option, "No item available", true)
-        dropdown:SetEnabled(
-            shown
-                and option ~= nil
-                and UI.globalScanLocked ~= true
-        )
-    end
 end
 
 local function setTooltipContent(view, point)
@@ -232,24 +150,13 @@ local function setTooltipContent(view, point)
     tooltip.title:SetText(card.title)
     tooltip.date:SetText(card.date)
     tooltip.value:SetText(card.valueText or "")
-    tooltip.itemIcon:SetShown(card.kind == "item")
-    tooltip.itemBadge:SetShown(card.kind == "item" and card.craftingQuality ~= nil)
     tooltip.money:SetShown(card.kind == "gold")
     tooltip.value:SetShown(card.kind ~= "gold")
     tooltip.title:ClearAllPoints()
     tooltip.date:ClearAllPoints()
     tooltip.value:ClearAllPoints()
     tooltip.money:ClearAllPoints()
-    if card.kind == "item" then
-        tooltip.itemIcon:SetTexture(card.icon or RGMS.ChartModel.FALLBACK_ITEM_ICON)
-        local atlas = badgeAtlas(card.craftingQuality)
-        if atlas then
-            tooltip.itemBadge:SetAtlas(atlas)
-        end
-        tooltip.title:SetJustifyH("LEFT")
-        tooltip.title:SetPoint("TOPLEFT", tooltip.itemIcon, "TOPRIGHT", 8, -1)
-        tooltip.title:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", -10, -10)
-    elseif card.kind == "gold" then
+    if card.kind == "gold" then
         tooltip.title:SetJustifyH("LEFT")
         tooltip.title:SetPoint("TOPLEFT", tooltip, "TOPLEFT", 10, -9)
         tooltip.title:SetPoint("TOPRIGHT", tooltip, "TOPRIGHT", -10, -9)
@@ -315,8 +222,6 @@ end
 local function emptyCopy(chartType)
     if chartType == "gold" then
         return "No guild-bank gold history yet"
-    elseif chartType == "items" then
-        return "No guild-bank item history yet"
     end
     return "No guild-member history yet"
 end
@@ -326,9 +231,7 @@ local function renderChart(view)
         return false
     end
     resetDrawing(view)
-    local itemMode = view.chartType == "items"
     view.chartPlot:SetHeight(CHART_PLOT_HEIGHT)
-    updateSelectors(view)
     local width = math.max(1, view.chartPlot:GetWidth())
     local height = math.max(1, view.chartPlot:GetHeight())
     local prepared, prepareError = RGMS.ChartModel.buildPlot(
@@ -336,8 +239,7 @@ local function renderChart(view)
         view.chartType,
         view.chartToday,
         width,
-        height,
-        view.chartItemSelections
+        height
     )
     if not prepared then
         view.chartEmpty:SetText("Charts unavailable: " .. tostring(prepareError))
@@ -359,13 +261,7 @@ local function renderChart(view)
     end
     for _, series in ipairs(prepared.series) do
         local color = colorFor(view.chartType, series.colorIndex)
-        if itemMode then
-            for index = 2, #series.plotPoints do
-                local previous = series.plotPoints[index - 1]
-                local point = series.plotPoints[index]
-                drawLine(view, previous.x, previous.y, point.x, point.y, color, false, 2)
-            end
-        elseif series.regression then
+        if series.regression then
             local regression = series.regression
             drawLine(
                 view,
@@ -397,7 +293,7 @@ function UI.SelectChartType(chartType)
     end
     local option = findChartTypeOption(chartType)
     if not option then
-        return nil, "chart type must be gold, items, or members"
+        return nil, "chart type must be gold or members"
     end
     if UI.globalScanLocked == true and UI.frame:IsShown() then
         return nil, "scan-locked"
@@ -405,28 +301,6 @@ function UI.SelectChartType(chartType)
     local view = UI.frame.views.charts
     view.chartType = chartType
     updateDropdownLabel(view.chartTypeDropdown, option, "Guild Bank Gold", true)
-    return renderChart(view)
-end
-
-function UI.SelectChartItem(position, itemId)
-    if not UI.frame then
-        return nil, "the RGMS window has not been initialized"
-    end
-    if UI.globalScanLocked == true and UI.frame:IsShown() then
-        return nil, "scan-locked"
-    end
-    local view = UI.frame.views.charts
-    local selections, selectionError = RGMS.ChartModel.selectItem(
-        view.chartHistory,
-        view.chartItemSelections,
-        position,
-        itemId
-    )
-    if not selections then
-        return nil, selectionError
-    end
-    view.chartItemSelections = selections
-    updateSelectorOptions(view)
     return renderChart(view)
 end
 
@@ -441,13 +315,6 @@ function UI.SetChartsHistory(history, today)
     local view = UI.frame.views.charts
     view.chartHistory = history
     view.chartToday = today
-    local selections, options = RGMS.ChartModel.reconcileSelections(
-        history,
-        view.chartItemSelections
-    )
-    view.chartItemSelections = selections
-    view.chartItemOptions = decoratedItemOptions(options)
-    updateSelectorOptions(view)
     return renderChart(view)
 end
 
@@ -457,16 +324,6 @@ function UI.ResetCharts()
     end
     local view = UI.frame.views.charts
     view.chartType = "gold"
-    view.chartItemSelections = {}
-    if view.chartHistory then
-        local selections, options = RGMS.ChartModel.reconcileSelections(
-            view.chartHistory,
-            nil
-        )
-        view.chartItemSelections = selections
-        view.chartItemOptions = decoratedItemOptions(options)
-        updateSelectorOptions(view)
-    end
     updateDropdownLabel(
         view.chartTypeDropdown,
         CHART_TYPE_OPTIONS[1],
@@ -481,12 +338,6 @@ local function createChartTooltip(view, parent)
     tooltip:SetSize(220, 76)
     tooltip:SetFrameLevel(parent:GetFrameLevel() + 80)
     flatBackdrop(tooltip, PALETTE.shell, PALETTE.border)
-    tooltip.itemIcon = tooltip:CreateTexture(nil, "ARTWORK")
-    tooltip.itemIcon:SetSize(36, 36)
-    tooltip.itemIcon:SetPoint("TOPLEFT", tooltip, "TOPLEFT", 10, -10)
-    tooltip.itemBadge = tooltip:CreateTexture(nil, "OVERLAY")
-    tooltip.itemBadge:SetSize(14, 14)
-    tooltip.itemBadge:SetPoint("BOTTOMRIGHT", tooltip.itemIcon, "BOTTOMRIGHT", 3, -3)
     tooltip.title = tooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     setFont(tooltip.title, FONT_SEMIBOLD, 12)
     setTextColor(tooltip.title, PALETTE.text)
@@ -517,9 +368,6 @@ function createChartsView(view, parent)
     view.bankScanInProgress = false
     view.chartType = "gold"
     view.chartHistory = RGMS.ChartModel.newHistory()
-    view.chartItemSelections = {}
-    view.chartItemOptions = {}
-    view.chartSelectorOptions = { {}, {}, {} }
     view.chartTypeDropdown = createDropdown(
         view,
         220,
@@ -560,34 +408,6 @@ function createChartsView(view, parent)
     view.chartHalo:SetSize(HALO_SIZE, HALO_SIZE)
     view.chartHalo:Hide()
     createChartTooltip(view, parent)
-
-    view.chartItemLabels = {}
-    view.chartItemDropdowns = {}
-    for position = 1, 3 do
-        local label = view:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        label:SetPoint("BOTTOMLEFT", view, "BOTTOMLEFT", 0, 76 - (position - 1) * 36)
-        label:SetSize(54, 32)
-        label:SetJustifyH("LEFT")
-        label:SetText("Item " .. position)
-        setFont(label, FONT_SEMIBOLD, 12)
-        setTextColor(label, CHART_SELECTOR_COLORS[position])
-        view.chartItemLabels[position] = label
-        local selectorPosition = position
-        local dropdown = createDropdown(
-            view,
-            300,
-            "No item available",
-            function(itemId)
-                UI.SelectChartItem(selectorPosition, itemId)
-            end,
-            function()
-                return view.chartSelectorOptions[selectorPosition]
-            end
-        )
-        dropdown:SetPoint("LEFT", label, "RIGHT", 8, 0)
-        view.chartItemDropdowns[position] = dropdown
-    end
-    updateSelectors(view)
     view.chartPlot:SetScript("OnUpdate", function()
         updateHover(view)
     end)
@@ -604,7 +424,6 @@ end
 
 end, {
     "SelectChartType",
-    "SelectChartItem",
     "SetChartsHistory",
     "ResetCharts",
 })

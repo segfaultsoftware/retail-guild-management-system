@@ -1035,27 +1035,21 @@ return {
         test.assert_nil(frame.views.tags.mainsAltsSearchBox)
     end),
 
-    test.case("Charts renders equal-height fitted-domain plots selectors and reopen defaults", function()
+    test.case("Charts renders fitted-domain plots with Gold and Members options", function()
         local harness = newHarness()
         test.assert_true(harness.ui.Initialize())
         local frame = harness.frame()
         local view = frame.views.charts
         local typeOptions = view.chartTypeDropdown.options()
         test.assert_equal(typeOptions[1].name, "Guild Bank Gold")
-        test.assert_equal(typeOptions[2].name, "Guild Bank Items")
-        test.assert_equal(typeOptions[3].name, "Guild Members")
+        test.assert_equal(typeOptions[2].name, "Guild Members")
+        test.assert_nil(typeOptions[3])
         test.assert_equal(view.chartPlot.backdropColor, { 0, 0, 0, 1 })
 
         local history = {
             gold = {
                 { date = "2024-06-01", value = 100 },
                 { date = "2024-06-30", value = 200 },
-            },
-            items = {
-                { itemId = 40, name = "Delta", icon = 40, points = { { date = "2024-06-01", value = 4 } } },
-                { itemId = 30, name = "Charlie", icon = 30, points = { { date = "2024-06-01", value = 3 } } },
-                { itemId = 20, name = "Bravo", icon = 20, craftingQuality = 2, points = { { date = "2024-06-01", value = 2 } } },
-                { itemId = 10, name = "Alpha", icon = 10, craftingQuality = 1, points = { { date = "2024-06-01", value = 1 } } },
             },
             members = {
                 { rankIndex = 2, name = "Officer", points = { { date = "2024-06-01", value = 5 } } },
@@ -1109,25 +1103,9 @@ return {
         test.assert_equal(view.chartTooltip.date.justifyH, "LEFT")
         view.chartPlot.mouseOver = false
 
-        test.assert_true(harness.ui.SelectChartType("items"))
-        test.assert_equal(view.chartPlot:GetHeight(), 306)
-        local firstItemPoint = view.chartPreparedPlot.series[1].plotPoints[1]
-        test.assert_equal(view.chartPreparedPlot.firstDate, "2024-06-01")
-        test.assert_equal(view.chartPreparedPlot.lastDate, "2024-06-01")
-        test.assert_equal(firstItemPoint.x, view.chartPreparedPlot.width / 2)
-        test.assert_equal(view.chartItemSelections, { 10, 20, 30 })
-        test.assert_equal(view.chartItemDropdowns[1].selectedOption.icon, 10)
-        test.assert_equal(
-            view.chartItemDropdowns[1].badge.atlas,
-            "Professions-Icon-Quality-12-Tier1"
-        )
-        test.assert_true(view.chartItemLabels[1]:IsShown())
-        test.assert_true(view.chartItemDropdowns[3]:IsShown())
-        test.assert_equal(view.chartItemLabels[2].textColor, {
-            0.29, 0.871, 0.502, 1,
-        })
-        test.assert_true(harness.ui.SelectChartItem(1, 40))
-        test.assert_equal(view.chartItemSelections, { 40, 20, 30 })
+        local removed, removedError = harness.ui.SelectChartType("items")
+        test.assert_nil(removed)
+        test.assert_equal(removedError, "chart type must be gold or members")
 
         test.assert_true(harness.ui.SelectChartType("members"))
         test.assert_equal(view.chartPlot:GetHeight(), 306)
@@ -1142,7 +1120,6 @@ return {
         )
         harness.ui.Hide()
         test.assert_equal(view.chartType, "gold")
-        test.assert_equal(view.chartItemSelections, { 10, 20, 30 })
         test.assert_equal(view.chartTypeDropdown.selectedOption.name, "Guild Bank Gold")
     end),
 

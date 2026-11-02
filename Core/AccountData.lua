@@ -12,7 +12,7 @@ local ChartModel = type(RGMS) == "table"
     and RGMS.ChartModel
     or require("Charts.Model")
 
-AccountData.CURRENT_SCHEMA_VERSION = 9
+AccountData.CURRENT_SCHEMA_VERSION = 10
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -818,6 +818,34 @@ function AccountData.load(saved, currentPacificDate)
         end
         migratedFrom = migratedFrom or 8
         working.schemaVersion = 9
+    end
+    if working.schemaVersion == 9 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for _, guild in pairs(working.guilds) do
+            if type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild partitions must be tables",
+                    saved
+                )
+            end
+            if type(guild.chartHistory) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild chart histories must be tables",
+                    saved
+                )
+            end
+            guild.chartHistory.items = nil
+        end
+        migratedFrom = migratedFrom or 9
+        working.schemaVersion = 10
     end
     if currentPacificDate == nil and type(GetServerTime) == "function" then
         currentPacificDate = RGMS and RGMS.DateTime

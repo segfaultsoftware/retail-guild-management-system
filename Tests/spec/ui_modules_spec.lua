@@ -18,7 +18,6 @@ local MODULES = {
         name = "Charts",
         exports = {
             "SelectChartType",
-            "SelectChartItem",
             "SetChartsHistory",
             "ResetCharts",
         },
