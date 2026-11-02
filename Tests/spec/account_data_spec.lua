@@ -1,5 +1,6 @@
 local accountData = require("Core.AccountData")
 local dateTime = require("Core.DateTime")
+local chartModel = require("Charts.Model")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
 local groups = require("MainsAlts.Groups")
@@ -39,7 +40,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 8,
+            schemaVersion = 9,
             settings = {
                 minimapPos = 225,
             },
@@ -58,7 +59,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 8,
+            schemaVersion = 9,
             settings = {
                 minimapPos = 225,
             },
@@ -82,7 +83,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 8,
+            schemaVersion = 9,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -108,7 +109,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
@@ -134,7 +135,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_nil(migratedGuild.rosterObservation)
         test.assert_equal(migratedGuild.newsSets, {})
         test.assert_nil(originalGuild.newsSets)
@@ -158,7 +159,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(migratedGuild.provisions, {})
         test.assert_equal(migratedGuild.nextProvisionId, 1)
         test.assert_nil(originalGuild.provisions)
@@ -183,7 +184,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(migratedGuild.provisions[1].id, 1)
         test.assert_equal(migratedGuild.provisions[2].id, 3)
         test.assert_equal(migratedGuild.provisions[3].id, 4)
@@ -211,9 +212,38 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 7)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_nil(migratedBank.money)
         test.assert_equal(original.schemaVersion, 7)
+    end),
+
+    test.case("version 8 creates empty chart histories without snapshot backfill", function()
+        local identity = guild("Night Shift", "area-52")
+        local original = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "bank",
+            {
+                guild = identity,
+                scannedAt = fixtures.timestamp(),
+                money = 12345,
+                tabs = {},
+                slots = {},
+            }
+        ))
+        original.schemaVersion = 8
+        accountData.findGuild(original, identity).chartHistory = nil
+
+        local state = accountData.load(original, "2024-06-01")
+        local migratedGuild = accountData.findGuild(state.model, identity)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(migratedGuild.chartHistory, {
+            gold = {}, items = {}, members = {},
+        })
+        test.assert_nil(accountData.findGuild(original, identity).chartHistory)
     end),
 
     test.case("bank money round trips within only its guild partition", function()
@@ -239,6 +269,58 @@ return {
             1233452412
         )
         test.assert_nil(accountData.view(reloaded.model, nil, {}).bank.money)
+    end),
+
+    test.case("chart history remains account-wide inside only its guild partition", function()
+        local active = guild("Night Shift", "area-52")
+        local other = guild("Night Shift", "illidan")
+        local model = assert(accountData.replaceChartHistory(
+            accountData.newModel(),
+            active,
+            {
+                gold = { { date = "2024-06-01", value = 500 } },
+                items = {},
+                members = {},
+            }
+        ))
+        model = assert(accountData.replaceChartHistory(
+            model,
+            other,
+            chartModel.newHistory()
+        ))
+
+        test.assert_equal(accountData.view(model, active, {}).chartHistory.gold, {
+            { date = "2024-06-01", value = 500 },
+        })
+        test.assert_equal(accountData.view(model, other, {}).chartHistory.gold, {})
+        test.assert_equal(accountData.view(model, nil, {}).chartHistory.gold, {})
+    end),
+
+    test.case("account load prunes chart points and final empty series", function()
+        local identity = guild("Night Shift", "area-52")
+        local model = assert(accountData.replaceChartHistory(
+            accountData.newModel(),
+            identity,
+            {
+                gold = {
+                    { date = "2024-01-01", value = 1 },
+                    { date = "2024-01-03", value = 2 },
+                },
+                items = {
+                    {
+                        itemId = 10, name = "Expired", icon = 10,
+                        points = { { date = "2024-01-01", value = 1 } },
+                    },
+                },
+                members = {},
+            }
+        ))
+
+        local state = accountData.load(model, "2024-06-30")
+        local history = accountData.findGuild(state.model, identity).chartHistory
+        test.assert_true(state.enabled)
+        test.assert_equal(history.gold, { { date = "2024-01-03", value = 2 } })
+        test.assert_equal(history.items, {})
     end),
 
     test.case("account data validates the saved LibDBIcon position", function()
@@ -405,6 +487,14 @@ return {
                 result.newsSets
             ), result.created
         end
+        local function applyCharts(model, guildIdentity, datasetName, snapshot)
+            local partition = accountData.findGuild(model, guildIdentity)
+            local history = assert(chartModel.recordRoster(
+                partition.chartHistory,
+                snapshot
+            ))
+            return accountData.replaceChartHistory(model, guildIdentity, history)
+        end
         local controller = datasetOwnership.create({
             savedData = savedData,
             accountData = accountData,
@@ -413,9 +503,14 @@ return {
             reconcileRosterFeatures = groups.reconcile,
             reconcileCharacterTags = tags.reconcile,
             applyRosterNews = applyNews,
+            applyChartHistory = applyCharts,
             print = function() end,
         })
         local firstSnapshot = completedRoster(identity, "Alpha")
+        firstSnapshot.ranks[1].index = 2
+        firstSnapshot.ranks[1].name = "Member"
+        firstSnapshot.members[1].rankIndex = 2
+        firstSnapshot.members[1].rankName = "Member"
         local first = assert(controller:begin("roster", identity))
         first.dataset = firstSnapshot
         first.snapshot = firstSnapshot
@@ -423,8 +518,16 @@ return {
         test.assert_true(committed)
         test.assert_false(created)
         test.assert_equal(accountData.findGuild(current, identity).newsSets, {})
+        test.assert_equal(
+            accountData.findGuild(current, identity).chartHistory.members[1].points,
+            { { date = "2024-06-01", value = 1 } }
+        )
 
         local secondSnapshot = completedRoster(identity, "Bravo")
+        secondSnapshot.ranks[1].index = 2
+        secondSnapshot.ranks[1].name = "Member"
+        secondSnapshot.members[1].rankIndex = 2
+        secondSnapshot.members[1].rankName = "Member"
         secondSnapshot.scannedAt = assert(dateTime.utcTimestamp(
             firstSnapshot.scannedAt.unixSeconds + 24 * 60 * 60
         ))
@@ -441,6 +544,10 @@ return {
         test.assert_equal(failedStatus, "failed")
         test.assert_true(current == beforeFailure)
         test.assert_equal(accountData.findGuild(current, identity).newsSets, {})
+        test.assert_equal(
+            #accountData.findGuild(current, identity).chartHistory.members[1].points,
+            1
+        )
 
         local second = assert(controller:begin("roster", identity))
         second.dataset = secondSnapshot
@@ -456,6 +563,7 @@ return {
         test.assert_true(created)
         test.assert_equal(partition.newsSets[1].joiningMembers, { "Bravo-area-52" })
         test.assert_equal(partition.newsSets[1].leavingMembers, { "Alpha-area-52" })
+        test.assert_equal(#partition.chartHistory.members[1].points, 2)
     end),
 
     test.case("guildless views are empty and never mutate saved partitions", function()
@@ -829,6 +937,9 @@ return {
                 rankChanges = {},
             },
         }
+        activePartition.chartHistory.gold = {
+            { date = "2024-06-01", value = 12345 },
+        }
         account = assert(accountData.replaceDataset(
             account,
             other,
@@ -863,6 +974,10 @@ return {
         })
         test.assert_nil(accountData.findGuild(account, active).rosterObservation)
         test.assert_equal(accountData.findGuild(account, active).newsSets, {})
+        test.assert_equal(
+            accountData.findGuild(account, active).chartHistory,
+            chartModel.newHistory()
+        )
         test.assert_equal(
             accountData.findGuild(account, other).roster.members[1].name,
             "Other"

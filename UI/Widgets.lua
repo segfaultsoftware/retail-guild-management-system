@@ -67,12 +67,13 @@ stopWindowDrag = nil
 setEditBoxEnabled = nil
 
 
-TAB_ORDER = { "roster", "bank", "provisions", "tags" }
-ALL_VIEW_IDS = { "roster", "mainsalts", "bank", "provisions", "tags" }
+TAB_ORDER = { "roster", "bank", "provisions", "charts", "tags" }
+ALL_VIEW_IDS = { "roster", "mainsalts", "bank", "provisions", "charts", "tags" }
 TAB_TITLES = {
     roster = "Roster",
     bank = "Guild Bank",
     provisions = "Provisions",
+    charts = "Charts",
     tags = "Tags",
 }
 
@@ -81,6 +82,7 @@ INITIAL_COPY = {
     mainsalts = "No roster data yet",
     bank = "No bank scan yet",
     provisions = "No provisions yet",
+    charts = "No chart history yet",
     tags = "No tags yet",
 }
 
@@ -114,6 +116,7 @@ PALETTE = type(RGMS.Portal) == "table" and RGMS.Portal.PALETTE or {
     zebra = { 0.114, 0.125, 0.153, 1 }, filterMatch = { 0.231, 0.137, 0.192, 1 },
     pink = { 0.925, 0.282, 0.6, 1 }, pinkHover = { 0.957, 0.447, 0.714, 1 }, text = { 0.957, 0.957, 0.961, 1 },
     secondary = { 0.631, 0.631, 0.667, 1 }, disabled = { 0.443, 0.443, 0.478, 1 },
+    success = { 0.29, 0.871, 0.502, 1 }, warning = { 0.984, 0.749, 0.141, 1 },
     error = { 0.973, 0.443, 0.443, 1 },
 }
 
@@ -399,6 +402,13 @@ function updateDropdownLabel(dropdown, option, emptyLabel, forceTextRefresh)
             dropdown.icon:SetTexture(option.icon)
         end
     end
+    if dropdown.badge then
+        dropdown.badge:SetShown(option ~= nil and option.badgeAtlas ~= nil)
+        if option and option.badgeAtlas
+            and type(dropdown.badge.SetAtlas) == "function" then
+            dropdown.badge:SetAtlas(option.badgeAtlas)
+        end
+    end
 end
 
 function styleDropdownRadio(button)
@@ -456,6 +466,9 @@ function createDropdown(parent, width, emptyLabel, selected, options)
     dropdown.icon = dropdown:CreateTexture(nil, "ARTWORK")
     dropdown.icon:SetSize(18, 18)
     dropdown.icon:SetPoint("LEFT", dropdown, "LEFT", 8, 0)
+    dropdown.badge = dropdown:CreateTexture(nil, "OVERLAY")
+    dropdown.badge:SetSize(10, 10)
+    dropdown.badge:SetPoint("BOTTOMRIGHT", dropdown.icon, "BOTTOMRIGHT", 2, -2)
     dropdown.arrow = dropdown:CreateTexture(nil, "ARTWORK")
     dropdown.arrow:SetSize(16, 16)
     dropdown.arrow:SetPoint("RIGHT", dropdown, "RIGHT", -8, 0)
@@ -497,6 +510,12 @@ function createDropdown(parent, width, emptyLabel, selected, options)
                         icon:SetSize(18, 18)
                         icon:SetPoint("RIGHT", button, "RIGHT", -8, 0)
                         icon:SetTexture(menuOption.icon)
+                        if menuOption.badgeAtlas then
+                            local badge = button:AttachTexture()
+                            badge:SetSize(10, 10)
+                            badge:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -2)
+                            badge:SetAtlas(menuOption.badgeAtlas)
+                        end
                     end
                 end)
             end

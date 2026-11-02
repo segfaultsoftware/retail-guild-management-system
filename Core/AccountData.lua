@@ -8,8 +8,11 @@ local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
 local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
+local ChartModel = type(RGMS) == "table"
+    and RGMS.ChartModel
+    or require("Charts.Model")
 
-AccountData.CURRENT_SCHEMA_VERSION = 8
+AccountData.CURRENT_SCHEMA_VERSION = 9
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -438,6 +441,7 @@ function AccountData.newGuild(identity)
         newsSets = {},
         provisions = {},
         nextProvisionId = 1,
+        chartHistory = ChartModel.newHistory(),
     }
 end
 
@@ -492,6 +496,7 @@ function AccountData.validate(model)
             newsSets = true,
             provisions = true,
             nextProvisionId = true,
+            chartHistory = true,
         }
         for field in pairs(guild) do
             if not allowed[field] then
@@ -587,11 +592,18 @@ function AccountData.validate(model)
         if not valid then
             return nil, validationError
         end
+        valid, validationError = ChartModel.validate(
+            guild.chartHistory,
+            "account data.guilds[" .. key .. "].chartHistory"
+        )
+        if not valid then
+            return nil, validationError
+        end
     end
     return true
 end
 
-function AccountData.load(saved)
+function AccountData.load(saved, currentPacificDate)
     if saved == nil then
         return {
             enabled = true,
@@ -785,6 +797,49 @@ function AccountData.load(saved)
     if working.schemaVersion == 7 then
         migratedFrom = migratedFrom or 7
         working.schemaVersion = 8
+    end
+    if working.schemaVersion == 8 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for _, guild in pairs(working.guilds) do
+            if type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data guild partitions must be tables",
+                    saved
+                )
+            end
+            guild.chartHistory = ChartModel.newHistory()
+        end
+        migratedFrom = migratedFrom or 8
+        working.schemaVersion = 9
+    end
+    if currentPacificDate == nil and type(GetServerTime) == "function" then
+        currentPacificDate = RGMS and RGMS.DateTime
+            and RGMS.DateTime.currentPacificDate(GetServerTime())
+            or nil
+    end
+    if currentPacificDate ~= nil then
+        for key, guild in pairs(working.guilds) do
+            local pruned, pruneError = ChartModel.prune(
+                guild.chartHistory,
+                currentPacificDate
+            )
+            if not pruned then
+                return disabledState(
+                    "corrupt",
+                    "account data.guilds[" .. tostring(key)
+                        .. "].chartHistory " .. tostring(pruneError),
+                    saved
+                )
+            end
+            guild.chartHistory = pruned
+        end
     end
     local valid, validationError = AccountData.validate(working)
     if not valid then
@@ -1112,6 +1167,41 @@ function AccountData.replaceProvisions(model, identity, provisions, nextProvisio
     return replacement, guild, key
 end
 
+function AccountData.replaceChartHistory(model, identity, history)
+    local valid, validationError = AccountData.validate(model)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = ChartModel.validate(history)
+    if not valid then
+        return nil, validationError
+    end
+
+    local replacement, copyError = deepCopy(model)
+    if not replacement then
+        return nil, copyError
+    end
+    local guild, key = AccountData.findGuild(replacement, identity)
+    if not guild then
+        local guildError
+        guild, guildError = AccountData.newGuild(identity)
+        if not guild then
+            return nil, guildError
+        end
+        replacement.guilds[key] = guild
+    end
+    guild.chartHistory, copyError = deepCopy(history)
+    if not guild.chartHistory then
+        return nil, copyError
+    end
+
+    valid, validationError = AccountData.validate(replacement)
+    if not valid then
+        return nil, validationError
+    end
+    return replacement, guild, key
+end
+
 function AccountData.resetGuild(model, identity)
     local valid, validationError = AccountData.validate(model)
     if not valid then
@@ -1141,6 +1231,7 @@ function AccountData.resetGuild(model, identity)
     guild.newsSets = {}
     guild.provisions = {}
     guild.nextProvisionId = 1
+    guild.chartHistory = ChartModel.newHistory()
 
     valid, validationError = AccountData.validate(replacement)
     if not valid then
@@ -1160,6 +1251,7 @@ function AccountData.view(model, identity, ui)
         newsSets = guild and guild.newsSets or {},
         provisions = guild and guild.provisions or {},
         nextProvisionId = guild and guild.nextProvisionId or 1,
+        chartHistory = guild and guild.chartHistory or ChartModel.newHistory(),
         ui = ui or {},
     }
 end

@@ -43,6 +43,10 @@ local function calendarDayNumber(year, month, day)
 end
 
 local UNIX_EPOCH_DAY_NUMBER = calendarDayNumber(1970, 1, 1)
+local MONTH_NAMES = {
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+}
 
 -- Converts a day relative to the Unix epoch to a Gregorian date. This is the
 -- civil_from_days algorithm, expressed using only Lua 5.1-compatible syntax.
@@ -255,6 +259,52 @@ function DateTime.calendarDayDifference(earlierDate, laterDate)
     end
 
     return laterDay - earlierDay
+end
+
+function DateTime.calendarDayNumber(value)
+    local parsed, parseError = DateTime.parseStoredDate(value)
+    if not parsed then
+        return nil, parseError
+    end
+    return calendarDayNumber(parsed.year, parsed.month, parsed.day)
+end
+
+function DateTime.dateFromCalendarDayNumber(dayNumber)
+    if type(dayNumber) ~= "number"
+        or dayNumber ~= math.floor(dayNumber) then
+        return nil, "calendar day number must be an integer"
+    end
+    local year, month, day = calendarDateFromUnixDay(
+        dayNumber - UNIX_EPOCH_DAY_NUMBER
+    )
+    if year < 1 or year > 9999 then
+        return nil, "calendar day number is outside the supported years 0001 through 9999"
+    end
+    return string.format("%04d-%02d-%02d", year, month, day)
+end
+
+function DateTime.addCalendarDays(value, offset)
+    if type(offset) ~= "number" or offset ~= math.floor(offset) then
+        return nil, "calendar-day offset must be an integer"
+    end
+    local dayNumber, dayError = DateTime.calendarDayNumber(value)
+    if dayNumber == nil then
+        return nil, dayError
+    end
+    return DateTime.dateFromCalendarDayNumber(dayNumber + offset)
+end
+
+function DateTime.formatLongDate(value)
+    local parsed, parseError = DateTime.parseStoredDate(value)
+    if not parsed then
+        return nil, parseError
+    end
+    return string.format(
+        "%02d %s %04d",
+        parsed.day,
+        MONTH_NAMES[parsed.month],
+        parsed.year
+    )
 end
 
 if type(RGMS) == "table" then

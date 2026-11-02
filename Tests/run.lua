@@ -7,6 +7,7 @@ local defaultSuites = {
     "Tests.spec.runner_spec",
     "Tests.spec.fixtures_spec",
     "Tests.spec.date_time_spec",
+    "Tests.spec.charts_model_spec",
     "Tests.spec.saved_data_spec",
     "Tests.spec.account_data_spec",
     "Tests.spec.roster_migration_spec",

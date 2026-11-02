@@ -34,6 +34,9 @@ return {
         test.assert_equal(portal.contextControls("provisions"), {
             secondary = "New Provision", primary = "Refresh", close = true,
         })
+        test.assert_equal(portal.contextControls("charts"), {
+            dropdown = "chartType", close = true,
+        })
         test.assert_equal(portal.contextControls("tags"), { close = true })
     end),
 
@@ -56,6 +59,7 @@ return {
             roster = { ByName = 0, ByTenure = 0 },
             bank = 0,
             provisions = 0,
+            charts = 0,
             tags = 0,
         })
     end),
@@ -70,6 +74,7 @@ return {
             roster = { ByName = 12, ByTenure = 56 },
             bank = 0,
             provisions = 0,
+            charts = 0,
             tags = 0,
         })
         test.assert_true(state:selectionChanged("roster"))

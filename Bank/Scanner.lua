@@ -175,6 +175,7 @@ function Scanner.create(dependencies)
             return self:FinishFailure(reduceError, "transaction-failure")
         end
         transaction.dataset = reducedDataset
+        transaction.snapshot = snapshot
 
         local committed, commitResult = dependencies.ownership:finish(
             transaction,

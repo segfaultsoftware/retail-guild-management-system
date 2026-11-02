@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 8
+## Account-wide schema: version 9
 
 ```text
 {
-  schemaVersion = 8,
+  schemaVersion = 9,
   settings = {
     minimapPos = number,
   },
@@ -54,6 +54,20 @@ view and does not create, bind, replace, or erase an account guild partition.
         ...
       },
       nextProvisionId = positive integer,
+      chartHistory = {
+        gold = { { date = PacificDate, value = nonnegative integer }, ... },
+        items = {
+          { itemId = positive integer, name = string, icon = texture,
+            craftingQuality = 1 | 2 | nil,
+            points = { { date = PacificDate, value = positive integer }, ... } },
+          ...
+        },
+        members = {
+          { rankIndex = integer >= 2, name = string,
+            points = { { date = PacificDate, value = nonnegative integer }, ... } },
+          ...
+        },
+      },
     },
   },
 }
@@ -76,7 +90,9 @@ visible case-insensitive item-name order, with creation ID breaking equal-name
 ties; version 7 preserves that array as the guild's authoritative manual order.
 Version 8 permits the latest successful bank snapshot to retain its total money
 in copper. Older snapshots migrate without an invented amount and remain blank
-in the Provisions view until the next successful bank scan.
+in the Provisions view until the next successful bank scan. Version 9 adds an
+empty chart history to every guild partition without backfilling older roster
+or bank snapshots.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
@@ -88,8 +104,9 @@ Roster and bank initialization flags are independent. `false` means no
 account-wide decision has been made for that dataset. `true` with empty
 collections and no scan timestamp is an intentional empty state, including a
 reset state; later migration code must not repopulate it from deprecated
-per-character observations. Main/alt groups, character notes, tags, and
-provisions are stored in the same guild partition. Roster's ByName presentation projects group
+per-character observations. Main/alt groups, character notes, tags, provisions,
+and 180-day chart histories are stored in the same guild partition. Roster's
+ByName presentation projects group
 membership from this partition but limits its character population to the
 active guild's saved roster. `rosterObservation` stores the immediately prior
 complete API observation used only for news detection; unlike `roster`, it does
@@ -175,15 +192,16 @@ matching legacy data or an empty baseline. Failure, timeout, partial data, or
 cancellation then discards the detached scan work while preserving that baseline
 and the still-pending per-character bank data.
 
-Only a complete, validated success atomically replaces that one dataset in the
-matching guild partition and marks its initialization flag true. A successful
+Only a complete, validated success atomically replaces that one dataset and its
+same-day chart observation in the matching guild partition and marks its
+initialization flag true. A successful
 roster commit also prunes expired News Sets, compares its raw API observation
 with the prior successful observation, saves the new baseline, and appends one
 News Set when qualifying changes exist. The commit also clears the logged-in
 character's corresponding deprecated dataset
 while preserving the other dataset and window position. Failed, incomplete,
-timed-out, and canceled scans preserve both the last account-wide observations
-and the pending deprecated data. The other account dataset, initialization
+timed-out, and canceled scans preserve both the last account-wide observations,
+chart histories, and the pending deprecated data. The other account dataset, initialization
 flag, groups, notes, provisions, tag definitions and assignments, and every
 other guild partition remain unchanged. Successful roster commits reconcile assignments
 against the retained roster while preserving the complete tag catalog.
@@ -191,7 +209,7 @@ against the retained roster while preserving the complete tag catalog.
 ## Reset and recovery
 
 Confirming `/rgms reset` while guilded clears the current guild's roster, bank,
-provisions, groups, notes, custom tag definitions, tag assignments, news
+chart histories, provisions, groups, notes, custom tag definitions, tag assignments, news
 baseline, and News Sets, then reseeds `me`.
 It leaves both dataset initialization flags true, preserves
 all other guild partitions and deprecated per-character observations, and

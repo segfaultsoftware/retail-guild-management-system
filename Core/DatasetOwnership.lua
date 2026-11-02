@@ -202,6 +202,20 @@ function DatasetOwnership.create(dependencies)
                 return nil, guildOrError
             end
 
+            if transaction.snapshot ~= nil
+                and type(dependencies.applyChartHistory) == "function" then
+                local historyModel, historyError = dependencies.applyChartHistory(
+                    committedModel,
+                    transaction.guild,
+                    transaction.datasetName,
+                    transaction.snapshot
+                )
+                if not historyModel then
+                    return nil, historyError
+                end
+                committedModel = historyModel
+            end
+
             local newsCreated = false
             if transaction.datasetName == "roster"
                 and transaction.snapshot ~= nil
@@ -304,6 +318,10 @@ if type(RGMS) == "table" then
                 and type(RGMS.Bank.RefreshStatus) == "function" then
                 RGMS.Bank.RefreshStatus()
             end
+            if type(RGMS.Charts) == "table"
+                and type(RGMS.Charts.RefreshStatus) == "function" then
+                RGMS.Charts.RefreshStatus()
+            end
         end,
         prepareCharacterCommit = function(datasetName)
             local characterModel = type(RGMS.SavedDataState) == "table"
@@ -357,6 +375,32 @@ if type(RGMS) == "table" then
                 return nil, replaceError
             end
             return replacement, result.created
+        end,
+        applyChartHistory = function(model, guildIdentity, datasetName, snapshot)
+            if type(RGMS.ChartModel) ~= "table" then
+                return nil, "chart history processing is unavailable"
+            end
+            local guild = RGMS.AccountData.findGuild(model, guildIdentity)
+            local history = guild and guild.chartHistory
+                or RGMS.ChartModel.newHistory()
+            local updated, updateError
+            if datasetName == "bank" then
+                updated, updateError = RGMS.ChartModel.recordBank(history, snapshot)
+            else
+                updated, updateError = RGMS.ChartModel.recordRoster(history, snapshot)
+            end
+            if not updated then
+                return nil, updateError
+            end
+            local replacement, replaceError = RGMS.AccountData.replaceChartHistory(
+                model,
+                guildIdentity,
+                updated
+            )
+            if not replacement then
+                return nil, replaceError
+            end
+            return replacement
         end,
         print = RGMS.Print,
     })

@@ -70,7 +70,7 @@ function UI.SelectPrimaryTab(tabId)
     end
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster, bank, provisions, or tags"
+        return nil, "primary tab must be roster, bank, provisions, charts, or tags"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -128,6 +128,11 @@ function UI.SelectPrimaryTab(tabId)
         and type(RGMS.Provisions) == "table"
         and type(RGMS.Provisions.OnTabSelected) == "function" then
         RGMS.Provisions.OnTabSelected()
+    end
+    if tabId == "charts" and previousTabId ~= "charts"
+        and type(RGMS.Charts) == "table"
+        and type(RGMS.Charts.RefreshStatus) == "function" then
+        RGMS.Charts.RefreshStatus()
     end
     if tabId == "roster" and mode == "ByName" and previousTabId ~= "roster"
         and type(RGMS.MainsAlts) == "table"
@@ -206,7 +211,7 @@ end
 function UI.SetViewContent(tabId, content)
     tabId = normalizeTabId(tabId)
     if not tabId then
-        return nil, "primary tab must be roster, bank, provisions, or tags"
+        return nil, "primary tab must be roster, bank, provisions, charts, or tags"
     end
     if not UI.frame then
         return nil, "the RGMS window has not been initialized"
@@ -250,6 +255,18 @@ function UI.SetViewContent(tabId, content)
             line.frame:Hide()
         end
         ProvisionUI.refreshScrollChild(view)
+    elseif tabId == "charts" then
+        for _, texture in ipairs(view.chartLineTextures or {}) do
+            texture:Hide()
+        end
+        for _, texture in ipairs(view.chartDotTextures or {}) do
+            texture:Hide()
+        end
+        view.chartPreparedPlot = nil
+        view.chartHalo:Hide()
+        view.chartTooltip:Hide()
+        view.chartEmpty:SetText(tostring(content or ""))
+        view.chartEmpty:Show()
     elseif tabId == "tags" then
         hideTagManagementRows(view)
         if view.tagHeader then
@@ -360,6 +377,20 @@ function UI.SetGlobalScanLock(locked)
             )
             if type(view.bankDropdown.SetAlpha) == "function" then
                 view.bankDropdown:SetAlpha(UI.globalScanLocked and 0.5 or 1)
+            end
+        end
+        if view.chartTypeDropdown then
+            view.chartTypeDropdown:SetEnabled(not UI.globalScanLocked)
+            if type(view.chartTypeDropdown.SetAlpha) == "function" then
+                view.chartTypeDropdown:SetAlpha(UI.globalScanLocked and 0.5 or 1)
+            end
+        end
+        for _, dropdown in ipairs(view.chartItemDropdowns or {}) do
+            dropdown:SetEnabled(
+                not UI.globalScanLocked and dropdown.selectedOption ~= nil
+            )
+            if type(dropdown.SetAlpha) == "function" then
+                dropdown:SetAlpha(UI.globalScanLocked and 0.5 or 1)
             end
         end
         if view.refreshButton and type(view.refreshButton.SetAlpha) == "function" then
