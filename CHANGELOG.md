@@ -7,29 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## 1.2.0
+
 ### Added
 
-- Added retained-scan count, gold extrema, and directional average weekly burn
-  statistics beneath the Guild Bank Gold chart.
-- Displayed the latest guild-bank scan status and gold balance in the Charts
-  contextual bar, with the same refresh action used by Guild Bank and Provisions.
 - Added account-wide per-guild 180-day charts for guild-bank gold and guild
-  ranks, with transactional Pacific-date history, fixed date layouts with
-  visible dot-edge clearance, deterministic regressions, month separators,
-  compact native-money Gold cards, and nearest-point hover inspection.
-
-### Fixed
-
-- Repainted the Charts contextual dropdown selection when its hidden view
-  becomes visible, preventing a blank initial label with Gold still selected.
-
-### Changed
-
-- Removed the Guild Bank Items chart and its saved history, selectors,
-  rendering, and bank-scan aggregation.
-- Spread each chart's retained observations across the full viewport from its
-  earliest displayed date to its latest while preserving calendar gaps and
-  month separators.
+  ranks
 
 ## 1.1.1
 
