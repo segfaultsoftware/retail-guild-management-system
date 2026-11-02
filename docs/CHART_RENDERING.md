@@ -17,11 +17,12 @@ library ecosystem for issue #129.
   library with clearer licensing and the required interaction model.
 
 LibGraph-2.0 also couples scaling, grid generation, rendering, and regression
-to its frame objects. RGMS needs a fixed 180-date Pacific-calendar domain with
-plotting coordinates inset far enough to leave explicit clearance around the
-outer edges of its dots, observation-only Y scaling, regression clipping, item
-gaps, deterministic nearest-point hover, series lifecycle rules, and testable
-selector reconciliation. Adapting
+to its frame objects. RGMS needs 180-day Pacific-calendar retention with an
+active domain fitted to the displayed series, plotting coordinates inset far
+enough to leave explicit clearance around the outer edges of its dots,
+observation-only Y scaling, regression clipping, item gaps, deterministic
+nearest-point hover, series lifecycle rules, and testable selector
+reconciliation. Adapting
 the library would require replacing most of those behaviors while adding a
 third-party dependency and assets.
 

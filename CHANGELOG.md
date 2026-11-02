@@ -20,6 +20,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Repainted the Charts contextual dropdown selection when its hidden view
   becomes visible, preventing a blank initial label with Gold still selected.
 
+### Changed
+
+- Spread each chart's retained observations across the full viewport from its
+  earliest displayed date to its latest while preserving calendar gaps and
+  month separators.
+
 ## 1.1.1
 
 ### Added

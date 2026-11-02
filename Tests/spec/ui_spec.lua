@@ -1034,7 +1034,7 @@ return {
         test.assert_nil(frame.views.tags.mainsAltsSearchBox)
     end),
 
-    test.case("Charts renders equal-height padded fixed-domain plots selectors and reopen defaults", function()
+    test.case("Charts renders equal-height fitted-domain plots selectors and reopen defaults", function()
         local harness = newHarness()
         test.assert_true(harness.ui.Initialize())
         local frame = harness.frame()
@@ -1064,7 +1064,7 @@ return {
         test.assert_equal(view.chartType, "gold")
         test.assert_equal(view.chartPlot:GetHeight(), 306)
         test.assert_equal(#view.chartPreparedPlot.points, 2)
-        test.assert_equal(view.chartPreparedPlot.firstDate, "2024-01-03")
+        test.assert_equal(view.chartPreparedPlot.firstDate, "2024-06-01")
         test.assert_equal(view.chartPreparedPlot.lastDate, "2024-06-30")
         test.assert_equal(view.chartPreparedPlot.horizontalPadding, 8.5)
         test.assert_equal(view.chartPreparedPlot.verticalPadding, 5.5)
@@ -1085,7 +1085,7 @@ return {
                 - view.chartPreparedPlot.dotSize / 2,
             5
         )
-        test.assert_equal(#view.chartPreparedPlot.monthBoundaries, 5)
+        test.assert_equal(#view.chartPreparedPlot.monthBoundaries, 1)
 
         frame.left = 40
         frame.bottom = 40
@@ -1111,12 +1111,9 @@ return {
         test.assert_true(harness.ui.SelectChartType("items"))
         test.assert_equal(view.chartPlot:GetHeight(), 306)
         local firstItemPoint = view.chartPreparedPlot.series[1].plotPoints[1]
-        test.assert_equal(
-            firstItemPoint.x,
-            8.5 + (view.chartPreparedPlot.width - 17)
-                * (firstItemPoint.dayNumber - view.chartPreparedPlot.firstDay)
-                / (view.chartPreparedPlot.lastDay - view.chartPreparedPlot.firstDay)
-        )
+        test.assert_equal(view.chartPreparedPlot.firstDate, "2024-06-01")
+        test.assert_equal(view.chartPreparedPlot.lastDate, "2024-06-01")
+        test.assert_equal(firstItemPoint.x, view.chartPreparedPlot.width / 2)
         test.assert_equal(view.chartItemSelections, { 10, 20, 30 })
         test.assert_equal(view.chartItemDropdowns[1].selectedOption.icon, 10)
         test.assert_equal(
