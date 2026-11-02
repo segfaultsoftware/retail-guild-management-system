@@ -218,6 +218,55 @@ function Model.prune(history, today)
     return result
 end
 
+function Model.goldStatistics(history, today)
+    local retained, pruneError = Model.prune(history, today)
+    if not retained then
+        return nil, pruneError
+    end
+
+    local points = retained.gold
+    local statistics = {
+        totalScans = #points,
+    }
+    if #points == 0 then
+        return statistics
+    end
+
+    statistics.maximum = points[1].value
+    statistics.minimum = points[1].value
+    for index = 2, #points do
+        statistics.maximum = math.max(statistics.maximum, points[index].value)
+        statistics.minimum = math.min(statistics.minimum, points[index].value)
+    end
+    if #points == 1 then
+        return statistics
+    end
+
+    local earliest = points[1]
+    local latest = points[#points]
+    local elapsedDays, elapsedError = DateTime.calendarDayDifference(
+        earliest.date,
+        latest.date
+    )
+    if elapsedDays == nil then
+        return nil, elapsedError
+    end
+    if elapsedDays <= 0 then
+        return nil, "gold statistics require distinct observation dates"
+    end
+
+    local difference = latest.value - earliest.value
+    statistics.averageWeeklyBurn = math.floor(
+        math.abs(difference) * 7 / elapsedDays + 0.5
+    )
+    if difference > 0 then
+        statistics.direction = "up"
+    elseif difference < 0 then
+        statistics.direction = "down"
+    end
+    return statistics
+end
+
 local function snapshotDate(snapshot)
     if type(snapshot) ~= "table"
         or type(snapshot.scannedAt) ~= "table"
