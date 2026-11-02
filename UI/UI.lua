@@ -385,14 +385,6 @@ function UI.SetGlobalScanLock(locked)
                 view.chartTypeDropdown:SetAlpha(UI.globalScanLocked and 0.5 or 1)
             end
         end
-        for _, dropdown in ipairs(view.chartItemDropdowns or {}) do
-            dropdown:SetEnabled(
-                not UI.globalScanLocked and dropdown.selectedOption ~= nil
-            )
-            if type(dropdown.SetAlpha) == "function" then
-                dropdown:SetAlpha(UI.globalScanLocked and 0.5 or 1)
-            end
-        end
         if view.refreshButton and type(view.refreshButton.SetAlpha) == "function" then
             view.refreshButton:SetAlpha(UI.globalScanLocked and 0.5 or 1)
         end

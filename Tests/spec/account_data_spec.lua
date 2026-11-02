@@ -40,7 +40,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 9,
+            schemaVersion = 10,
             settings = {
                 minimapPos = 225,
             },
@@ -59,7 +59,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 9,
+            schemaVersion = 10,
             settings = {
                 minimapPos = 225,
             },
@@ -83,7 +83,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 9,
+            schemaVersion = 10,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -109,7 +109,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
@@ -135,7 +135,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_nil(migratedGuild.rosterObservation)
         test.assert_equal(migratedGuild.newsSets, {})
         test.assert_nil(originalGuild.newsSets)
@@ -159,7 +159,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(migratedGuild.provisions, {})
         test.assert_equal(migratedGuild.nextProvisionId, 1)
         test.assert_nil(originalGuild.provisions)
@@ -184,7 +184,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(migratedGuild.provisions[1].id, 1)
         test.assert_equal(migratedGuild.provisions[2].id, 3)
         test.assert_equal(migratedGuild.provisions[3].id, 4)
@@ -212,7 +212,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 7)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_nil(migratedBank.money)
         test.assert_equal(original.schemaVersion, 7)
     end),
@@ -239,11 +239,57 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 8)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(migratedGuild.chartHistory, {
-            gold = {}, items = {}, members = {},
+            gold = {}, members = {},
         })
         test.assert_nil(accountData.findGuild(original, identity).chartHistory)
+    end),
+
+    test.case("version 9 discards item chart history copy-on-write", function()
+        local identity = guild("Night Shift", "area-52")
+        local original = assert(accountData.replaceChartHistory(
+            accountData.newModel(),
+            identity,
+            {
+                gold = { { date = "2024-06-01", value = 500 } },
+                members = {
+                    {
+                        rankIndex = 2,
+                        name = "Officer",
+                        points = { { date = "2024-06-01", value = 3 } },
+                    },
+                },
+            }
+        ))
+        original.schemaVersion = 9
+        local originalHistory = accountData.findGuild(original, identity).chartHistory
+        originalHistory.items = {
+            {
+                itemId = 10,
+                name = "Obsolete",
+                icon = 10,
+                points = { { date = "2024-06-01", value = 2 } },
+            },
+        }
+
+        local state = accountData.load(original, "2024-06-01")
+        local migratedHistory = accountData.findGuild(state.model, identity).chartHistory
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(migratedHistory, {
+            gold = { { date = "2024-06-01", value = 500 } },
+            members = {
+                {
+                    rankIndex = 2,
+                    name = "Officer",
+                    points = { { date = "2024-06-01", value = 3 } },
+                },
+            },
+        })
+        test.assert_equal(originalHistory.items[1].name, "Obsolete")
     end),
 
     test.case("bank money round trips within only its guild partition", function()
@@ -279,7 +325,6 @@ return {
             active,
             {
                 gold = { { date = "2024-06-01", value = 500 } },
-                items = {},
                 members = {},
             }
         ))
@@ -296,7 +341,7 @@ return {
         test.assert_equal(accountData.view(model, nil, {}).chartHistory.gold, {})
     end),
 
-    test.case("account load prunes chart points and final empty series", function()
+    test.case("account load prunes chart points and final empty member series", function()
         local identity = guild("Night Shift", "area-52")
         local model = assert(accountData.replaceChartHistory(
             accountData.newModel(),
@@ -306,13 +351,12 @@ return {
                     { date = "2024-01-01", value = 1 },
                     { date = "2024-01-03", value = 2 },
                 },
-                items = {
+                members = {
                     {
-                        itemId = 10, name = "Expired", icon = 10,
+                        rankIndex = 2, name = "Expired",
                         points = { { date = "2024-01-01", value = 1 } },
                     },
                 },
-                members = {},
             }
         ))
 
@@ -320,7 +364,7 @@ return {
         local history = accountData.findGuild(state.model, identity).chartHistory
         test.assert_true(state.enabled)
         test.assert_equal(history.gold, { { date = "2024-01-03", value = 2 } })
-        test.assert_equal(history.items, {})
+        test.assert_equal(history.members, {})
     end),
 
     test.case("account data validates the saved LibDBIcon position", function()

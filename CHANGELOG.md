@@ -11,11 +11,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Displayed the latest guild-bank scan status and gold balance in the Charts
   contextual bar, with the same refresh action used by Guild Bank and Provisions.
-- Added account-wide per-guild 180-day charts for guild-bank gold, accessible
-  bank items, and guild ranks, with transactional Pacific-date history,
-  fixed date layouts with visible dot-edge clearance, deterministic selectors
-  and regressions, month separators, compact native-money Gold cards, and
-  nearest-point hover inspection.
+- Added account-wide per-guild 180-day charts for guild-bank gold and guild
+  ranks, with transactional Pacific-date history, fixed date layouts with
+  visible dot-edge clearance, deterministic regressions, month separators,
+  compact native-money Gold cards, and nearest-point hover inspection.
 
 ### Fixed
 
@@ -24,6 +23,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Removed the Guild Bank Items chart and its saved history, selectors,
+  rendering, and bank-scan aggregation.
 - Spread each chart's retained observations across the full viewport from its
   earliest displayed date to its latest while preserving calendar gaps and
   month separators.

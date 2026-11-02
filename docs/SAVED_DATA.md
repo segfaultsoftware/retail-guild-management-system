@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 9
+## Account-wide schema: version 10
 
 ```text
 {
-  schemaVersion = 9,
+  schemaVersion = 10,
   settings = {
     minimapPos = number,
   },
@@ -56,12 +56,6 @@ view and does not create, bind, replace, or erase an account guild partition.
       nextProvisionId = positive integer,
       chartHistory = {
         gold = { { date = PacificDate, value = nonnegative integer }, ... },
-        items = {
-          { itemId = positive integer, name = string, icon = texture,
-            craftingQuality = 1 | 2 | nil,
-            points = { { date = PacificDate, value = positive integer }, ... } },
-          ...
-        },
         members = {
           { rankIndex = integer >= 2, name = string,
             points = { { date = PacificDate, value = nonnegative integer }, ... } },
@@ -92,7 +86,8 @@ Version 8 permits the latest successful bank snapshot to retain its total money
 in copper. Older snapshots migrate without an invented amount and remain blank
 in the Provisions view until the next successful bank scan. Version 9 adds an
 empty chart history to every guild partition without backfilling older roster
-or bank snapshots.
+or bank snapshots. Version 10 removes the discontinued item-chart history from
+every guild partition while preserving Gold and Members observations.
 
 A `GuildKey` is a deterministic, collision-safe combination of the exact guild
 name and the case-insensitive canonical realm slug. Consequently, identically
