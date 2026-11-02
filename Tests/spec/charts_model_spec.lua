@@ -45,6 +45,121 @@ return {
         ))
 
         test.assert_equal(replaced.gold, { point("2024-06-01", 250) })
+        test.assert_equal(
+            assert(charts.goldStatistics(replaced, "2024-06-01")),
+            {
+                totalScans = 1,
+                maximum = 250,
+                minimum = 250,
+            }
+        )
+    end),
+
+    test.case("gold statistics handle empty single and standard money values", function()
+        test.assert_equal(
+            assert(charts.goldStatistics(charts.newHistory(), "2024-06-30")),
+            { totalScans = 0 }
+        )
+
+        local history = charts.newHistory()
+        history.gold = { point("2024-06-30", 123456789) }
+        test.assert_equal(
+            assert(charts.goldStatistics(history, "2024-06-30")),
+            {
+                totalScans = 1,
+                maximum = 123456789,
+                minimum = 123456789,
+            }
+        )
+    end),
+
+    test.case("gold statistics retain at most 180 Pacific-date observations", function()
+        local history = charts.newHistory()
+        local firstDay = assert(dateTime.calendarDayNumber("2024-01-02"))
+        for offset = 0, 180 do
+            history.gold[#history.gold + 1] = point(
+                dateTime.dateFromCalendarDayNumber(firstDay + offset),
+                1000 + offset
+            )
+        end
+
+        test.assert_equal(
+            assert(charts.goldStatistics(history, "2024-06-30")),
+            {
+                totalScans = 180,
+                maximum = 1180,
+                minimum = 1001,
+                averageWeeklyBurn = 7,
+                direction = "up",
+            }
+        )
+    end),
+
+    test.case("gold statistics calculate extrema rounded burn and direction", function()
+        local growth = charts.newHistory()
+        growth.gold = {
+            point("2024-06-01", 100),
+            point("2024-06-08", 500),
+            point("2024-06-15", 101),
+        }
+        test.assert_equal(
+            assert(charts.goldStatistics(growth, "2024-06-15")),
+            {
+                totalScans = 3,
+                maximum = 500,
+                minimum = 100,
+                averageWeeklyBurn = 1,
+                direction = "up",
+            }
+        )
+
+        local decline = charts.newHistory()
+        decline.gold = {
+            point("2024-06-01", 100),
+            point("2024-06-04", 98),
+        }
+        test.assert_equal(
+            assert(charts.goldStatistics(decline, "2024-06-04")),
+            {
+                totalScans = 2,
+                maximum = 100,
+                minimum = 98,
+                averageWeeklyBurn = 5,
+                direction = "down",
+            }
+        )
+
+        local unchanged = charts.newHistory()
+        unchanged.gold = {
+            point("2024-06-01", 100),
+            point("2024-06-02", 25),
+            point("2024-06-03", 100),
+        }
+        test.assert_equal(
+            assert(charts.goldStatistics(unchanged, "2024-06-03")),
+            {
+                totalScans = 3,
+                maximum = 100,
+                minimum = 25,
+                averageWeeklyBurn = 0,
+            }
+        )
+
+        local roundedToZero = charts.newHistory()
+        roundedToZero.gold = {
+            point("2024-06-01", 100),
+            point("2024-06-30", 101),
+        }
+        test.assert_equal(
+            assert(charts.goldStatistics(roundedToZero, "2024-06-30")),
+            {
+                totalScans = 2,
+                maximum = 101,
+                minimum = 100,
+                averageWeeklyBurn = 0,
+                direction = "up",
+            }
+        )
     end),
 
     test.case("roster history counts raw non-GM ranks including configured zeroes and continuity", function()

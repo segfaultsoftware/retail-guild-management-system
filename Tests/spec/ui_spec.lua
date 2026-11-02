@@ -1123,6 +1123,132 @@ return {
         test.assert_equal(view.chartTypeDropdown.selectedOption.name, "Guild Bank Gold")
     end),
 
+    test.case("Charts refreshes retained Gold statistics and reconciles visibility", function()
+        local harness = newHarness()
+        test.assert_true(harness.ui.Initialize())
+        local view = harness.frame().views.charts
+        local summary = view.chartStatistics
+        local rows = view.chartStatisticRows
+
+        test.assert_equal(summary:GetHeight(), 104)
+        test.assert_equal(summary.templateName, "BackdropTemplate")
+        test.assert_equal(summary.backdropColor, { 0, 0, 0, 1 })
+        test.assert_equal(summary.points[1].relativeTo, view.chartPlot)
+        test.assert_equal(summary.points[1].relativePoint, "BOTTOMLEFT")
+        test.assert_equal(summary.points[2].relativeTo, view.chartPlot)
+        test.assert_equal(summary.points[2].relativePoint, "BOTTOM")
+        test.assert_equal(rows.totalScans.label.text, "Total Scans")
+        test.assert_equal(rows.maximum.label.text, "Max Gold")
+        test.assert_equal(rows.minimum.label.text, "Min Gold")
+        test.assert_equal(
+            rows.averageWeeklyBurn.label.text,
+            "Avg Weekly Burn"
+        )
+        for _, row in ipairs({
+            rows.totalScans,
+            rows.maximum,
+            rows.minimum,
+            rows.averageWeeklyBurn,
+        }) do
+            test.assert_equal(row.label.point, "LEFT")
+            test.assert_equal(row.label.justifyH, "LEFT")
+            test.assert_equal(row.value.point, "LEFT")
+            test.assert_equal(row.value.justifyH, "LEFT")
+            test.assert_equal(row.value.x, 176)
+        end
+        for _, row in ipairs({
+            rows.maximum,
+            rows.minimum,
+            rows.averageWeeklyBurn,
+        }) do
+            test.assert_equal(row.money.templateName, "SmallMoneyFrameTemplate")
+            test.assert_true(row.money.moneyFrameLoaded)
+            test.assert_equal(row.money.moneyType, "GUILD_REPAIR")
+            test.assert_equal(row.money.point, "LEFT")
+            test.assert_equal(row.money.x, 176)
+        end
+        test.assert_equal(rows.averageWeeklyBurn.direction.point, "RIGHT")
+        test.assert_equal(
+            rows.averageWeeklyBurn.direction.relativeTo,
+            rows.averageWeeklyBurn.money
+        )
+        test.assert_equal(
+            rows.averageWeeklyBurn.direction.relativePoint,
+            "LEFT"
+        )
+        test.assert_equal(rows.averageWeeklyBurn.direction.x, -4)
+
+        test.assert_true(harness.ui.SetChartsHistory(
+            chartModel.newHistory(),
+            "2024-06-30"
+        ))
+        test.assert_true(summary:IsShown())
+        test.assert_equal(rows.totalScans.value.text, "0")
+        for _, row in ipairs({
+            rows.maximum,
+            rows.minimum,
+            rows.averageWeeklyBurn,
+        }) do
+            test.assert_equal(row.value.text, "n/a")
+            test.assert_true(row.value:IsShown())
+            test.assert_false(row.money:IsShown())
+        end
+        test.assert_false(rows.averageWeeklyBurn.direction:IsShown())
+
+        local growth = chartModel.newHistory()
+        growth.gold = {
+            { date = "2024-06-01", value = 123456789 },
+            { date = "2024-06-08", value = 223456789 },
+            { date = "2024-06-15", value = 133456789 },
+        }
+        test.assert_true(harness.ui.SetChartsHistory(growth, "2024-06-15"))
+        test.assert_equal(rows.totalScans.value.text, "3")
+        test.assert_equal(rows.maximum.money.money, 223456789)
+        test.assert_equal(rows.minimum.money.money, 123456789)
+        test.assert_equal(rows.averageWeeklyBurn.money.money, 5000000)
+        test.assert_true(rows.averageWeeklyBurn.money.moneyForceShow)
+        test.assert_equal(rows.averageWeeklyBurn.direction.text, "▲")
+        test.assert_equal(
+            rows.averageWeeklyBurn.direction.textColor,
+            { 0.29, 0.871, 0.502, 1 }
+        )
+        test.assert_true(rows.averageWeeklyBurn.direction:IsShown())
+
+        test.assert_true(harness.ui.SelectChartType("members"))
+        test.assert_false(summary:IsShown())
+
+        local decline = chartModel.newHistory()
+        decline.gold = {
+            { date = "2024-06-01", value = 20000000 },
+            { date = "2024-06-08", value = 10000000 },
+        }
+        test.assert_true(harness.ui.SetChartsHistory(decline, "2024-06-08"))
+        test.assert_false(summary:IsShown())
+        test.assert_equal(rows.totalScans.value.text, "2")
+        test.assert_equal(rows.maximum.money.money, 20000000)
+        test.assert_equal(rows.minimum.money.money, 10000000)
+        test.assert_equal(rows.averageWeeklyBurn.money.money, 10000000)
+        test.assert_equal(rows.averageWeeklyBurn.direction.text, "▼")
+        test.assert_equal(
+            rows.averageWeeklyBurn.direction.textColor,
+            { 0.973, 0.443, 0.443, 1 }
+        )
+
+        test.assert_true(harness.ui.SelectChartType("gold"))
+        test.assert_true(summary:IsShown())
+
+        local single = chartModel.newHistory()
+        single.gold = { { date = "2024-06-08", value = 7654321 } }
+        test.assert_true(harness.ui.SetChartsHistory(single, "2024-06-08"))
+        test.assert_equal(rows.totalScans.value.text, "1")
+        test.assert_equal(rows.maximum.money.money, 7654321)
+        test.assert_equal(rows.minimum.money.money, 7654321)
+        test.assert_true(rows.averageWeeklyBurn.value:IsShown())
+        test.assert_equal(rows.averageWeeklyBurn.value.text, "n/a")
+        test.assert_false(rows.averageWeeklyBurn.money:IsShown())
+        test.assert_false(rows.averageWeeklyBurn.direction:IsShown())
+    end),
+
     test.case("News is a fixed right drawer with explicit and automatic opening", function()
         local harness = newHarness()
         harness.database.newsSets = { newsSet("pending") }

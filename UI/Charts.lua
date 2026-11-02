@@ -17,6 +17,9 @@ local MEMBER_COLORS = {
     { 0.71, 0.639, 0.537, 1 },
 }
 local CHART_PLOT_HEIGHT = 306
+local GOLD_STATISTICS_HEIGHT = 104
+local GOLD_STATISTIC_ROW_HEIGHT = 22
+local GOLD_STATISTIC_VALUE_COLUMN_X = 176
 local DOT_SIZE = RGMS.ChartModel.DOT_SIZE
 local HALO_SIZE = 14
 
@@ -226,11 +229,54 @@ local function emptyCopy(chartType)
     return "No guild-member history yet"
 end
 
+local function setMoneyStatistic(row, amount)
+    local hasAmount = type(amount) == "number"
+    row.value:SetShown(not hasAmount)
+    row.money:SetShown(hasAmount)
+    if hasAmount then
+        MoneyFrame_Update(row.money, amount, true)
+    else
+        row.value:SetText("n/a")
+    end
+end
+
+local function updateGoldStatistics(view, statistics)
+    local rows = view.chartStatisticRows
+    rows.totalScans.value:SetText(tostring(statistics.totalScans))
+    setMoneyStatistic(rows.maximum, statistics.maximum)
+    setMoneyStatistic(rows.minimum, statistics.minimum)
+    setMoneyStatistic(rows.averageWeeklyBurn, statistics.averageWeeklyBurn)
+
+    local direction = rows.averageWeeklyBurn.direction
+    direction:Hide()
+    direction:SetText("")
+    if statistics.direction == "up" then
+        direction:SetText("▲")
+        setTextColor(direction, PALETTE.success)
+        direction:Show()
+    elseif statistics.direction == "down" then
+        direction:SetText("▼")
+        setTextColor(direction, PALETTE.error)
+        direction:Show()
+    end
+end
+
 local function renderChart(view)
+    view.chartStatistics:SetShown(view.chartType == "gold")
     if not view.chartHistory or not view.chartToday then
         return false
     end
     resetDrawing(view)
+    local statistics, statisticsError = RGMS.ChartModel.goldStatistics(
+        view.chartHistory,
+        view.chartToday
+    )
+    if not statistics then
+        view.chartEmpty:SetText("Charts unavailable: " .. tostring(statisticsError))
+        view.chartEmpty:Show()
+        return nil, statisticsError
+    end
+    updateGoldStatistics(view, statistics)
     view.chartPlot:SetHeight(CHART_PLOT_HEIGHT)
     local width = math.max(1, view.chartPlot:GetWidth())
     local height = math.max(1, view.chartPlot:GetHeight())
@@ -357,6 +403,91 @@ local function createChartTooltip(view, parent)
     view.chartTooltip = tooltip
 end
 
+local function createStatisticRow(parent, label, usesMoney)
+    local row = CreateFrame("Frame", nil, parent)
+    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.label:SetPoint("LEFT", row, "LEFT", 10, 0)
+    row.label:SetJustifyH("LEFT")
+    row.label:SetText(label)
+    setFont(row.label, FONT_REGULAR, 11)
+    setTextColor(row.label, PALETTE.secondary)
+    row.value = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.value:SetPoint(
+        "LEFT",
+        row,
+        "LEFT",
+        GOLD_STATISTIC_VALUE_COLUMN_X,
+        0
+    )
+    row.value:SetJustifyH("LEFT")
+    setFont(row.value, FONT_SEMIBOLD, 12)
+    setTextColor(row.value, PALETTE.text)
+    if usesMoney then
+        row.money = CreateFrame("Frame", nil, row, "SmallMoneyFrameTemplate")
+        SmallMoneyFrame_OnLoad(row.money)
+        MoneyFrame_SetType(row.money, "GUILD_REPAIR")
+        row.money:SetPoint(
+            "LEFT",
+            row,
+            "LEFT",
+            GOLD_STATISTIC_VALUE_COLUMN_X,
+            0
+        )
+        row.money:Hide()
+        row.value:SetText("n/a")
+    else
+        row.value:SetText("0")
+    end
+    return row
+end
+
+local function createGoldStatistics(view)
+    local summary = CreateFrame("Frame", nil, view, "BackdropTemplate")
+    summary:SetPoint("TOPLEFT", view.chartPlot, "BOTTOMLEFT", 0, -12)
+    summary:SetPoint("TOPRIGHT", view.chartPlot, "BOTTOM", 0, -12)
+    summary:SetHeight(GOLD_STATISTICS_HEIGHT)
+    flatBackdrop(summary, { 0, 0, 0, 1 }, PALETTE.border)
+
+    local rows = {
+        totalScans = createStatisticRow(summary, "Total Scans", false),
+        maximum = createStatisticRow(summary, "Max Gold", true),
+        minimum = createStatisticRow(summary, "Min Gold", true),
+        averageWeeklyBurn = createStatisticRow(
+            summary,
+            "Avg Weekly Burn",
+            true
+        ),
+    }
+    for index, row in ipairs({
+        rows.totalScans,
+        rows.maximum,
+        rows.minimum,
+        rows.averageWeeklyBurn,
+    }) do
+        local offset = -8 - (index - 1) * GOLD_STATISTIC_ROW_HEIGHT
+        row:SetPoint("TOPLEFT", summary, "TOPLEFT", 0, offset)
+        row:SetPoint("TOPRIGHT", summary, "TOPRIGHT", 0, offset)
+        row:SetHeight(GOLD_STATISTIC_ROW_HEIGHT)
+    end
+    rows.averageWeeklyBurn.direction = rows.averageWeeklyBurn:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontHighlight"
+    )
+    rows.averageWeeklyBurn.direction:SetPoint(
+        "RIGHT",
+        rows.averageWeeklyBurn.money,
+        "LEFT",
+        -4,
+        0
+    )
+    setFont(rows.averageWeeklyBurn.direction, FONT_SEMIBOLD, 12)
+    rows.averageWeeklyBurn.direction:Hide()
+
+    view.chartStatistics = summary
+    view.chartStatisticRows = rows
+end
+
 function createChartsView(view, parent)
     view.scrollFrame:Hide()
     view.text:Hide()
@@ -407,6 +538,7 @@ function createChartsView(view, parent)
     view.chartHalo:SetTexture(CIRCLE_TEXTURE)
     view.chartHalo:SetSize(HALO_SIZE, HALO_SIZE)
     view.chartHalo:Hide()
+    createGoldStatistics(view)
     createChartTooltip(view, parent)
     view.chartPlot:SetScript("OnUpdate", function()
         updateHover(view)
