@@ -555,9 +555,14 @@ function ProvisionUI.setContextStatusLayout(view, hasBalance)
 end
 
 function ProvisionUI.createGuildBankBalanceFrame(view, tabId)
+    local frameNames = {
+        bank = "RGMSBankBalanceFrame",
+        provisions = "RGMSProvisionsBalanceFrame",
+        charts = "RGMSChartsBalanceFrame",
+    }
     local frame = CreateFrame(
         "Frame",
-        tabId == "bank" and "RGMSBankBalanceFrame" or "RGMSProvisionsBalanceFrame",
+        frameNames[tabId],
         view,
         "SmallMoneyFrameTemplate"
     )
@@ -654,7 +659,7 @@ function UI.SetGuildBankBalance(money)
             or money ~= math.floor(money)) then
         return nil, "guild-bank balance must be a non-negative integer or absent"
     end
-    for _, tabId in ipairs({ "bank", "provisions" }) do
+    for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
         local view = UI.frame.views[tabId]
         local moneyFrame = view.guildBankBalanceFrame
         ProvisionUI.setContextStatusLayout(view, money ~= nil)

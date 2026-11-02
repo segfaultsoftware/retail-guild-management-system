@@ -35,7 +35,7 @@ return {
             secondary = "New Provision", primary = "Refresh", close = true,
         })
         test.assert_equal(portal.contextControls("charts"), {
-            dropdown = "chartType", close = true,
+            dropdown = "chartType", primary = "Refresh", close = true,
         })
         test.assert_equal(portal.contextControls("tags"), { close = true })
     end),

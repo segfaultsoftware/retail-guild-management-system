@@ -509,7 +509,12 @@ end
 function createChartsView(view, parent)
     view.scrollFrame:Hide()
     view.text:Hide()
-    view.status:Hide()
+    ProvisionUI.createGuildBankBalanceFrame(view, "charts")
+    createRefreshButton(view, parent, false, "Refresh the guild bank.", function()
+        RGMS.Bank.RequestManualScan()
+    end)
+    view.bankOpen = false
+    view.bankScanInProgress = false
     view.chartType = "gold"
     view.chartHistory = RGMS.ChartModel.newHistory()
     view.chartItemSelections = {}

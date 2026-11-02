@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Displayed the latest guild-bank scan status and gold balance in the Charts
+  contextual bar, with the same refresh action used by Guild Bank and Provisions.
 - Added account-wide per-guild 180-day charts for guild-bank gold, accessible
   bank items, and guild ranks, with transactional Pacific-date history,
   fixed date layouts with visible dot-edge clearance, deterministic selectors
