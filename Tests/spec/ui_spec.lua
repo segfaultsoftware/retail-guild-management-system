@@ -990,7 +990,7 @@ return {
         )
         test.assert_equal(frame.views.provisions.newProvisionButton.x, 64)
         test.assert_equal(frame.views.provisions.newProvisionButton.y, -12)
-        for _, tabId in ipairs({ "bank", "provisions" }) do
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
             local moneyFrame = frame.views[tabId].guildBankBalanceFrame
             test.assert_equal(moneyFrame.templateName, "SmallMoneyFrameTemplate")
             test.assert_true(moneyFrame.moneyFrameLoaded)
@@ -1002,6 +1002,7 @@ return {
             test.assert_false(moneyFrame:IsShown())
             test.assert_equal(frame.views[tabId].status:GetHeight(), 40)
             test.assert_equal(frame.views[tabId].status.justifyV, "MIDDLE")
+            test.assert_true(frame.views[tabId].status:IsShown())
         end
         test.assert_equal(frame.views.provisions.saveProvisionButton.point, "BOTTOMRIGHT")
         test.assert_equal(frame.views.provisions.provisionNameLabel.y, -16)
@@ -2723,7 +2724,8 @@ return {
     test.case("bank refresh follows bank-open and scan lifecycle restrictions", function()
         local harness = newHarness()
         harness.ui.Initialize()
-        local refreshButton = harness.frame().views.bank.refreshButton
+        local frame = harness.frame()
+        local refreshButton = frame.views.bank.refreshButton
 
         test.assert_equal(refreshButton:GetWidth(), 32)
         test.assert_equal(refreshButton:GetText(), "")
@@ -2745,22 +2747,32 @@ return {
         refreshButton.scripts.OnLeave(refreshButton)
         test.assert_false(tooltip:IsShown())
 
-        test.assert_false(refreshButton:IsEnabled())
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+            test.assert_false(frame.views[tabId].refreshButton:IsEnabled())
+        end
         test.assert_true(harness.ui.SetGuildBankOpen(true))
-        test.assert_true(refreshButton:IsEnabled())
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+            test.assert_true(frame.views[tabId].refreshButton:IsEnabled())
+        end
         test.assert_equal(
             refreshButton.icon.vertexColor,
             { 0.957, 0.957, 0.961, 1 }
         )
-        refreshButton.scripts.OnClick()
+        frame.views.charts.refreshButton.scripts.OnClick()
         test.assert_equal(harness.bankRefreshRequests(), 1)
 
         test.assert_true(harness.ui.SetBankScanInProgress(true))
-        test.assert_false(refreshButton:IsEnabled())
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+            test.assert_false(frame.views[tabId].refreshButton:IsEnabled())
+        end
         test.assert_true(harness.ui.SetBankScanInProgress(false))
-        test.assert_true(refreshButton:IsEnabled())
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+            test.assert_true(frame.views[tabId].refreshButton:IsEnabled())
+        end
         test.assert_true(harness.ui.SetGuildBankOpen(false))
-        test.assert_false(refreshButton:IsEnabled())
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+            test.assert_false(frame.views[tabId].refreshButton:IsEnabled())
+        end
     end),
 
     test.case("Provisions renders editor actions progress rows scrolling and scan locking", function()
@@ -2777,7 +2789,7 @@ return {
         test.assert_equal(harness.bankRefreshRequests(), 1)
 
         test.assert_true(harness.ui.SetGuildBankBalance(1233452412))
-        for _, tabId in ipairs({ "bank", "provisions" }) do
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
             local balance = harness.frame().views[tabId].guildBankBalanceFrame
             test.assert_true(balance:IsShown())
             test.assert_equal(balance.money, 1233452412)
@@ -2785,7 +2797,7 @@ return {
             test.assert_equal(harness.frame().views[tabId].status:GetHeight(), 18)
         end
         test.assert_true(harness.ui.SetGuildBankBalance(nil))
-        for _, tabId in ipairs({ "bank", "provisions" }) do
+        for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
             test.assert_false(
                 harness.frame().views[tabId].guildBankBalanceFrame:IsShown()
             )
@@ -3306,6 +3318,7 @@ return {
         local frame = harness.frame()
         test.assert_false(frame.views.roster.refreshButton:IsEnabled())
         test.assert_false(frame.views.bank.refreshButton:IsEnabled())
+        test.assert_false(frame.views.charts.refreshButton:IsEnabled())
         test.assert_equal(
             frame.views.roster.status.text,
             "Reports and scans unavailable"
@@ -3321,6 +3334,7 @@ return {
         test.assert_true(harness.ui.SetDataState(true))
         test.assert_true(frame.views.roster.refreshButton:IsEnabled())
         test.assert_true(frame.views.bank.refreshButton:IsEnabled())
+        test.assert_true(frame.views.charts.refreshButton:IsEnabled())
 
         test.assert_true(harness.ui.SetDataState(false, "incompatible"))
         test.assert_matches(frame.views.bank.text.text, "Saved data is incompatible")

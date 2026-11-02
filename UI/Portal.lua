@@ -111,7 +111,7 @@ function Portal.contextControls(view, rosterMode)
             close = true,
         }
     elseif view == "charts" then
-        return { dropdown = "chartType", close = true }
+        return { dropdown = "chartType", primary = "Refresh", close = true }
     elseif view == "tags" then
         return { close = true }
     end

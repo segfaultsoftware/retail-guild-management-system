@@ -160,6 +160,11 @@ return {
                 tabId = "bank",
                 status = "Last scan: 2024-06-01 05:34 PT",
             },
+            {
+                action = "status",
+                tabId = "charts",
+                status = "Last scan: 2024-06-01 05:34 PT",
+            },
         })
         harness.restore()
     end),
@@ -194,10 +199,16 @@ return {
             action = "balance",
             money = 1233452412,
         })
-        test.assert_equal(harness.actions[#harness.actions], {
+        local expectedStatus = "Scanning... Last successful scan: 2024-06-01 05:34 PT"
+        test.assert_equal(harness.actions[#harness.actions - 1], {
             action = "status",
             tabId = "bank",
-            status = "Scanning... Last successful scan: 2024-06-01 05:34 PT",
+            status = expectedStatus,
+        })
+        test.assert_equal(harness.actions[#harness.actions], {
+            action = "status",
+            tabId = "charts",
+            status = expectedStatus,
         })
         harness.restore()
     end),
@@ -231,6 +242,11 @@ return {
             {
                 action = "status",
                 tabId = "bank",
+                status = "Guild bank closed. No bank scan yet",
+            },
+            {
+                action = "status",
+                tabId = "charts",
                 status = "Guild bank closed. No bank scan yet",
             },
         })
@@ -271,10 +287,16 @@ return {
             action = "bank-open",
             value = false,
         })
-        test.assert_equal(harness.actions[#harness.actions], {
+        local expectedStatus = "Guild bank closed. Last scan: 2024-06-01 05:34 PT"
+        test.assert_equal(harness.actions[#harness.actions - 1], {
             action = "status",
             tabId = "bank",
-            status = "Guild bank closed. Last scan: 2024-06-01 05:34 PT",
+            status = expectedStatus,
+        })
+        test.assert_equal(harness.actions[#harness.actions], {
+            action = "status",
+            tabId = "charts",
+            status = expectedStatus,
         })
         harness.restore()
     end),

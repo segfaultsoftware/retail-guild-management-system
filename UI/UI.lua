@@ -408,8 +408,9 @@ function UI.SetGlobalScanLock(locked)
     end
     updateRosterRefreshButton(UI.frame.views.roster)
     updateRosterRefreshButton(UI.frame.views.mainsalts)
-    ProvisionUI.updateBankRefreshButton(UI.frame.views.bank)
-    ProvisionUI.updateBankRefreshButton(UI.frame.views.provisions)
+    for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+        ProvisionUI.updateBankRefreshButton(UI.frame.views[tabId])
+    end
     updateMainsAltsControlState(UI.frame.views.mainsalts)
     updateRosterModeControls()
     return true
@@ -501,12 +502,11 @@ function UI.SetGuildBankOpen(isOpen)
         return nil, "the RGMS window has not been initialized"
     end
 
-    local view = UI.frame.views.bank
-    view.bankOpen = isOpen == true
-    ProvisionUI.updateBankRefreshButton(view)
-    local provisionsView = UI.frame.views.provisions
-    provisionsView.bankOpen = isOpen == true
-    ProvisionUI.updateBankRefreshButton(provisionsView)
+    for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+        local view = UI.frame.views[tabId]
+        view.bankOpen = isOpen == true
+        ProvisionUI.updateBankRefreshButton(view)
+    end
     return true
 end
 
@@ -515,14 +515,13 @@ function UI.SetBankScanInProgress(inProgress)
         return nil, "the RGMS window has not been initialized"
     end
 
-    local view = UI.frame.views.bank
-    view.bankScanInProgress = inProgress == true
-    ProvisionUI.updateBankRefreshButton(view)
-    local provisionsView = UI.frame.views.provisions
-    provisionsView.bankScanInProgress = inProgress == true
-    ProvisionUI.updateBankRefreshButton(provisionsView)
+    for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+        local view = UI.frame.views[tabId]
+        view.bankScanInProgress = inProgress == true
+        ProvisionUI.updateBankRefreshButton(view)
+    end
     UI.SetGlobalScanLock(
-        view.bankScanInProgress
+        UI.frame.views.bank.bankScanInProgress
             or UI.frame.views.roster.rosterScanInProgress == true
     )
     return true
@@ -540,8 +539,9 @@ function UI.SetDataState(enabled, state)
     end
     updateRosterRefreshButton(UI.frame.views.roster)
     updateRosterRefreshButton(UI.frame.views.mainsalts)
-    ProvisionUI.updateBankRefreshButton(UI.frame.views.bank)
-    ProvisionUI.updateBankRefreshButton(UI.frame.views.provisions)
+    for _, tabId in ipairs({ "bank", "provisions", "charts" }) do
+        ProvisionUI.updateBankRefreshButton(UI.frame.views[tabId])
+    end
     updateMainsAltsControlState(UI.frame.views.mainsalts)
     updateRosterModeControls()
     for _, line in ipairs(UI.frame.views.tags.tagRows or {}) do

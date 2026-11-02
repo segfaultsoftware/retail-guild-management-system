@@ -235,6 +235,11 @@ function Bank.IsAvailable()
         and GuildBankFrame:IsShown()
 end
 
+local function setBankStatus(status)
+    RGMS.UI.SetViewStatus("bank", status)
+    RGMS.UI.SetViewStatus("charts", status)
+end
+
 function Bank.RefreshStatus()
     if type(RGMS.UI) ~= "table" or type(RGMS.UI.SetViewStatus) ~= "function" then
         return
@@ -288,10 +293,7 @@ function Bank.RefreshStatus()
             builtReport = report
             RGMS.UI.SetBankReport(report)
         else
-            RGMS.UI.SetViewStatus(
-                "bank",
-                "Bank report unavailable: " .. tostring(reportError)
-            )
+            setBankStatus("Bank report unavailable: " .. tostring(reportError))
             return
         end
     end
@@ -309,7 +311,7 @@ function Bank.RefreshStatus()
         else
             status = status .. " No successful scan yet."
         end
-        RGMS.UI.SetViewStatus("bank", status)
+        setBankStatus(status)
         return
     end
 
@@ -324,7 +326,7 @@ function Bank.RefreshStatus()
     if not available then
         status = "Guild bank closed. " .. status
     end
-    RGMS.UI.SetViewStatus("bank", status)
+    setBankStatus(status)
 end
 
 local function scannerUnavailable(source)
