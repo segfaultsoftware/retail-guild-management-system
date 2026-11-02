@@ -206,6 +206,8 @@ function createView(parent, tabId)
         createBankView(view, parent)
     elseif tabId == "provisions" then
         createProvisionsView(view, parent)
+    elseif tabId == "charts" then
+        createChartsView(view, parent)
     elseif tabId == "tags" then
         createTagsView(view)
     end
@@ -437,12 +439,14 @@ function createWindow()
         frame.views.roster.scrollFrame:SetVerticalScroll(0)
         frame.views.bank.scrollFrame:SetVerticalScroll(0)
         frame.views.provisions.provisionScrollFrame:SetVerticalScroll(0)
+        frame.views.charts.scrollFrame:SetVerticalScroll(0)
         frame.views.tags.scrollFrame:SetVerticalScroll(0)
         if type(RGMS.PortalState) == "table" then
             RGMS.PortalState.rosterMode = "ByName"
         end
         UI.rosterMode = "ByName"
         UI.rosterScroll = { ByName = 0, ByTenure = 0 }
+        UI.ResetCharts()
         UI.SelectPrimaryTab("roster")
         if type(RGMS.Provisions) == "table"
             and type(RGMS.Provisions.OnWindowClosed) == "function" then

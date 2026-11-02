@@ -7,6 +7,19 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Added account-wide per-guild 180-day charts for guild-bank gold, accessible
+  bank items, and guild ranks, with transactional Pacific-date history,
+  fixed date layouts with visible dot-edge clearance, deterministic selectors
+  and regressions, month separators, compact native-money Gold cards, and
+  nearest-point hover inspection.
+
+### Fixed
+
+- Repainted the Charts contextual dropdown selection when its hidden view
+  becomes visible, preventing a blank initial label with Gold still selected.
+
 ## 1.1.1
 
 ### Added

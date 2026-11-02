@@ -138,6 +138,10 @@ function RGMS.ActivateCurrentGuild()
         and type(RGMS.Provisions.OnGuildChanged) == "function" then
         RGMS.Provisions.OnGuildChanged()
     end
+    if type(RGMS.Charts) == "table"
+        and type(RGMS.Charts.OnGuildChanged) == "function" then
+        RGMS.Charts.OnGuildChanged()
+    end
     return identity, rosterInitialized
 end
 
@@ -214,6 +218,10 @@ eventFrame:SetScript("OnEvent", function(self, _, loadedAddonName)
         if type(RGMS.Provisions) == "table"
             and type(RGMS.Provisions.RefreshStatus) == "function" then
             RGMS.Provisions.RefreshStatus()
+        end
+        if type(RGMS.Charts) == "table"
+            and type(RGMS.Charts.RefreshStatus) == "function" then
+            RGMS.Charts.RefreshStatus()
         end
     end
 

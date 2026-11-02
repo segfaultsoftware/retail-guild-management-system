@@ -14,6 +14,16 @@ local MODULES = {
         },
     },
     {
+        path = "UI/Charts.lua",
+        name = "Charts",
+        exports = {
+            "SelectChartType",
+            "SelectChartItem",
+            "SetChartsHistory",
+            "ResetCharts",
+        },
+    },
+    {
         path = "UI/ProvisionDrag.lua",
         name = "ProvisionDrag",
         exports = { "CancelProvisionDrag" },

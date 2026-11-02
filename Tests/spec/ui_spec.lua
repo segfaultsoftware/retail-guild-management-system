@@ -1,5 +1,6 @@
 local layout = require("UI.Layout")
 local mainsAltsSearch = require("MainsAlts.Search")
+local chartModel = require("Charts.Model")
 local test = require("Tests.lib.runner")
 
 local EMPTY_TEXT = "<no members in this bracket>"
@@ -602,6 +603,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight, auctionatorA
     rgms = {
         DB = database,
         UILayout = layout,
+        ChartModel = chartModel,
         MainsAltsSearch = mainsAltsSearch,
         Roster = {
             RequestManualScan = function()
@@ -631,6 +633,11 @@ local function newHarness(savedPosition, screenWidth, screenHeight, auctionatorA
             end,
             CancelScan = function()
                 bankCancellations = bankCancellations + 1
+            end,
+        },
+        Charts = {
+            RefreshStatus = function()
+                return true
             end,
         },
         Provisions = {
@@ -775,6 +782,7 @@ local function newHarness(savedPosition, screenWidth, screenHeight, auctionatorA
     for _, path in ipairs({
         "UI/Widgets.lua",
         "UI/Provisions.lua",
+        "UI/Charts.lua",
         "UI/ProvisionDrag.lua",
         "UI/Tooltip.lua",
         "UI/Toast.lua",
@@ -855,11 +863,12 @@ return {
         test.assert_equal(frame.views.roster.scrollFrame.points[1].x, 0)
         test.assert_equal(frame.views.bank.bankTabScrollFrame:GetWidth(), 1)
         test.assert_equal(frame.views.bank.scrollFrame.points[1].x, 0)
-        test.assert_equal(frame.numTabs, 4)
+        test.assert_equal(frame.numTabs, 5)
         test.assert_equal(frame.tabs[1].label.text, "Roster")
         test.assert_equal(frame.tabs[2].label.text, "Guild Bank")
         test.assert_equal(frame.tabs[3].label.text, "Provisions")
-        test.assert_equal(frame.tabs[4].label.text, "Tags")
+        test.assert_equal(frame.tabs[4].label.text, "Charts")
+        test.assert_equal(frame.tabs[5].label.text, "Tags")
         test.assert_nil(frame.tabs[2].text)
         test.assert_equal(frame.views.roster.rankDropdown.parent, frame.views.roster)
         test.assert_equal(frame.views.bank.bankDropdown.parent, frame.views.bank)
@@ -1023,6 +1032,120 @@ return {
         test.assert_nil(frame.views.tags.refreshButton)
         test.assert_nil(frame.views.tags.groupButton)
         test.assert_nil(frame.views.tags.mainsAltsSearchBox)
+    end),
+
+    test.case("Charts renders equal-height padded fixed-domain plots selectors and reopen defaults", function()
+        local harness = newHarness()
+        test.assert_true(harness.ui.Initialize())
+        local frame = harness.frame()
+        local view = frame.views.charts
+        local typeOptions = view.chartTypeDropdown.options()
+        test.assert_equal(typeOptions[1].name, "Guild Bank Gold")
+        test.assert_equal(typeOptions[2].name, "Guild Bank Items")
+        test.assert_equal(typeOptions[3].name, "Guild Members")
+        test.assert_equal(view.chartPlot.backdropColor, { 0, 0, 0, 1 })
+
+        local history = {
+            gold = {
+                { date = "2024-06-01", value = 100 },
+                { date = "2024-06-30", value = 200 },
+            },
+            items = {
+                { itemId = 40, name = "Delta", icon = 40, points = { { date = "2024-06-01", value = 4 } } },
+                { itemId = 30, name = "Charlie", icon = 30, points = { { date = "2024-06-01", value = 3 } } },
+                { itemId = 20, name = "Bravo", icon = 20, craftingQuality = 2, points = { { date = "2024-06-01", value = 2 } } },
+                { itemId = 10, name = "Alpha", icon = 10, craftingQuality = 1, points = { { date = "2024-06-01", value = 1 } } },
+            },
+            members = {
+                { rankIndex = 2, name = "Officer", points = { { date = "2024-06-01", value = 5 } } },
+            },
+        }
+        test.assert_true(harness.ui.SetChartsHistory(history, "2024-06-30"))
+        test.assert_equal(view.chartType, "gold")
+        test.assert_equal(view.chartPlot:GetHeight(), 306)
+        test.assert_equal(#view.chartPreparedPlot.points, 2)
+        test.assert_equal(view.chartPreparedPlot.firstDate, "2024-01-03")
+        test.assert_equal(view.chartPreparedPlot.lastDate, "2024-06-30")
+        test.assert_equal(view.chartPreparedPlot.horizontalPadding, 8.5)
+        test.assert_equal(view.chartPreparedPlot.verticalPadding, 5.5)
+        local firstGoldPoint = view.chartPreparedPlot.series[1].plotPoints[1]
+        test.assert_equal(
+            firstGoldPoint.x,
+            8.5 + (view.chartPreparedPlot.width - 17)
+                * (firstGoldPoint.dayNumber - view.chartPreparedPlot.firstDay)
+                / (view.chartPreparedPlot.lastDay - view.chartPreparedPlot.firstDay)
+        )
+        test.assert_equal(
+            view.chartPreparedPlot.series[1].plotPoints[2].x,
+            view.chartPreparedPlot.width - 8.5
+        )
+        test.assert_equal(
+            view.chartPreparedPlot.width
+                - view.chartPreparedPlot.series[1].plotPoints[2].x
+                - view.chartPreparedPlot.dotSize / 2,
+            5
+        )
+        test.assert_equal(#view.chartPreparedPlot.monthBoundaries, 5)
+
+        frame.left = 40
+        frame.bottom = 40
+        view.chartPlot.left = 120
+        view.chartPlot.bottom = 100
+        view.chartPlot.mouseOver = true
+        local latestGoldPoint = view.chartPreparedPlot.series[1].plotPoints[2]
+        harness.setCursor(
+            view.chartPlot.left + latestGoldPoint.x,
+            view.chartPlot.bottom + latestGoldPoint.y
+        )
+        view.chartPlot.scripts.OnUpdate()
+        test.assert_true(view.chartTooltip:IsShown())
+        test.assert_equal(view.chartTooltip.title.text, "Gold")
+        test.assert_equal(view.chartTooltip.title.justifyH, "LEFT")
+        test.assert_equal(view.chartTooltip.money.money, 200)
+        test.assert_equal(view.chartTooltip.money.point, "LEFT")
+        test.assert_equal(view.chartTooltip.money.x, 10)
+        test.assert_equal(view.chartTooltip.date.text, "30 June 2024")
+        test.assert_equal(view.chartTooltip.date.justifyH, "LEFT")
+        view.chartPlot.mouseOver = false
+
+        test.assert_true(harness.ui.SelectChartType("items"))
+        test.assert_equal(view.chartPlot:GetHeight(), 306)
+        local firstItemPoint = view.chartPreparedPlot.series[1].plotPoints[1]
+        test.assert_equal(
+            firstItemPoint.x,
+            8.5 + (view.chartPreparedPlot.width - 17)
+                * (firstItemPoint.dayNumber - view.chartPreparedPlot.firstDay)
+                / (view.chartPreparedPlot.lastDay - view.chartPreparedPlot.firstDay)
+        )
+        test.assert_equal(view.chartItemSelections, { 10, 20, 30 })
+        test.assert_equal(view.chartItemDropdowns[1].selectedOption.icon, 10)
+        test.assert_equal(
+            view.chartItemDropdowns[1].badge.atlas,
+            "Professions-Icon-Quality-12-Tier1"
+        )
+        test.assert_true(view.chartItemLabels[1]:IsShown())
+        test.assert_true(view.chartItemDropdowns[3]:IsShown())
+        test.assert_equal(view.chartItemLabels[2].textColor, {
+            0.29, 0.871, 0.502, 1,
+        })
+        test.assert_true(harness.ui.SelectChartItem(1, 40))
+        test.assert_equal(view.chartItemSelections, { 40, 20, 30 })
+
+        test.assert_true(harness.ui.SelectChartType("members"))
+        test.assert_equal(view.chartPlot:GetHeight(), 306)
+
+        test.assert_true(harness.ui.ResetCharts())
+        view.chartTypeDropdown.label:SetText("")
+        test.assert_true(harness.ui.Show())
+        test.assert_true(harness.ui.SelectPrimaryTab("charts"))
+        test.assert_equal(
+            view.chartTypeDropdown.label.text,
+            "Guild Bank Gold"
+        )
+        harness.ui.Hide()
+        test.assert_equal(view.chartType, "gold")
+        test.assert_equal(view.chartItemSelections, { 10, 20, 30 })
+        test.assert_equal(view.chartTypeDropdown.selectedOption.name, "Guild Bank Gold")
     end),
 
     test.case("News is a fixed right drawer with explicit and automatic opening", function()
@@ -3746,7 +3869,7 @@ return {
 
         local selected, message = harness.ui.SelectPrimaryTab("settings")
         test.assert_nil(selected)
-        test.assert_equal(message, "primary tab must be roster, bank, provisions, or tags")
+        test.assert_equal(message, "primary tab must be roster, bank, provisions, charts, or tags")
         test.assert_equal(harness.ui.selectedTab, "roster")
     end),
 

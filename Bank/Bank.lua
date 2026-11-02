@@ -471,6 +471,10 @@ function Bank.PrepareScan(guildIdentity)
             and type(RGMS.Provisions.OnGuildChanged) == "function" then
             RGMS.Provisions.OnGuildChanged()
         end
+        if type(RGMS.Charts) == "table"
+            and type(RGMS.Charts.OnGuildChanged) == "function" then
+            RGMS.Charts.OnGuildChanged()
+        end
     end
     return true
 end
