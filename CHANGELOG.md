@@ -7,6 +7,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- Added Windows development-link support for the World of Warcraft Forever
+  client, including safe unlinking.
+
+### Removed
+
+- Removed the unused macOS addon-link helper and macOS-specific development
+  guidance.
+
 ## 1.2.0
 
 ### Added

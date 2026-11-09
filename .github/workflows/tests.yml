@@ -37,3 +37,11 @@ jobs:
             -Version $manifestVersion.Matches[0].Groups[1].Value `
             -OutputDirectory .release/ci `
             -LuaCommand lua5.1
+
+  windows-link-helper:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Windows addon link helper
+        shell: powershell
+        run: ./Tests/link_addon_tests.ps1
