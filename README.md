@@ -58,17 +58,22 @@ Bank scans are started from the default guild-bank window and the Bank
 
 ## Install for development
 
-1. Install the current live World of Warcraft Retail client.
+1. Install the current live World of Warcraft Retail client. For Forever
+   compatibility work, also install the Forever client.
 2. Clone this repository.
-3. Link the checkout into Retail's `Interface/AddOns` directory:
+3. Link the checkout into the client's `Interface/AddOns` directory:
    - Windows: `powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1`
-   - macOS: `sh ./scripts/link-addon.sh`
-   - To safely remove the Windows junction later, rerun the command with
-     `-Unlink`.
+   - Windows Forever compatibility development: add `-Forever` to the command.
+   - To safely remove a Windows junction later, rerun the same command with
+     `-Unlink` (and `-Forever` for Forever).
 4. Enable **Retail Guild Management System (RGMS)** at character selection and
    log in.
 5. Confirm that the RGMS development load message appears, then run
    `/rgms help`.
+
+The `-Forever` option selects the development link destination only; client
+support still depends on the manifest and runtime code in the checked-out
+branch.
 
 The complete setup, edit/reload/debug loop, SavedVariables locations, manifest
 notes, and troubleshooting steps are in

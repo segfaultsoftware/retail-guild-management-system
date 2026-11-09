@@ -15,8 +15,7 @@ preparing a distributable package should use the complete
 - The current live World of Warcraft Retail client, installed through the
   Battle.net desktop app.
 - Git.
-- On Windows, Windows PowerShell 5.1 or PowerShell 7. On macOS, the built-in
-  Terminal and a POSIX-compatible shell are sufficient.
+- Windows PowerShell 5.1 or PowerShell 7.
 - A text editor. Visual Studio Code is convenient but not required.
 
 There are no packages to download and no build step. WoW embeds its own Lua
@@ -30,28 +29,30 @@ files named in that manifest are loaded in order. Runtime source is grouped by
 responsibility in `Core`, `UI`, `Roster`, and `Bank`; development-only tests
 belong in `Tests` and are not loaded by the game.
 
-## 1. Find the Retail installation
+## 1. Find the Retail or Forever installation
 
 The normal directory layouts are:
 
 ```text
-Windows
+Windows Retail
 C:\Program Files (x86)\World of Warcraft\_retail_\
 └── Interface\
     └── AddOns\
 
-macOS
-/Applications/World of Warcraft/_retail_/
-└── Interface/
-    └── AddOns/
+Windows Forever
+C:\Program Files (x86)\World of Warcraft\_forever_\
+└── Interface\
+    └── AddOns\
 ```
 
 These are defaults, not requirements. If Battle.net installed WoW elsewhere,
 select World of Warcraft in Battle.net, use the gear menu next to **Play**, and
-choose the option that reveals the installation in Explorer or Finder. The
-directory needed by this guide is the one literally named `_retail_`.
+choose the option that reveals the installation in Explorer. The directory
+needed by this guide is the one literally named `_retail_` or `_forever_`.
 
 Close the WoW client before creating the addon link or copying the checkout.
+The Forever commands below select a development link destination; they do not
+by themselves make a checkout compatible with the Forever client.
 
 ## 2. Clone the repository
 
@@ -74,6 +75,11 @@ location. The resulting layout must be exactly:
 ```text
 _retail_/Interface/AddOns/RGMS/RGMS.toc
 _retail_/Interface/AddOns/RGMS/Core/Bootstrap.lua
+
+or
+
+_forever_/Interface/AddOns/RGMS/RGMS.toc
+_forever_/Interface/AddOns/RGMS/Core/Bootstrap.lua
 ```
 
 An extra nested directory such as
@@ -87,12 +93,22 @@ From the repository root, run:
 powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1
 ```
 
-The command uses the default installation path shown above. For a custom Retail
-location, pass its `_retail_` directory:
+The command uses the default Retail installation path shown above. To link the
+default Forever installation instead, add `-Forever`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever
+```
+
+For a custom installation, pass its client directory with `-RetailPath`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -RetailPath "D:\Games\World of Warcraft\_retail_"
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever -RetailPath "D:\Games\World of Warcraft\_forever_"
 ```
+
+An explicit `-RetailPath` is authoritative, including when `-Forever` is also
+present, so pass the actual `_forever_` directory for a custom Forever install.
 
 The script creates an `RGMS` directory junction. Creating a junction normally
 does not require Administrator privileges. It refuses to replace an existing
@@ -102,34 +118,21 @@ To remove the junction before testing an installed package, run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Unlink
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever -Unlink
 ```
 
-Pass the same `-RetailPath` value when unlinking from a custom Retail location.
-Unlinking is safe to repeat: the script succeeds when the junction is already
-absent. It refuses to remove a regular file or directory, or a junction that
-does not point to the current checkout.
-
-### macOS: create a symbolic link
-
-From the repository root, run:
-
-```sh
-sh ./scripts/link-addon.sh
-```
-
-For a custom Retail location, supply its `_retail_` directory as the first
-argument:
-
-```sh
-sh ./scripts/link-addon.sh "/Volumes/Games/World of Warcraft/_retail_"
-```
+Pass the same target options when unlinking from a custom location. Unlinking is
+safe to repeat: the script succeeds when the junction is already absent. It
+refuses to remove a regular file or directory, or a junction that does not
+point to the current checkout.
 
 ### Copy instead of link
 
-You can instead copy the checkout to a directory named `RGMS` inside
-`_retail_/Interface/AddOns`. Verify that `RGMS.toc` is directly inside that
-directory. After every source change, copy the changed files again before using
-`/reload`; linking avoids this extra step.
+You can instead copy the checkout to a directory named `RGMS` inside the
+selected client's `Interface/AddOns` directory, such as
+`_retail_/Interface/AddOns` or `_forever_/Interface/AddOns`. Verify that
+`RGMS.toc` is directly inside that directory. After every source change, copy
+the changed files again before using `/reload`; linking avoids this extra step.
 
 ## 4. Enable and load RGMS
 
@@ -169,21 +172,13 @@ per-character `RGMSCharacterDB` with `SavedVariablesPerCharacter`. Retail writes
 the account-wide file at:
 
 ```text
-Windows
 C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\<ACCOUNT>\SavedVariables\RGMS.lua
-
-macOS
-/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/SavedVariables/RGMS.lua
 ```
 
 The per-character file remains at:
 
 ```text
-Windows
 C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\<ACCOUNT>\<REALM>\<CHARACTER>\SavedVariables\RGMS.lua
-
-macOS
-/Applications/World of Warcraft/_retail_/WTF/Account/<ACCOUNT>/<REALM>/<CHARACTER>/SavedVariables/RGMS.lua
 ```
 
 `<ACCOUNT>`, `<REALM>`, and `<CHARACTER>` are directory names selected by the

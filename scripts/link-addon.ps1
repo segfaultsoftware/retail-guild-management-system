@@ -1,11 +1,19 @@
 [CmdletBinding()]
 param(
     [string]$RetailPath = (Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\_retail_"),
+    [switch]$Forever,
     [switch]$Unlink
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+if ($Forever -and -not $PSBoundParameters.ContainsKey("RetailPath")) {
+    $RetailPath = Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\_forever_"
+}
+
+$clientName = if ($Forever) { "Forever" } else { "Retail" }
+$clientDirectoryName = if ($Forever) { "_forever_" } else { "_retail_" }
 
 $repositoryPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $manifestPath = Join-Path $repositoryPath "RGMS.toc"
@@ -15,7 +23,7 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
 }
 
 if (-not (Test-Path -LiteralPath $RetailPath -PathType Container)) {
-    throw "Retail directory not found: $RetailPath`nPass the path to your _retail_ directory with -RetailPath."
+    throw "$clientName directory not found: $RetailPath`nPass the path to your $clientDirectoryName directory with -RetailPath."
 }
 
 $addonsPath = Join-Path $RetailPath "Interface\AddOns"
