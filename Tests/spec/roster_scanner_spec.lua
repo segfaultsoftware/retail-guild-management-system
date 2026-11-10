@@ -1,3 +1,4 @@
+local characterIdentity = require("Core.CharacterIdentity")
 local clientFlavor = require("Core.ClientFlavor")
 local datasetOwnership = require("Core.DatasetOwnership")
 local dateTime = require("Core.DateTime")
@@ -36,6 +37,72 @@ local function successfulSnapshot(memberName)
     }
 end
 
+local function successfulForeverSnapshot()
+    local guild = assert(guildIdentity.create({
+        flavor = clientFlavor.FOREVER,
+        region = "US",
+        name = "Example Guild",
+        clubId = "Club-001",
+    }))
+    local scannedAt = fixtures.timestamp({
+        unixSeconds = 1717245356,
+        iso8601 = "2024-06-01T12:35:56Z",
+    })
+    local surname42 = assert(characterIdentity.create({
+        flavor = clientFlavor.FOREVER,
+        region = "US",
+        name = "First-048 Surname-042",
+        guid = "Guid-048",
+    }))
+    local surname43 = assert(characterIdentity.create({
+        flavor = clientFlavor.FOREVER,
+        region = "US",
+        name = "First-048 Surname-043",
+        guid = "Guid-049",
+    }))
+
+    local first = fixtures.roster_member({
+        guid = surname42.guid,
+        identity = surname42.key,
+        name = surname42.name,
+        displayName = surname42.displayName,
+        rankName = "Member",
+        rankIndex = 2,
+        observedAt = scannedAt,
+    })
+    first.realm = nil
+    first.rankTenureStartDate = nil
+    first.lastSeenDate = nil
+    first.isMissing = nil
+
+    local second = fixtures.roster_member({
+        guid = surname43.guid,
+        identity = surname43.key,
+        name = surname43.name,
+        displayName = surname43.displayName,
+        rankName = "Officer",
+        rankIndex = 1,
+        isOnline = true,
+        observedAt = scannedAt,
+    })
+    second.realm = nil
+    second.lastOnline = nil
+    second.rankTenureStartDate = nil
+    second.lastSeenDate = nil
+    second.isMissing = nil
+
+    return {
+        guild = guild,
+        scannedAt = scannedAt,
+        ranks = {
+            fixtures.roster_rank({ index = 1, name = "Officer" }),
+            fixtures.roster_rank({ index = 2, name = "Member" }),
+            fixtures.roster_rank({ index = 3, name = "Empty Rank" }),
+        },
+        members = { first, second },
+    }
+end
+
 local function successfulEmptySnapshot(unixSeconds)
     return {
         guild = fixtures.guild_identity(),
@@ -49,6 +116,8 @@ local function newHarness(options)
     options = options or {}
     local original = options.model or fixtures.saved_model()
     local current = original
+    local captureIsPartial = options.partial == true
+    local captureSnapshot = options.snapshot
     local messages = {}
     local progress = {}
     local requests = 0
@@ -84,10 +153,10 @@ local function newHarness(options)
             if options.captureError then
                 error(options.captureError)
             end
-            if options.partial then
+            if captureIsPartial then
                 return nil, "incomplete", "member list is partial"
             end
-            return options.snapshot or successfulSnapshot(options.memberName)
+            return captureSnapshot or successfulSnapshot(options.memberName)
         end,
     }
 
@@ -140,6 +209,12 @@ local function newHarness(options)
         end,
         successfulCompletions = function()
             return successfulCompletions
+        end,
+        setPartial = function(value)
+            captureIsPartial = value == true
+        end,
+        setSnapshot = function(value)
+            captureSnapshot = value
         end,
         closeWindow = function()
             windowOpen = false
@@ -297,6 +372,60 @@ return {
         test.assert_equal(harness.current(), harness.original)
         test.assert_false(harness.current().roster.members[1].isMissing)
         test.assert_matches(harness.messages[1], "timed out")
+    end),
+
+    test.case("partial Forever delivery re-requests and commits only after completion", function()
+        local snapshot = successfulForeverSnapshot()
+        local harness = newHarness({
+            partial = true,
+            snapshot = snapshot,
+            getCurrentGuildIdentity = function()
+                return snapshot.guild
+            end,
+        })
+        test.assert_true(harness.scanner:Request("manual"))
+
+        local completed, state = harness.scanner:OnDataUpdated()
+        test.assert_false(completed)
+        test.assert_equal(state, "incomplete")
+        test.assert_true(harness.current() == harness.original)
+        test.assert_equal(harness.reductions(), 0)
+        test.assert_true(harness.scanner:IsInProgress())
+
+        test.assert_true(harness.scanner:RequestRosterUpdate())
+        test.assert_equal(harness.requests(), 2)
+        test.assert_true(harness.current() == harness.original)
+
+        harness.setPartial(false)
+        test.assert_true(harness.scanner:OnDataUpdated())
+
+        local committed = harness.current()
+        test.assert_true(savedData.validate(committed))
+        test.assert_equal(committed.roster.guild, snapshot.guild)
+        test.assert_equal(#committed.roster.members, 2)
+        test.assert_equal(
+            committed.roster.members[1].name,
+            "First-048 Surname-042"
+        )
+        test.assert_equal(committed.roster.members[1].displayName,
+            "First-048 Surname-042")
+        test.assert_equal(committed.roster.members[1].guid, "Guid-048")
+        test.assert_nil(committed.roster.members[1].realm)
+        test.assert_equal(
+            committed.roster.members[2].name,
+            "First-048 Surname-043"
+        )
+        test.assert_equal(committed.roster.members[2].displayName,
+            "First-048 Surname-043")
+        test.assert_equal(committed.roster.members[2].guid, "Guid-049")
+        test.assert_nil(committed.roster.members[2].realm)
+        test.assert_true(
+            committed.roster.members[1].identity
+                ~= committed.roster.members[2].identity
+        )
+        test.assert_equal(harness.reductions(), 1)
+        test.assert_equal(harness.successfulCompletions(), 1)
+        test.assert_false(harness.scanner:IsInProgress())
     end),
 
     test.case("duplicate requests are rejected by the shared scanner", function()

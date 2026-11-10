@@ -24,6 +24,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added a pure product-aware guild identity contract that preserves existing
   Retail partition keys while providing region-scoped, stable-club-ID Forever
   keys, separate display metadata, fail-closed validation, and shared equality.
+- Added Forever full-name capture to the shared modern guild-roster adapter,
+  preserving Retail Name-Realm behavior while keeping surname-distinguished
+  members separate through transactional retry and commit.
 
 ### Changed
 
