@@ -129,7 +129,7 @@ local function createRetailApi()
         end
 
         local members = {}
-        local seenNames = {}
+        local seenIdentities = {}
         for _, memberId in ipairs(memberIds) do
             local info = C_Club.GetMemberInfo(clubId, memberId)
             if type(info) ~= "table"
@@ -161,10 +161,11 @@ local function createRetailApi()
                 info.name,
                 GetNormalizedRealmName()
             )
-            if name == "" or realm == "" or seenNames[displayName] then
+            local identity = Names.identity(name, realm)
+            if name == "" or realm == "" or seenIdentities[identity] then
                 return incomplete("guild member names are incomplete or duplicated")
             end
-            seenNames[displayName] = true
+            seenIdentities[identity] = true
 
             local leadershipRole
             if info.role == Enum.ClubRoleIdentifier.Owner
@@ -191,6 +192,7 @@ local function createRetailApi()
             end
 
             members[#members + 1] = {
+                identity = identity,
                 guid = info.guid,
                 name = name,
                 realm = realm,
@@ -208,7 +210,10 @@ local function createRetailApi()
         end
 
         table.sort(members, function(left, right)
-            return left.displayName < right.displayName
+            if left.displayName ~= right.displayName then
+                return left.displayName < right.displayName
+            end
+            return left.identity < right.identity
         end)
 
         return {

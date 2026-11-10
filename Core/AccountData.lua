@@ -14,7 +14,7 @@ local ChartModel = type(RGMS) == "table"
     and RGMS.ChartModel
     or require("Charts.Model")
 
-AccountData.CURRENT_SCHEMA_VERSION = 11
+AccountData.CURRENT_SCHEMA_VERSION = 12
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -231,7 +231,7 @@ local function validateProvisions(value, nextId, path)
     return true
 end
 
-local function validateRosterObservation(value, path)
+local function validateRosterObservationShape(value, path, legacy)
     if value == nil then
         return true
     end
@@ -259,14 +259,16 @@ local function validateRosterObservation(value, path)
             return nil, memberPath .. " must be a table"
         end
         for key in pairs(member) do
-            if key ~= "identity" and key ~= "name"
+            if key ~= "identity"
+                and key ~= (legacy and "name" or "displayName")
                 and key ~= "rankIndex" and key ~= "rankName" then
                 return nil, memberPath .. " contains unexpected field " .. tostring(key)
             end
         end
         if type(member.identity) ~= "string" or member.identity == ""
-            or member.identity ~= string.lower(member.identity)
-            or type(member.name) ~= "string" or member.name == ""
+            or (legacy and member.identity ~= string.lower(member.identity))
+            or type(member[legacy and "name" or "displayName"]) ~= "string"
+            or member[legacy and "name" or "displayName"] == ""
             or not isInteger(member.rankIndex)
             or type(member.rankName) ~= "string" or member.rankName == "" then
             return nil, memberPath .. " is invalid"
@@ -277,6 +279,14 @@ local function validateRosterObservation(value, path)
         seenIdentities[member.identity] = true
         return true
     end)
+end
+
+local function validateLegacyRosterObservation(value, path)
+    return validateRosterObservationShape(value, path, true)
+end
+
+local function validateRosterObservation(value, path)
+    return validateRosterObservationShape(value, path, false)
 end
 
 local function validateNewsSets(value, path)
@@ -898,6 +908,57 @@ function AccountData.load(saved, currentPacificDate)
         end
         migratedFrom = migratedFrom or 10
         working.schemaVersion = 11
+    end
+    if working.schemaVersion == 11 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for key, guild in pairs(working.guilds) do
+            local path = "account data.guilds[" .. tostring(key) .. "]"
+            if type(key) ~= "string" or key == "" or type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data.guilds must use non-empty string keys and table values",
+                    saved
+                )
+            end
+
+            local rosterMigrated, rosterError =
+                SavedData.migrateLegacyRosterDataset(guild.roster, path .. ".roster")
+            if not rosterMigrated then
+                return disabledState("corrupt", tostring(rosterError), saved)
+            end
+
+            local observationValid, observationError =
+                validateLegacyRosterObservation(
+                    guild.rosterObservation,
+                    path .. ".rosterObservation"
+                )
+            if not observationValid then
+                return disabledState("corrupt", observationError, saved)
+            end
+            if guild.rosterObservation ~= nil then
+                local migratedMembers = {}
+                for index, member in ipairs(guild.rosterObservation.members) do
+                    migratedMembers[index] = {
+                        identity = member.identity,
+                        displayName = member.name,
+                        rankIndex = member.rankIndex,
+                        rankName = member.rankName,
+                    }
+                end
+                guild.rosterObservation = {
+                    scannedAt = guild.rosterObservation.scannedAt,
+                    members = migratedMembers,
+                }
+            end
+        end
+        migratedFrom = migratedFrom or 11
+        working.schemaVersion = 12
     end
     if currentPacificDate == nil and type(GetServerTime) == "function" then
         currentPacificDate = RGMS and RGMS.DateTime

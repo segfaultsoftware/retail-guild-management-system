@@ -2,6 +2,7 @@
 -- never consult the current clock, local timezone, WoW installation, or network.
 
 local ClientFlavor = require("Core.ClientFlavor")
+local CharacterIdentity = require("Core.CharacterIdentity")
 local GuildIdentity = require("Core.GuildIdentity")
 
 local Fixtures = {}
@@ -75,7 +76,7 @@ function Fixtures.roster_rank(overrides)
 end
 
 function Fixtures.roster_member(overrides)
-    return withOverrides({
+    local member = withOverrides({
         guid = "Player-0000-00000001",
         name = "Aeloria",
         realm = "Example Realm",
@@ -97,6 +98,20 @@ function Fixtures.roster_member(overrides)
         lastSeenDate = "2024-06-01",
         isMissing = false,
     }, overrides)
+    if overrides == nil or overrides.identity == nil then
+        local identity, identityError = CharacterIdentity.create({
+            flavor = ClientFlavor.RETAIL,
+            region = "US",
+            name = member.name,
+            realm = member.realm,
+            guid = member.guid,
+        })
+        if not identity then
+            error(identityError)
+        end
+        member.identity = identity.key
+    end
+    return member
 end
 
 function Fixtures.bank_tab(overrides)
@@ -139,7 +154,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 9,
+        schemaVersion = 10,
         roster = {
             guild = guild,
             scannedAt = timestamp,
@@ -171,6 +186,7 @@ function Fixtures.saved_model_v0(overrides)
     local guild = Fixtures.legacy_guild_identity()
     local timestamp = Fixtures.timestamp()
     local member = Fixtures.roster_member()
+    member.identity = nil
     member.displayName = nil
     member.rankName = nil
     member.lastOnline = nil
@@ -283,11 +299,20 @@ function Fixtures.saved_model_v7(overrides)
 end
 
 function Fixtures.saved_model_v8(overrides)
-    local model = Fixtures.saved_model()
+    local model = Fixtures.saved_model_v9(overrides)
     model.schemaVersion = 8
     model.roster.guild = Fixtures.legacy_guild_identity()
     model.bank.guild = Fixtures.legacy_guild_identity()
-    return withOverrides(model, overrides)
+    return model
+end
+
+function Fixtures.saved_model_v9(overrides)
+    local model = Fixtures.saved_model(overrides)
+    model.schemaVersion = 9
+    for _, member in ipairs(model.roster.members) do
+        member.identity = nil
+    end
+    return model
 end
 
 

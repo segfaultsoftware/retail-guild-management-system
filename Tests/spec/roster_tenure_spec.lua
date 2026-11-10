@@ -1,6 +1,7 @@
 local dateFixtures = require("Tests.date_fixtures")
 local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
+local names = require("Roster.Names")
 local tenure = require("Roster.Tenure")
 local test = require("Tests.lib.runner")
 
@@ -12,9 +13,10 @@ local function completedSnapshot(unixSeconds, options)
     local rankIndex = options.rankIndex or 1
     local rankName = options.rankName or "Officer"
     local member = fixtures.roster_member({
+        identity = options.identity or names.identity(name, realm),
         name = name,
         realm = realm,
-        displayName = name .. "-" .. realm,
+        displayName = options.displayName or name .. "-" .. realm,
         rankName = rankName,
         rankIndex = rankIndex,
         observedAt = observedAt,
@@ -237,13 +239,11 @@ return {
         test.assert_equal(current.members[1].rankTenureStartDate, "2024-06-01")
     end),
 
-    test.case("a current member with a repeated realm suffix reconciles canonically", function()
+    test.case("stored identity reconciles without reparsing legacy name fields", function()
         local startedAt = dateFixtures.pacificMidnight.after
         local previous = reduce(emptyDataset(), completedSnapshot(startedAt))
         previous.members[1].realm = "Example Realm-example realm-Example"
-        previous.members[1].displayName = previous.members[1].name
-            .. "-"
-            .. previous.members[1].realm
+        previous.members[1].displayName = "Persisted historical label"
 
         local current = reduce(
             previous,
@@ -258,6 +258,7 @@ return {
         )
         test.assert_equal(current.members[1].rankTenureStartDate, "2024-06-01")
         test.assert_false(current.members[1].isMissing)
+        test.assert_equal(previous.members[1].displayName, "Persisted historical label")
     end),
 
     test.case("rank rename at the same index preserves tenure", function()
@@ -304,7 +305,7 @@ return {
         test.assert_equal(demoted.members[1].rankTenureStartDate, "2024-06-03")
     end),
 
-    test.case("displayed Name-Realm is the only member identity", function()
+    test.case("opaque identity is independent from display and legacy realm", function()
         local first = reduce(
             emptyDataset(),
             completedSnapshot(dateFixtures.pacificMidnight.after)
@@ -313,11 +314,108 @@ return {
             first,
             completedSnapshot(dateFixtures.pacificMidnight.after + 24 * 60 * 60, {
                 realm = "Other Realm",
+                identity = first.members[1].identity,
+                displayName = "Aeloria the Traveler",
             })
         )
 
-        test.assert_equal(transferred.members[1].displayName, "Aeloria-Other Realm")
-        test.assert_equal(transferred.members[1].rankTenureStartDate, "2024-06-02")
+        test.assert_equal(transferred.members[1].displayName, "Aeloria the Traveler")
+        test.assert_equal(transferred.members[1].realm, "Other Realm")
+        test.assert_equal(transferred.members[1].rankTenureStartDate, "2024-06-01")
+    end),
+
+    test.case("same-first Forever identities remain distinct while missing", function()
+        local startedAt = dateFixtures.pacificMidnight.after
+        local ash = completedSnapshot(startedAt, {
+            name = "Avery Ash",
+            realm = "Legacy Placeholder",
+            identity = "RGMS:CHARACTER:FOREVER:1:2:US:9:Avery Ash",
+            displayName = "Avery Ash",
+        })
+        local birch = completedSnapshot(startedAt, {
+            name = "Avery Birch",
+            realm = "Legacy Placeholder",
+            identity = "RGMS:CHARACTER:FOREVER:1:2:US:11:Avery Birch",
+            displayName = "Avery Birch",
+        })
+        ash.members[2] = birch.members[1]
+
+        local first = reduce(emptyDataset(), ash)
+        local missing = reduce(
+            first,
+            emptySnapshot(startedAt + 24 * 60 * 60)
+        )
+        local byIdentity = {}
+        for _, member in ipairs(missing.members) do
+            byIdentity[member.identity] = member
+        end
+
+        test.assert_equal(#missing.members, 2)
+        test.assert_equal(
+            byIdentity["RGMS:CHARACTER:FOREVER:1:2:US:9:Avery Ash"].displayName,
+            "Avery Ash"
+        )
+        test.assert_equal(
+            byIdentity["RGMS:CHARACTER:FOREVER:1:2:US:11:Avery Birch"].displayName,
+            "Avery Birch"
+        )
+        test.assert_true(missing.members[1].isMissing)
+        test.assert_true(missing.members[2].isMissing)
+    end),
+
+    test.case("duplicate prior identities prefer the present record in either order", function()
+        local startedAt = dateFixtures.pacificMidnight.after
+        local first = reduce(emptyDataset(), completedSnapshot(startedAt))
+        local missingDataset = reduce(
+            first,
+            emptySnapshot(startedAt + 24 * 60 * 60)
+        )
+        local present = first.members[1]
+        local retained = missingDataset.members[1]
+
+        for _, members in ipairs({
+            { retained, present },
+            { present, retained },
+        }) do
+            local previous = {
+                guild = first.guild,
+                scannedAt = missingDataset.scannedAt,
+                ranks = first.ranks,
+                members = members,
+            }
+            local current = reduce(previous, completedSnapshot(
+                startedAt + 2 * 24 * 60 * 60
+            ))
+
+            test.assert_equal(current.members[1].rankTenureStartDate, "2024-06-01")
+            test.assert_false(current.members[1].isMissing)
+        end
+    end),
+
+    test.case("duplicate current identities fail without changing the snapshot", function()
+        local startedAt = dateFixtures.pacificMidnight.after
+        local snapshot = completedSnapshot(startedAt)
+        local duplicate = completedSnapshot(startedAt, {
+            name = "Different Name",
+            identity = snapshot.members[1].identity,
+            displayName = "Different Label",
+        })
+        snapshot.members[2] = duplicate.members[1]
+
+        local result, reduceError = tenure.reduce(
+            emptyDataset(),
+            snapshot,
+            dateTime
+        )
+
+        test.assert_nil(result)
+        test.assert_equal(
+            reduceError,
+            "completed roster snapshot contains duplicate member aeloria-example realm"
+        )
+        test.assert_nil(snapshot.members[1].rankTenureStartDate)
+        test.assert_nil(snapshot.members[2].rankTenureStartDate)
+        test.assert_equal(snapshot.members[2].displayName, "Different Label")
     end),
 
     test.case("year boundary tenure uses Pacific calendar dates", function()

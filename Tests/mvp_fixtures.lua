@@ -117,11 +117,14 @@ end
 
 function MvpFixtures.roster_member(date, overrides)
     overrides = overrides or {}
+    local name = overrides.name or "Aeloria"
+    local realm = overrides.realm or "Example Realm"
     local member = fixtures.roster_member({
         guid = overrides.guid or "Player-0000-00000042",
-        name = overrides.name or "Aeloria",
-        realm = overrides.realm or "Example Realm",
-        displayName = overrides.displayName or "Aeloria-Example Realm",
+        identity = overrides.identity,
+        name = name,
+        realm = realm,
+        displayName = overrides.displayName or (name .. "-" .. realm),
         rankName = overrides.rankName or "Member",
         rankIndex = overrides.rankIndex or 2,
         isOnline = overrides.isOnline == true,
@@ -227,7 +230,7 @@ end
 
 function MvpFixtures.empty_model(windowPosition)
     return {
-        schemaVersion = 9,
+        schemaVersion = 10,
         roster = {
             ranks = {},
             members = {},

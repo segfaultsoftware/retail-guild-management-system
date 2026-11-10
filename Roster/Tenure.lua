@@ -5,10 +5,6 @@
 local _, RGMS = ...
 
 local Tenure = {}
-local Names = type(RGMS) == "table"
-    and type(RGMS.RosterNames) == "table"
-    and RGMS.RosterNames
-    or require("Roster.Names")
 
 Tenure.MISSING_RETENTION_DAYS = 21
 
@@ -51,7 +47,7 @@ local function requireDateTime(dateTime)
     return true
 end
 
-local function indexMembers(members, source, repairEquivalentNames)
+local function indexMembers(members, source, repairDuplicateIdentities)
     if type(members) ~= "table" then
         return nil, source .. " members must be a table"
     end
@@ -59,13 +55,17 @@ local function indexMembers(members, source, repairEquivalentNames)
     local indexed = {}
     for _, member in ipairs(members) do
         if type(member) ~= "table"
-            or type(member.displayName) ~= "string"
+            or type(member.identity) ~= "string"
+            or member.identity == "" then
+            return nil, source .. " member identity must be a non-empty string"
+        end
+        if type(member.displayName) ~= "string"
             or member.displayName == "" then
             return nil, source .. " member displayName must be a non-empty string"
         end
-        local identity = Names.identity(member.name, member.realm)
+        local identity = member.identity
         if indexed[identity] ~= nil then
-            if not repairEquivalentNames then
+            if not repairDuplicateIdentities then
                 return nil, source .. " contains duplicate member " .. identity
             end
             if indexed[identity].isMissing and not member.isMissing then
@@ -173,9 +173,7 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
     end
 
     for _, member in ipairs(nextDataset.members) do
-        member.realm = Names.collapseRepeatedRealm(member.realm)
-        member.displayName = Names.displayName(member.name, member.realm)
-        local identity = Names.identity(member.name, member.realm)
+        local identity = member.identity
         local previous = previousMembers[identity]
         if previous ~= nil
             and not previous.isMissing
@@ -201,7 +199,7 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
     end
 
     for _, previous in ipairs(previousDataset.members) do
-        local identity = Names.identity(previous.name, previous.realm)
+        local identity = previous.identity
         if previousMembers[identity] == previous
             and currentMembers[identity] == nil then
             local currentRank = currentRanks[previous.rankIndex]
@@ -229,11 +227,6 @@ function Tenure.reduce(previousDataset, snapshot, dateTime)
                     end
                     retained.rankName = currentRank.name
                     retained.isMissing = true
-                    retained.realm = Names.collapseRepeatedRealm(retained.realm)
-                    retained.displayName = Names.displayName(
-                        retained.name,
-                        retained.realm
-                    )
                     carryLastOnlineForward(retained, elapsedDays)
                     nextDataset.members[#nextDataset.members + 1] = retained
                 end

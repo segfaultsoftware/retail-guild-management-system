@@ -4,9 +4,6 @@
 local _, RGMS = ...
 
 local Report = {}
-local Names = type(RGMS) == "table"
-    and RGMS.RosterNames
-    or require("Roster.Names")
 
 Report.EMPTY_GROUP_TEXT = "<no members in this bracket>"
 Report.GROUPS = {
@@ -92,12 +89,15 @@ local function memberComesBefore(left, right)
         return left.tenureDays > right.tenureDays
     end
 
-    local leftName = string.lower(left.name)
-    local rightName = string.lower(right.name)
+    local leftName = string.lower(left.displayName)
+    local rightName = string.lower(right.displayName)
     if leftName ~= rightName then
         return leftName < rightName
     end
-    return string.lower(left.displayName) < string.lower(right.displayName)
+    if left.displayName ~= right.displayName then
+        return left.displayName < right.displayName
+    end
+    return left.identity < right.identity
 end
 
 local function newGroups()
@@ -200,8 +200,9 @@ function Report.build(dataset, currentDate, dateTime)
             )
             local group = projectedRank.groups[groupIndexForAge(ageDays)]
             group.members[#group.members + 1] = {
+                identity = member.identity,
                 name = member.name,
-                displayName = Names.displayName(member.name, member.realm),
+                displayName = member.displayName,
                 classFileName = member.classFileName,
                 lastOnlineText = lastOnlineText,
                 tenureDays = tenureDays,
