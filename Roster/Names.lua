@@ -24,6 +24,9 @@ function Names.identity(name, realm)
     return string.lower(Names.displayName(name, realm))
 end
 
+-- Legacy Retail-only parser retained for the current Retail schema and its
+-- migrations. New product-neutral code must never recover identity from a
+-- display label.
 function Names.splitDisplayName(value, defaultRealm)
     local supplied = tostring(value or "")
     local name, realm = string.match(supplied, "^([^%-]+)%-(.+)$")
