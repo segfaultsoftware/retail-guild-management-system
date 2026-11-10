@@ -33,6 +33,7 @@ return {
         test.assert_equal(member.observedAt.iso8601, "2024-06-01T12:34:56Z")
         test.assert_equal(member.rankTenureStartDate, "2024-06-01")
         test.assert_equal(member.lastSeenDate, "2024-06-01")
+        test.assert_equal(member.identity, "aeloria-example realm")
         test.assert_false(member.isMissing)
     end),
 
@@ -74,7 +75,7 @@ return {
         local current = fixtures.saved_model()
         local previous = fixtures.saved_model_v0()
 
-        test.assert_equal(current.schemaVersion, 9)
+        test.assert_equal(current.schemaVersion, 10)
         test.assert_equal(current.roster.guild.name, "Example Guild")
         test.assert_equal(current.roster.guild.flavor, "retail")
         test.assert_equal(current.ui.windowPosition.point, "TOPLEFT")
@@ -82,5 +83,13 @@ return {
         test.assert_equal(previous.roster.guildIdentity.name, "Example Guild")
         test.assert_nil(previous.roster.guildIdentity.flavor)
         test.assert_nil(previous.ui)
+    end),
+
+    test.case("version nine fixtures retain the pre-identity roster shape", function()
+        local previous = fixtures.saved_model_v9()
+
+        test.assert_equal(previous.schemaVersion, 9)
+        test.assert_nil(previous.roster.members[1].identity)
+        test.assert_equal(previous.roster.members[1].displayName, "Aeloria-Example Realm")
     end),
 }

@@ -27,6 +27,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Migrated persisted roster members and news observations to opaque
+  product-aware character identities, preserving Retail tenure and historical
+  News labels while keeping same-first-name Forever members distinct.
 - Migrated account-wide and per-character guild identities to the shared
   product-aware contract while preserving every existing Retail partition key,
   isolating new Forever data by region, and rejecting stale cross-product scan

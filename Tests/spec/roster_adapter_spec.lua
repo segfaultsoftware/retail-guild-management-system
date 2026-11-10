@@ -1,6 +1,7 @@
 local clientFlavor = require("Core.ClientFlavor")
 local dateTime = require("Core.DateTime")
 local guildIdentity = require("Core.GuildIdentity")
+local names = require("Roster.Names")
 local test = require("Tests.lib.runner")
 
 local GLOBAL_NAMES = {
@@ -168,6 +169,10 @@ return {
             test.assert_equal(#snapshot.ranks, 3)
             test.assert_equal(snapshot.ranks[3].name, "Empty Rank")
             test.assert_equal(#snapshot.members, 2)
+            test.assert_equal(
+                snapshot.members[1].identity,
+                names.identity("Ada", "ExampleRealm")
+            )
             test.assert_equal(snapshot.members[1].displayName, "Ada-ExampleRealm")
             test.assert_equal(snapshot.members[1].rankName, "Member")
             test.assert_equal(snapshot.members[1].rankIndex, 2)
@@ -213,7 +218,21 @@ return {
             test.assert_equal(snapshot.guild.realm.name, "Ner'zhul")
             test.assert_equal(snapshot.guild.realm.slug, "Ner'zhul")
             test.assert_equal(nalla.realm, "Ner'zhul")
+            test.assert_equal(nalla.identity, names.identity("Nalla", "Ner'zhul"))
             test.assert_equal(nalla.displayName, "Nalla-Ner'zhul")
+        end)
+    end),
+
+    test.case("Retail adapter rejects duplicate canonical identities", function()
+        withRetailStubs(function(harness)
+            harness.setMemberName(101, "Ada-ExampleRealm")
+            harness.setMemberName(202, "ADA-examplerealm")
+
+            local snapshot, state, message = harness.api:captureSnapshot()
+
+            test.assert_nil(snapshot)
+            test.assert_equal(state, "incomplete")
+            test.assert_matches(message, "duplicated")
         end)
     end),
 }

@@ -6,10 +6,6 @@ local _, RGMS = ...
 local News = {}
 News.RETENTION_DAYS = 21
 
-local Names = type(RGMS) == "table"
-    and RGMS.RosterNames
-    or require("Roster.Names")
-
 local function copyTimestamp(value)
     return {
         unixSeconds = value.unixSeconds,
@@ -58,10 +54,25 @@ local function observationFromSnapshot(snapshot)
         scannedAt = copyTimestamp(snapshot.scannedAt),
         members = {},
     }
+    local seenIdentities = {}
     for _, member in ipairs(snapshot.members or {}) do
+        if type(member) ~= "table"
+            or type(member.identity) ~= "string"
+            or member.identity == "" then
+            return nil, "completed roster observation member identity must be a non-empty string"
+        end
+        if type(member.displayName) ~= "string"
+            or member.displayName == "" then
+            return nil, "completed roster observation member displayName must be a non-empty string"
+        end
+        if seenIdentities[member.identity] then
+            return nil, "completed roster observation contains duplicate member "
+                .. member.identity
+        end
+        seenIdentities[member.identity] = true
         observation.members[#observation.members + 1] = {
-            identity = Names.identity(member.name, member.realm),
-            name = member.displayName or Names.displayName(member.name, member.realm),
+            identity = member.identity,
+            displayName = member.displayName,
             rankIndex = member.rankIndex,
             rankName = member.rankName,
         }
@@ -72,9 +83,24 @@ local function observationFromSnapshot(snapshot)
     return observation
 end
 
-local function memberMap(observation)
+local function memberMap(observation, source)
+    if type(observation) ~= "table" or type(observation.members) ~= "table" then
+        return nil, source .. " must contain members"
+    end
     local result = {}
-    for _, member in ipairs(observation and observation.members or {}) do
+    for _, member in ipairs(observation.members) do
+        if type(member) ~= "table"
+            or type(member.identity) ~= "string"
+            or member.identity == "" then
+            return nil, source .. " member identity must be a non-empty string"
+        end
+        if type(member.displayName) ~= "string"
+            or member.displayName == "" then
+            return nil, source .. " member displayName must be a non-empty string"
+        end
+        if result[member.identity] ~= nil then
+            return nil, source .. " contains duplicate member " .. member.identity
+        end
         result[member.identity] = member
     end
     return result
@@ -130,7 +156,10 @@ function News.process(previousObservation, newsSets, snapshot, dateTime)
         end
     end
 
-    local observation = observationFromSnapshot(snapshot)
+    local observation, observationError = observationFromSnapshot(snapshot)
+    if not observation then
+        return nil, observationError
+    end
     if previousObservation == nil then
         return {
             observation = observation,
@@ -139,8 +168,20 @@ function News.process(previousObservation, newsSets, snapshot, dateTime)
         }
     end
 
-    local previous = memberMap(previousObservation)
-    local current = memberMap(observation)
+    local previous, previousError = memberMap(
+        previousObservation,
+        "previous roster observation"
+    )
+    if not previous then
+        return nil, previousError
+    end
+    local current, currentError = memberMap(
+        observation,
+        "completed roster observation"
+    )
+    if not current then
+        return nil, currentError
+    end
     local joiningMembers = {}
     local leavingMembers = {}
     local rankChanges = {}
@@ -148,17 +189,17 @@ function News.process(previousObservation, newsSets, snapshot, dateTime)
     for identity, member in pairs(current) do
         local prior = previous[identity]
         if prior == nil then
-            joiningMembers[#joiningMembers + 1] = member.name
+            joiningMembers[#joiningMembers + 1] = member.displayName
         elseif prior.rankIndex ~= member.rankIndex then
             rankChanges[#rankChanges + 1] = {
-                name = member.name,
+                name = member.displayName,
                 rankName = member.rankName,
             }
         end
     end
     for identity, member in pairs(previous) do
         if current[identity] == nil then
-            leavingMembers[#leavingMembers + 1] = member.name
+            leavingMembers[#leavingMembers + 1] = member.displayName
         end
     end
 

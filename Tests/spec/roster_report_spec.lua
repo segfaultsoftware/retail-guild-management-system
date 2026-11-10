@@ -1,5 +1,6 @@
 local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
+local names = require("Roster.Names")
 local report = require("Roster.Report")
 local test = require("Tests.lib.runner")
 
@@ -7,10 +8,13 @@ local CURRENT_DATE = "2024-06-01"
 
 local function member(name, rankIndex, days, tenureStartDate, overrides)
     overrides = overrides or {}
+    local realm = overrides.realm or "Example Realm"
     local values = {
+        identity = overrides.identity or names.identity(name, realm),
         guid = "Player-0000-" .. name,
         name = name,
-        displayName = name .. "-Example Realm",
+        realm = realm,
+        displayName = overrides.displayName or name .. "-" .. realm,
         rankName = overrides.rankName or "Trial",
         rankIndex = rankIndex,
         lastOnline = days == nil and nil or {
@@ -117,12 +121,35 @@ return {
         local rows = rendered.ranks[2].groups[1].members
 
         test.assert_true(rows[1].tenureDays > rows[4].tenureDays)
+        test.assert_equal(rows[4].identity, "alpha-example realm")
         test.assert_equal(rows[4].displayName, "Alpha-Example Realm")
         test.assert_equal(rows[4].classFileName, "MAGE")
         test.assert_equal(rows[5].displayName, "Zulu-Example Realm")
         test.assert_equal(rows[4].tenureDays, rows[5].tenureDays)
         test.assert_equal(rows[4].lastOnlineText, "4 days ago")
         test.assert_equal(rows[3].lastOnlineText, "Online")
+    end),
+
+    test.case("equal display labels use opaque identity as the tie-breaker", function()
+        local dataset = comprehensiveDataset()
+        dataset.members = {
+            member("First", 7, 1, CURRENT_DATE, {
+                identity = "Opaque:Z",
+                displayName = "Shared Display",
+            }),
+            member("Second", 7, 1, CURRENT_DATE, {
+                identity = "Opaque:A",
+                displayName = "Shared Display",
+            }),
+        }
+
+        local rendered = assert(report.build(dataset, CURRENT_DATE, dateTime))
+        local rows = rendered.ranks[2].groups[1].members
+
+        test.assert_equal(rows[1].identity, "Opaque:A")
+        test.assert_equal(rows[2].identity, "Opaque:Z")
+        test.assert_equal(rows[1].displayName, "Shared Display")
+        test.assert_equal(rows[2].displayName, "Shared Display")
     end),
 
     test.case("missing rows are excluded without mutating retained observations", function()
@@ -204,19 +231,23 @@ return {
         )
     end),
 
-    test.case("rendering collapses a repeated persisted realm without mutation", function()
+    test.case("rendering preserves a stored display label without mutation", function()
         local dataset = comprehensiveDataset()
         dataset.members = {
             member("Nalla", 7, 2, CURRENT_DATE),
         }
         dataset.members[1].realm = "Ner'zhul-Ner'zhul-Ner'zhul"
-        dataset.members[1].displayName = "Nalla-" .. dataset.members[1].realm
+        dataset.members[1].displayName = "Nalla of Ner'zhul"
 
         local rendered = assert(report.build(dataset, CURRENT_DATE, dateTime))
 
         test.assert_equal(
             rendered.ranks[2].groups[1].members[1].displayName,
-            "Nalla-Ner'zhul"
+            "Nalla of Ner'zhul"
+        )
+        test.assert_equal(
+            dataset.members[1].displayName,
+            "Nalla of Ner'zhul"
         )
         test.assert_equal(
             dataset.members[1].realm,

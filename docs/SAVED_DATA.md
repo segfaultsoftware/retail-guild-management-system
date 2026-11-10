@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 11
+## Account-wide schema: version 12
 
 ```text
 {
-  schemaVersion = 11,
+  schemaVersion = 12,
   settings = {
     minimapPos = number,
   },
@@ -92,7 +92,17 @@ every guild partition while preserving Gold and Members observations. Version
 identity to the product-aware contract, inferring Retail for all historical
 data. The conversion verifies that each new Retail identity produces the
 existing map key and never re-keys `guilds`; a mismatch disables the account
-store and preserves the supplied table for recovery.
+store and preserves the supplied table for recovery. Version 12 adds the exact
+Feature 1.3 Retail character key to every persisted roster member and converts
+each roster-news baseline member from `name` to the explicit `displayName`
+field while retaining its existing opaque `identity`. Duplicate roster
+identities are reconciled deterministically during migration, preferring a
+present member over an equivalent retained-missing record and otherwise the
+newest observation. Historical `newsSets` are not reinterpreted or rewritten;
+their human-readable join, leave, and rank-change labels remain unchanged.
+Bank data, charts, provisions, groups, notes, tags, and every other guild
+partition are preserved. Conversion happens only on a detached copy, so any
+late validation failure leaves the complete supplied account store unchanged.
 
 A `GuildIdentity` has one of these canonical shapes (fields shown as `nil` are
 absent from the saved Lua table):
@@ -140,21 +150,23 @@ not retain absent members. `newsSets` stores immutable qualifying scan results
 newest first until acknowledgement or expiry after their 21st Pacific calendar
 day.
 
-Character-note keys use the same case-insensitive canonical character identity
-as the roster projection. Saved note text is trimmed, whitespace-only text is
-removed, and editor-created notes are limited to 5,500 characters. Grouping,
-promotion, and removal update only `mainAltGroups`, so notes and tag assignments
-remain attached to their character identities. Tag definitions are normalized
+Character-note and tag-assignment keys retain their established Retail
+Name-Realm values in version 12; migrating those features to opaque roster
+identity belongs to the subsequent Mains/Alts schema version. Saved note text
+is trimmed, whitespace-only text is removed, and editor-created notes are
+limited to 5,500 characters. Grouping, promotion, and removal update only
+`mainAltGroups`, so notes and tag assignments remain attached to their existing
+keys. Tag definitions are normalized
 by trimming edge whitespace and downcasing ASCII letters while preserving
 interior whitespace and non-ASCII spelling. Every guild catalog contains `me`;
 custom definitions remain saved even when unused. Assignments are removed only
 when their character leaves the retained roster database.
 
-## Per-character schema: version 9
+## Per-character schema: version 10
 
 ```text
 {
-  schemaVersion = 9,
+  schemaVersion = 10,
   roster = DeprecatedRosterDataset,
   bank = DeprecatedBankDataset,
   ui = {
@@ -165,10 +177,16 @@ when their character leaves the retained roster database.
 }
 ```
 
-Saved data from versions 0 through 8 remains migratable. Version 8 adds
+Saved data from versions 0 through 9 remains migratable. Version 8 adds
 per-character numeric rank and bank-tab selections, so renaming an option does
 not invalidate it. Version 9 infers Retail for guild identities in both
-deprecated datasets and stores the canonical product-aware shape. When the
+deprecated datasets and stores the canonical product-aware shape. Version 10
+adds the exact Feature 1.3 Retail identity to every deprecated roster member
+without changing its display label, tenure, missing-member state, GUID, bank
+data, or UI state. Duplicate identities are resolved with the same deterministic
+present-member and newest-observation preference as the account migration.
+Migration and validation operate on a detached copy, so failure leaves the
+original per-character store recoverable and unchanged. When the
 current guild's account-wide roster is uninitialized, only the logged-in
 character's matching deprecated roster can seed it. A missing or foreign-guild
 snapshot initializes an empty current-guild roster instead. An already
@@ -181,12 +199,14 @@ logged-in character's matching deprecated bank; foreign-guild data is ignored.
 Once initialized, including as an intentional empty reset state, the account
 bank remains authoritative and later characters cannot merge legacy snapshots.
 
-`RosterNewsObservation` contains the scan timestamp and a canonical identity,
-display name, numeric rank index, and current rank name for every member in that
-successful API response. A `RosterNewsSet` contains its unique scan-derived ID,
-Pacific creation date, and non-empty change data across joining members, leaving
-members, and rank changes. Rank changes save the member display name and new
-rank name; set acknowledgement removes only the selected set.
+`RosterNewsObservation` contains the scan timestamp and, for every member in
+that successful API response, `{ identity, displayName, rankIndex, rankName }`.
+The identity is a non-empty opaque key and is never parsed to recover the label.
+A `RosterNewsSet` contains its unique scan-derived ID, Pacific creation date,
+and non-empty change data across joining members, leaving members, and rank
+changes. Rank changes save the member display name and new rank name; set
+acknowledgement removes only the selected set. Saved set labels are immutable
+display records even if the member's current display label later changes.
 
 `WindowPosition` contains `point`, `relativePoint`, `x`, and `y`. The active
 view references the current character's `ui` subtree, so dragging the window
@@ -200,8 +220,13 @@ legacy guild value replaced by the canonical product-aware `GuildIdentity`. A
 successful observation includes that identity and a scan timestamp. An empty
 uninitialized or reset dataset has empty collections and no guild or timestamp.
 
-Roster members retain canonical `Name-Realm`, rank, online, observation,
-rank-tenure, and missing-member fields. Bank tabs retain access state and
+Roster members store a non-empty opaque `identity` separately from their
+non-empty `displayName`, along with rank, online, observation, rank-tenure,
+missing-member, and GUID correlation fields. Retail records retain legacy
+`name` and canonical `realm` metadata where useful; `realm` is absent for
+Forever records, and neither identity nor display is reconstructed from those
+legacy fields. GUID remains correlation metadata and never replaces the
+portable identity. Bank tabs retain access state and
 last-access timestamps; a completed bank snapshot retains its total money in
 copper; occupied bank slots retain item, quantity, icon,
 observation, and stable-since fields. New observations may also retain the
@@ -279,8 +304,8 @@ are initialized immediately before an eligible scan after the guild bank opens.
 The schema migration remains project-owned after evaluating established shared
 libraries. [AceDB-3.0](https://github.com/WoWUIDev/Ace3) is actively maintained
 and broadly adopted for profiles, namespaces, and defaults, but it does not
-provide RGMS's strict versioned validation, opaque guild ownership contract, or
-copy-on-write rollback. [LibSerialize](https://github.com/rossnichols/LibSerialize)
+provide RGMS's strict versioned validation, opaque guild and character identity
+contracts, or copy-on-write rollback. [LibSerialize](https://github.com/rossnichols/LibSerialize)
 is maintained, MIT-licensed, and Lua-compatible, but serializes arbitrary values
 rather than migrating WoW SavedVariables already loaded as tables. The current
 [LibSavedVars](https://github.com/silvereyes333/LibSavedVars) implementation is

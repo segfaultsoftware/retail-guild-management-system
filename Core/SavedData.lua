@@ -9,12 +9,15 @@ local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTi
 local ClientFlavor = type(RGMS) == "table"
     and RGMS.ClientFlavor
     or require("Core.ClientFlavor")
+local CharacterIdentity = type(RGMS) == "table"
+    and RGMS.CharacterIdentity
+    or require("Core.CharacterIdentity")
 local GuildIdentity = type(RGMS) == "table"
     and RGMS.GuildIdentity
     or require("Core.GuildIdentity")
 local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
 
-SavedData.CURRENT_SCHEMA_VERSION = 9
+SavedData.CURRENT_SCHEMA_VERSION = 10
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -370,7 +373,10 @@ local function validateRosterMember(
     path,
     requireTenureStartDate,
     requireMissingState,
-    requireCanonicalRealm
+    requireCanonicalRealm,
+    requireIdentity,
+    allowMissingRealm,
+    allowIndependentDisplayName
 )
     local allowedKeys = {
         guid = true,
@@ -387,6 +393,9 @@ local function validateRosterMember(
         lastOnline = true,
         observedAt = true,
     }
+    if requireIdentity then
+        allowedKeys.identity = true
+    end
     if requireTenureStartDate then
         allowedKeys.rankTenureStartDate = true
     end
@@ -403,12 +412,23 @@ local function validateRosterMember(
     for _, field in ipairs({
         "guid",
         "name",
-        "realm",
         "displayName",
         "rankName",
         "classFileName",
     }) do
         valid, validationError = requireString(value[field], path .. "." .. field)
+        if not valid then
+            return nil, validationError
+        end
+    end
+    if requireIdentity then
+        valid, validationError = requireString(value.identity, path .. ".identity")
+        if not valid then
+            return nil, validationError
+        end
+    end
+    if value.realm ~= nil or not allowMissingRealm then
+        valid, validationError = requireString(value.realm, path .. ".realm")
         if not valid then
             return nil, validationError
         end
@@ -428,10 +448,12 @@ local function validateRosterMember(
     if not valid then
         return nil, validationError
     end
-    if value.displayName ~= value.name .. "-" .. value.realm then
+    if not allowIndependentDisplayName
+        and value.displayName ~= value.name .. "-" .. value.realm then
         return nil, path .. ".displayName must match name and realm"
     end
-    if requireCanonicalRealm and Realm.normalize(value.realm) ~= value.realm then
+    if requireCanonicalRealm and value.realm ~= nil
+        and Realm.normalize(value.realm) ~= value.realm then
         return nil, path .. ".realm must be canonical"
     end
 
@@ -514,8 +536,23 @@ local function validateRosterMember(
     return true
 end
 
-local function validateCurrentRosterMember(value, path)
+local function validateLegacyCurrentRosterMember(value, path)
     return validateRosterMember(value, path, true, true, true)
+end
+
+local function validateCurrentRosterMember(value, path)
+    return validateRosterMember(value, path, true, true, true, true, true, true)
+end
+
+local function validateUniqueRosterIdentities(members, path)
+    local seen = {}
+    for index, member in ipairs(members) do
+        if seen[member.identity] then
+            return nil, path .. "[" .. index .. "].identity must be unique"
+        end
+        seen[member.identity] = true
+    end
+    return true
 end
 
 local function validateBankTabFields(value, path, allowLastAccessibleAt)
@@ -839,6 +876,13 @@ function SavedData.validate(model)
         ranks = validateRosterRank,
         members = validateCurrentRosterMember,
     }, nil, nil, validateCurrentGuildIdentity)
+    if not valid then
+        return nil, validationError
+    end
+    valid, validationError = validateUniqueRosterIdentities(
+        model.roster.members,
+        "saved data.roster.members"
+    )
     if not valid then
         return nil, validationError
     end
@@ -1207,6 +1251,55 @@ local function preferDuplicateMember(existing, candidate)
     return candidate.observedAt.unixSeconds > existing.observedAt.unixSeconds
 end
 
+-- Adds the portable Retail identity introduced after schema version 9. The
+-- caller owns transactionality; SavedData.load and AccountData.load invoke this
+-- only on their detached working copies.
+function SavedData.migrateLegacyRosterDataset(dataset, path)
+    path = path or "legacy roster dataset"
+    local valid, validationError = validateDataset(dataset, path, {
+        ranks = validateRosterRank,
+        members = validateLegacyCurrentRosterMember,
+    }, nil, nil, validateCurrentGuildIdentity)
+    if not valid then
+        return nil, validationError
+    end
+
+    local candidates = {}
+    for index, member in ipairs(dataset.members) do
+        local identity, identityError = CharacterIdentity.create({
+            flavor = ClientFlavor.RETAIL,
+            region = dataset.guild.region,
+            name = member.name,
+            realm = member.realm,
+            guid = member.guid,
+        })
+        if not identity then
+            return nil, path .. ".members[" .. index
+                .. "].identity could not be migrated: " .. tostring(identityError)
+        end
+        candidates[#candidates + 1] = {
+            identity = identity.key,
+            member = member,
+        }
+    end
+
+    local migrated = {}
+    local indexesByIdentity = {}
+    for _, candidate in ipairs(candidates) do
+        local member = candidate.member
+        member.identity = candidate.identity
+        local existingIndex = indexesByIdentity[candidate.identity]
+        if existingIndex == nil then
+            migrated[#migrated + 1] = member
+            indexesByIdentity[candidate.identity] = #migrated
+        elseif preferDuplicateMember(migrated[existingIndex], member) then
+            migrated[existingIndex] = member
+        end
+    end
+    dataset.members = migrated
+    return true
+end
+
 local function normalizeRosterMembers(members)
     local normalized = {}
     local indexesByIdentity = {}
@@ -1293,7 +1386,7 @@ local function migrateVersionFive(model)
     end
     valid, migrationError = validateDataset(model.roster, "schema version 5 data.roster", {
         ranks = validateRosterRank,
-        members = validateCurrentRosterMember,
+        members = validateLegacyCurrentRosterMember,
     }, true)
     if not valid then
         return nil, migrationError
@@ -1348,7 +1441,7 @@ local function migrateVersionSix(model)
     end
     valid, migrationError = validateDataset(model.roster, "schema version 6 data.roster", {
         ranks = validateRosterRank,
-        members = validateCurrentRosterMember,
+        members = validateLegacyCurrentRosterMember,
     }, true)
     if not valid then
         return nil, migrationError
@@ -1414,7 +1507,7 @@ local function migrateVersionSeven(model)
     end
     valid, migrationError = validateDataset(model.roster, "schema version 7 data.roster", {
         ranks = validateRosterRank,
-        members = validateCurrentRosterMember,
+        members = validateLegacyCurrentRosterMember,
     }, true)
     if not valid then
         return nil, migrationError
@@ -1480,7 +1573,7 @@ local function migrateVersionEight(model)
         "schema version 8 data.roster",
         {
             ranks = validateRosterRank,
-            members = validateCurrentRosterMember,
+            members = validateLegacyCurrentRosterMember,
         },
         true
     )
@@ -1566,6 +1659,94 @@ local function migrateVersionEight(model)
     return model
 end
 
+local function migrateVersionNine(model)
+    if model.schemaVersion ~= 9 then
+        return nil, "schema version 9 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 9 data")
+    if not valid then
+        return nil, migrationError
+    end
+
+    valid, migrationError = SavedData.migrateLegacyRosterDataset(
+        model.roster,
+        "schema version 9 data.roster"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    valid, migrationError = validateDataset(
+        model.bank,
+        "schema version 9 data.bank",
+        {
+            tabs = validateBankTab,
+            slots = validateBankSlot,
+        },
+        nil,
+        {
+            money = function(value, path)
+                return requireInteger(value, path, 0)
+            end,
+        },
+        validateCurrentGuildIdentity
+    )
+    if not valid then
+        return nil, migrationError
+    end
+    for _, tab in ipairs(model.bank.tabs) do
+        if tab.lastAccessibleAt ~= nil
+            and tab.lastAccessibleAt.unixSeconds > model.bank.scannedAt.unixSeconds then
+            return nil, "schema version 9 data.bank.tabs lastAccessibleAt must not follow scannedAt"
+        end
+    end
+
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+        selectedRosterRankIndex = true,
+        selectedBankTabIndex = true,
+    }, "schema version 9 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 9 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+    if model.ui.selectedRosterRankIndex ~= nil then
+        valid, migrationError = requireInteger(
+            model.ui.selectedRosterRankIndex,
+            "schema version 9 data.ui.selectedRosterRankIndex",
+            0
+        )
+        if not valid then
+            return nil, migrationError
+        end
+    end
+    if model.ui.selectedBankTabIndex ~= nil then
+        valid, migrationError = requireInteger(
+            model.ui.selectedBankTabIndex,
+            "schema version 9 data.ui.selectedBankTabIndex",
+            1
+        )
+        if not valid then
+            return nil, migrationError
+        end
+    end
+
+    model.schemaVersion = 10
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
@@ -1576,6 +1757,7 @@ local MIGRATIONS = {
     [6] = migrateVersionSix,
     [7] = migrateVersionSeven,
     [8] = migrateVersionEight,
+    [9] = migrateVersionNine,
 }
 
 local function isLegacyDevelopmentState(value)

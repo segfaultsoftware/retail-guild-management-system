@@ -1,11 +1,15 @@
 local bankScannerModule = require("Bank.Scanner")
 local bankState = require("Bank.State")
+local characterIdentity = require("Core.CharacterIdentity")
+local clientFlavor = require("Core.ClientFlavor")
 local commands = require("Core.Commands")
 local datasetOwnership = require("Core.DatasetOwnership")
 local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local mvp = require("Tests.mvp_fixtures")
 local resetModule = require("Core.Reset")
+local rosterNews = require("Roster.News")
 local rosterScannerModule = require("Roster.Scanner")
 local savedData = require("Core.SavedData")
 local tenure = require("Roster.Tenure")
@@ -762,5 +766,105 @@ return {
             test.assert_false(disabled:rosterRefreshEnabled())
             test.assert_false(disabled:bankRefreshEnabled())
         end)
+    end),
+
+    test.case("MVP-E2E-10 opaque Forever identities remain distinct through persistence and news", function()
+        local guild = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Fixture Guild",
+            clubId = "Club-001",
+        }))
+        local firstIdentity = assert(characterIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "First-048 Surname-042",
+            guid = "Guid-042",
+        }))
+        local secondIdentity = assert(characterIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "First-048 Surname-043",
+            guid = "Guid-043",
+        }))
+
+        local function foreverMember(identity, rankIndex, rankName, date)
+            local member = fixtures.roster_member({
+                guid = identity.guid,
+                identity = identity.key,
+                name = identity.name,
+                displayName = identity.displayName,
+                rankIndex = rankIndex,
+                rankName = rankName,
+                observedAt = {
+                    unixSeconds = date.unixSeconds,
+                    iso8601 = date.iso8601,
+                },
+            })
+            member.realm = nil
+            member.rankTenureStartDate = nil
+            member.lastSeenDate = nil
+            member.isMissing = nil
+            return member
+        end
+
+        local firstSnapshot = mvp.roster_snapshot(mvp.dates.day1Morning, {
+            guild = guild,
+            members = {
+                foreverMember(firstIdentity, 2, "Member", mvp.dates.day1Morning),
+                foreverMember(secondIdentity, 2, "Member", mvp.dates.day1Morning),
+            },
+        })
+        local first = assert(tenure.reduce({
+            guild = guild,
+            ranks = {},
+            members = {},
+        }, firstSnapshot, dateTime))
+        local persisted = assert(savedData.replaceDataset(
+            savedData.newModel(),
+            "roster",
+            first
+        ))
+        test.assert_equal(#persisted.roster.members, 2)
+        test.assert_true(
+            persisted.roster.members[1].identity
+                ~= persisted.roster.members[2].identity
+        )
+
+        local newsState = assert(rosterNews.process(
+            nil,
+            {},
+            firstSnapshot,
+            dateTime
+        ))
+        local secondSnapshot = mvp.roster_snapshot(mvp.dates.day2, {
+            guild = guild,
+            members = {
+                foreverMember(firstIdentity, 1, "Officer", mvp.dates.day2),
+            },
+        })
+        local second = assert(tenure.reduce(first, secondSnapshot, dateTime))
+        test.assert_equal(#second.members, 2)
+        test.assert_equal(second.members[1].identity, firstIdentity.key)
+        test.assert_equal(second.members[1].rankTenureStartDate, "2024-06-02")
+        test.assert_equal(second.members[2].identity, secondIdentity.key)
+        test.assert_true(second.members[2].isMissing)
+
+        newsState = assert(rosterNews.process(
+            newsState.observation,
+            newsState.newsSets,
+            secondSnapshot,
+            dateTime
+        ))
+        test.assert_true(newsState.created)
+        test.assert_equal(newsState.newsSets[1].leavingMembers, {
+            secondIdentity.displayName,
+        })
+        test.assert_equal(newsState.newsSets[1].rankChanges, {
+            {
+                name = firstIdentity.displayName,
+                rankName = "Officer",
+            },
+        })
     end),
 }

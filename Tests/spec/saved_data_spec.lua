@@ -1,8 +1,15 @@
 local clientFlavor = require("Core.ClientFlavor")
+local characterIdentity = require("Core.CharacterIdentity")
 local fixtures = require("Tests.fixtures")
 local guildIdentity = require("Core.GuildIdentity")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
+
+local function legacyRosterMember(overrides)
+    local member = fixtures.roster_member(overrides)
+    member.identity = nil
+    return member
+end
 
 return {
     test.case("fresh load creates a valid empty model", function()
@@ -12,7 +19,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 9,
+            schemaVersion = 10,
             roster = {
                 ranks = {},
                 members = {},
@@ -63,7 +70,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 7)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_nil(state.model.ui.selectedRosterRankIndex)
         test.assert_nil(state.model.ui.selectedBankTabIndex)
         state.model.ui.selectedRosterRankIndex = 0
@@ -82,7 +89,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 8)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         for _, datasetName in ipairs({ "roster", "bank" }) do
             local identity = state.model[datasetName].guild
             test.assert_equal(identity.flavor, clientFlavor.RETAIL)
@@ -123,6 +130,122 @@ return {
         test.assert_not_nil(original.roster.guild.id)
     end),
 
+    test.case("schema version nine adds exact Retail member identities copy-on-write", function()
+        local original = fixtures.saved_model_v9()
+        original.ui.selectedRosterRankIndex = 1
+        original.ui.selectedBankTabIndex = 2
+        local member = original.roster.members[1]
+        local expected = assert(characterIdentity.create({
+            flavor = clientFlavor.RETAIL,
+            region = original.roster.guild.region,
+            name = member.name,
+            realm = member.realm,
+            guid = member.guid,
+        }))
+
+        local state = savedData.load(original)
+        local migrated = state.model.roster.members[1]
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(migrated.identity, expected.key)
+        test.assert_equal(migrated.displayName, member.displayName)
+        test.assert_equal(migrated.guid, member.guid)
+        test.assert_equal(migrated.rankTenureStartDate, member.rankTenureStartDate)
+        test.assert_equal(migrated.lastSeenDate, member.lastSeenDate)
+        test.assert_equal(state.model.bank, original.bank)
+        test.assert_equal(state.model.ui, original.ui)
+        test.assert_equal(original.schemaVersion, 9)
+        test.assert_nil(original.roster.members[1].identity)
+    end),
+
+    test.case("schema version nine resolves duplicate identities deterministically", function()
+        local original = fixtures.saved_model_v9()
+        local later = fixtures.timestamp({
+            unixSeconds = 1717245326,
+            iso8601 = "2024-06-01T12:35:26Z",
+        })
+        original.roster.members = {
+            legacyRosterMember({
+                guid = "Player-0000-ALPHA-MISSING",
+                name = "Alpha",
+                realm = "Example Realm",
+                displayName = "Alpha-Example Realm",
+                observedAt = later,
+                isMissing = true,
+            }),
+            legacyRosterMember({
+                guid = "Player-0000-ALPHA-PRESENT",
+                name = "alpha",
+                realm = "example realm",
+                displayName = "alpha-example realm",
+                isMissing = false,
+            }),
+            legacyRosterMember({
+                guid = "Player-0000-BRAVO-OLDER",
+                name = "Bravo",
+                realm = "Example Realm",
+                displayName = "Bravo-Example Realm",
+            }),
+            legacyRosterMember({
+                guid = "Player-0000-BRAVO-NEWER",
+                name = "bravo",
+                realm = "example realm",
+                displayName = "bravo-example realm",
+                observedAt = later,
+            }),
+            legacyRosterMember({
+                guid = "Player-0000-CHARLIE-FIRST",
+                name = "Charlie",
+                realm = "Example Realm",
+                displayName = "Charlie-Example Realm",
+            }),
+            legacyRosterMember({
+                guid = "Player-0000-CHARLIE-SECOND",
+                name = "charlie",
+                realm = "example realm",
+                displayName = "charlie-example realm",
+            }),
+        }
+
+        local state = savedData.load(original)
+        local members = state.model.roster.members
+
+        test.assert_true(state.enabled)
+        test.assert_equal(#members, 3)
+        test.assert_equal(members[1].guid, "Player-0000-ALPHA-PRESENT")
+        test.assert_equal(members[1].identity, "alpha-example realm")
+        test.assert_equal(members[2].guid, "Player-0000-BRAVO-NEWER")
+        test.assert_equal(members[2].identity, "bravo-example realm")
+        test.assert_equal(members[3].guid, "Player-0000-CHARLIE-FIRST")
+        test.assert_equal(members[3].identity, "charlie-example realm")
+        test.assert_equal(#original.roster.members, 6)
+        test.assert_nil(original.roster.members[1].identity)
+    end),
+
+    test.case("late schema version nine failure rolls back identity migration", function()
+        local original = fixtures.saved_model_v9()
+        original.bank.tabs[1].lastAccessibleAt = fixtures.timestamp({
+            unixSeconds = original.bank.scannedAt.unixSeconds + 1,
+            iso8601 = "2024-06-01T12:34:57Z",
+        })
+        local before = fixtures.saved_model_v9()
+        before.bank.tabs[1].lastAccessibleAt = fixtures.timestamp({
+            unixSeconds = before.bank.scannedAt.unixSeconds + 1,
+            iso8601 = "2024-06-01T12:34:57Z",
+        })
+
+        local state = savedData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "lastAccessibleAt must not follow scannedAt")
+        test.assert_true(state.original == original)
+        test.assert_equal(original, before)
+        test.assert_nil(original.roster.members[1].identity)
+    end),
+
     test.case("current Retail and Forever identities use exact canonical shapes", function()
         local retail = fixtures.saved_model()
         test.assert_true(savedData.validate(retail))
@@ -149,6 +272,55 @@ return {
         valid, validationError = savedData.validate(unexpectedRealm)
         test.assert_nil(valid)
         test.assert_matches(validationError, "unexpected field label")
+    end),
+
+    test.case("current roster display fields are independent of opaque identity", function()
+        local retail = fixtures.saved_model()
+        retail.roster.members[1].displayName = "Aeloria the Mage"
+        test.assert_true(savedData.validate(retail))
+
+        local foreverGuild = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Example Guild",
+            clubId = "Club-001",
+        }))
+        local foreverIdentity = assert(characterIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Avery Ash",
+            guid = "Player-0000-FOREVER-0001",
+        }))
+        local forever = fixtures.saved_model()
+        local member = forever.roster.members[1]
+        forever.roster.guild = foreverGuild
+        member.identity = foreverIdentity.key
+        member.guid = foreverIdentity.guid
+        member.name = foreverIdentity.name
+        member.realm = nil
+        member.displayName = "Avery (Ash)"
+
+        test.assert_true(savedData.validate(forever))
+
+        member.identity = ""
+        local valid, validationError = savedData.validate(forever)
+        test.assert_nil(valid)
+        test.assert_matches(validationError, "identity must be a non%-empty string")
+    end),
+
+    test.case("current roster identities must be unique", function()
+        local model = fixtures.saved_model()
+        model.roster.members[2] = fixtures.roster_member({
+            guid = "Player-0000-00000002",
+            name = "aeloria",
+            realm = "example realm",
+            displayName = "AELORIA (duplicate label)",
+        })
+
+        local valid, validationError = savedData.validate(model)
+
+        test.assert_nil(valid)
+        test.assert_matches(validationError, "identity must be unique")
     end),
 
     test.case("copying canonical guild identities does not alias callers", function()
@@ -181,7 +353,7 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 9)
+        test.assert_equal(first.model.schemaVersion, 10)
         test.assert_equal(
             first.model.roster.guild,
             assert(savedData.migrateLegacyGuildIdentity(original.roster.guildIdentity))
@@ -202,7 +374,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
@@ -225,7 +397,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
@@ -240,7 +412,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
         test.assert_false(state.model.roster.members[1].isMissing)
         test.assert_equal(original.schemaVersion, 3)
@@ -256,13 +428,13 @@ return {
         original.bank.guild.realm.name = "Deep-Rock-deep-rock-De"
         original.bank.guild.realm.slug = "deep-rock-Deep-Rock-de"
         original.roster.members = {
-            fixtures.roster_member({
+            legacyRosterMember({
                 name = "Nalla",
                 realm = "Ner'zhul",
                 displayName = "Nalla-Ner'zhul",
                 isMissing = true,
             }),
-            fixtures.roster_member({
+            legacyRosterMember({
                 name = "Nalla",
                 realm = corruptedRealm,
                 displayName = "Nalla-" .. corruptedRealm,
@@ -274,7 +446,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(state.model.roster.guild.realm.name, "Ner'zhul")
         test.assert_equal(state.model.roster.guild.realm.slug, "Ner'zhul")
         test.assert_equal(state.model.bank.guild.realm.name, "Deep-Rock")
@@ -297,7 +469,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(
             state.model.bank.slots[1].stableSinceDate,
             "2024-06-01"
@@ -333,7 +505,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 9)
+        test.assert_equal(state.model.schemaVersion, 10)
         test.assert_equal(
             state.model.bank.tabs[1].lastAccessibleAt,
             original.bank.scannedAt
