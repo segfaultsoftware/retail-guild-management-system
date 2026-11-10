@@ -1,5 +1,99 @@
 local test = require("Tests.lib.runner")
 
+local EVENT_GLOBAL_NAMES = {
+    "C_Club",
+    "C_GuildInfo",
+    "CreateFrame",
+}
+
+local function withEventHarness(callback)
+    local previous = {}
+    for _, name in ipairs(EVENT_GLOBAL_NAMES) do
+        previous[name] = _G[name]
+    end
+
+    local calls = {
+        activate = 0,
+        capture = 0,
+        requestScan = 0,
+        requestRoster = 0,
+    }
+    local registeredEvents = {}
+    local scripts = {}
+    local scanner = {}
+
+    function scanner:IsInProgress()
+        return true
+    end
+
+    function scanner:OnDataUpdated()
+        calls.capture = calls.capture + 1
+    end
+
+    function scanner:Request()
+        calls.requestScan = calls.requestScan + 1
+    end
+
+    function scanner:RequestRosterUpdate()
+        calls.requestRoster = calls.requestRoster + 1
+    end
+
+    function scanner:Update()
+    end
+
+    C_Club = {}
+    C_GuildInfo = {}
+    CreateFrame = function()
+        return {
+            RegisterEvent = function(_, event)
+                registeredEvents[event] = true
+            end,
+            SetScript = function(_, scriptName, handler)
+                scripts[scriptName] = handler
+            end,
+        }
+    end
+
+    local fakeRGMS = {
+        RosterScanner = {
+            create = function()
+                return scanner
+            end,
+        },
+        Reset = {
+            canScan = function()
+                return true
+            end,
+            canReport = function()
+                return true
+            end,
+        },
+        ActivateCurrentGuild = function()
+            calls.activate = calls.activate + 1
+            return { key = "guild" }, true
+        end,
+        Print = function()
+        end,
+    }
+
+    local chunk = assert(loadfile("Roster/Roster.lua"))
+    local roster = chunk("RGMS", fakeRGMS)
+    local succeeded, callbackError = pcall(callback, {
+        calls = calls,
+        onEvent = scripts.OnEvent,
+        registeredEvents = registeredEvents,
+        roster = roster,
+        scanner = scanner,
+    })
+
+    for _, name in ipairs(EVENT_GLOBAL_NAMES) do
+        _G[name] = previous[name]
+    end
+    if not succeeded then
+        error(callbackError, 0)
+    end
+end
+
 local function newHarness(options)
     options = options or {}
     local actions = {}
@@ -66,6 +160,43 @@ local function newHarness(options)
 end
 
 return {
+    test.case("an in-progress guild update re-reads without starting another scan", function()
+        withEventHarness(function(harness)
+            test.assert_true(type(harness.onEvent) == "function")
+
+            harness.onEvent(nil, "PLAYER_GUILD_UPDATE")
+
+            test.assert_equal(harness.calls.activate, 1)
+            test.assert_equal(harness.calls.capture, 1)
+            test.assert_equal(harness.calls.requestRoster, 0)
+            test.assert_equal(harness.calls.requestScan, 0)
+        end)
+    end),
+
+    test.case("roster events use only the approved retry triggers", function()
+        withEventHarness(function(harness)
+            for _, event in ipairs({
+                "GUILD_ROSTER_UPDATE",
+                "INITIAL_CLUBS_LOADED",
+                "CLUB_MEMBERS_UPDATED",
+                "PLAYER_GUILD_UPDATE",
+            }) do
+                test.assert_true(harness.registeredEvents[event] == true)
+            end
+            test.assert_nil(harness.registeredEvents.CLUB_MEMBER_UPDATED)
+            test.assert_nil(harness.registeredEvents.CLUB_MEMBER_PRESENCE_UPDATED)
+
+            harness.onEvent(nil, "GUILD_ROSTER_UPDATE", false)
+            harness.onEvent(nil, "INITIAL_CLUBS_LOADED")
+            harness.onEvent(nil, "CLUB_MEMBERS_UPDATED")
+            harness.onEvent(nil, "PLAYER_GUILD_UPDATE")
+
+            test.assert_equal(harness.calls.capture, 3)
+            test.assert_equal(harness.calls.requestRoster, 1)
+            test.assert_equal(harness.calls.requestScan, 0)
+        end)
+    end),
+
     test.case("roster status renders its committed report and independent timestamp", function()
         local projected = { ranks = { { index = 1 } } }
         local dataset = {

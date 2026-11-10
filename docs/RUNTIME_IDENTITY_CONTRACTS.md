@@ -491,6 +491,29 @@ API's positive integer club IDs normalize to decimal strings, while non-empty
 opaque strings support the privacy-safe Feature 1.1 fixture aliases. Feature
 2.1 owns persisted-schema migration and production consumer wiring.
 
+### Feature 2.4 roster-adapter implementation choice
+
+The roster adapter remains project-owned after evaluating established and
+adjacent libraries:
+
+- LibGuildSync is active and MIT-licensed, but it is a new, low-adoption,
+  Forever-only synchronization stack built on legacy guild-roster APIs. It
+  owns persistence and communication behavior and can expose members before a
+  complete roster is ready, which conflicts with RGMS's shared `C_Club` and
+  transactional-commit contracts.
+- LibForever-1.0 is active, documented, and MIT-licensed, but it is also
+  Forever-only, uses legacy guild-roster APIs, models names through
+  realm-shaped keys, and accepts nonempty partial reads. Those choices would
+  introduce the product fork and surname interpretation this feature forbids.
+- LibRealmInfo is zlib-licensed and historically widely embedded, but it
+  provides realm metadata rather than roster capture, predates Forever, and
+  cannot supply region-scoped full-name or club-ID identity semantics.
+
+`Roster/Roster.lua` therefore keeps one modern adapter and delegates only the
+semantic boundary to `ClientFlavor`, `CharacterIdentity`, and `GuildIdentity`.
+The existing scanner continues to own incomplete-snapshot retry, timeout, and
+atomic commit behavior, avoiding a second persistence or roster lifecycle.
+
 ### Evidence limitations and follow-on work
 
 No additional probe run is required for issue #154. The base and supplemental

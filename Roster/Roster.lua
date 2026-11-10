@@ -7,12 +7,12 @@ local Names = type(RGMS.RosterNames) == "table"
 local ClientFlavor = type(RGMS.ClientFlavor) == "table"
     and RGMS.ClientFlavor
     or require("Core.ClientFlavor")
+local CharacterIdentity = type(RGMS.CharacterIdentity) == "table"
+    and RGMS.CharacterIdentity
+    or require("Core.CharacterIdentity")
 local GuildIdentity = type(RGMS.GuildIdentity) == "table"
     and RGMS.GuildIdentity
     or require("Core.GuildIdentity")
-local Realm = type(RGMS.Realm) == "table"
-    and RGMS.Realm
-    or require("Core.Realm")
 
 local REGION_NAMES = {
     [1] = "US",
@@ -33,7 +33,36 @@ local function copyTimestamp(timestamp)
     }
 end
 
-local function createRetailApi()
+local function captureGuildIdentity(flavor, region, clubId, clubInfo)
+    if type(RGMS.ResolveCurrentGuildIdentity) ~= "function" then
+        return incomplete("the guild identity service is unavailable")
+    end
+
+    local identity, identityError = RGMS.ResolveCurrentGuildIdentity()
+    if identity == nil then
+        return incomplete(identityError or "the guild identity is unavailable")
+    end
+
+    local valid, validationError = GuildIdentity.validate(identity)
+    if not valid then
+        return incomplete(validationError)
+    end
+    if identity.flavor ~= flavor
+        or identity.region ~= region
+        or identity.name ~= clubInfo.name then
+        return incomplete("the guild identity changed during roster capture")
+    end
+    if flavor == ClientFlavor.FOREVER
+        and tostring(identity.clubId) ~= tostring(clubId) then
+        return incomplete("the guild club changed during roster capture")
+    end
+    return identity
+end
+
+-- Keep this adapter project-owned: available roster libraries use legacy
+-- product-specific APIs or publish partial results, while RGMS already owns
+-- the shared C_Club identity and transactional-completion contracts.
+local function createModernApi()
     local api = {}
 
     function api:isInGuild()
@@ -45,6 +74,21 @@ local function createRetailApi()
     end
 
     function api:captureSnapshot()
+        local flavor = type(ClientFlavor.getFlavor) == "function"
+            and ClientFlavor.getFlavor()
+            or nil
+        if flavor ~= ClientFlavor.RETAIL and flavor ~= ClientFlavor.FOREVER then
+            return incomplete("the client flavor is unavailable")
+        end
+
+        local regionId = type(GetCurrentRegion) == "function"
+            and GetCurrentRegion()
+            or nil
+        local region = REGION_NAMES[regionId]
+        if region == nil then
+            return incomplete("the client region is unavailable")
+        end
+
         local clubId = C_Club.GetGuildClubId()
         if clubId == nil then
             return incomplete("the guild club is not initialized")
@@ -58,28 +102,14 @@ local function createRetailApi()
             return incomplete("guild identity or member count is unavailable")
         end
 
-        local guildName, _, _, guildRealm = GetGuildInfo("player")
-        guildName = clubInfo.name or guildName
-        local normalizedRealm = guildRealm or GetNormalizedRealmName()
-        local displayRealm = guildRealm or GetRealmName()
-        if type(guildName) ~= "string" or guildName == ""
-            or type(normalizedRealm) ~= "string" or normalizedRealm == ""
-            or type(displayRealm) ~= "string" or displayRealm == "" then
-            return incomplete("guild name or realm is unavailable")
-        end
-        normalizedRealm = Realm.normalize(normalizedRealm)
-        displayRealm = Realm.normalize(displayRealm)
-        local guildIdentity, identityError = GuildIdentity.create({
-            flavor = ClientFlavor.RETAIL,
-            region = REGION_NAMES[GetCurrentRegion()] or "Unknown",
-            name = guildName,
-            realm = {
-                name = displayRealm,
-                slug = normalizedRealm,
-            },
-        })
-        if not guildIdentity then
-            return incomplete(identityError)
+        local guildIdentity, guildState, guildError = captureGuildIdentity(
+            flavor,
+            region,
+            clubId,
+            clubInfo
+        )
+        if guildIdentity == nil then
+            return nil, guildState, guildError
         end
 
         local numberOfRanks = GuildControlGetNumRanks()
@@ -157,12 +187,27 @@ local function createRetailApi()
                 return incomplete("a guild member class is unavailable")
             end
 
-            local name, realm, displayName = Names.splitDisplayName(
-                info.name,
-                GetNormalizedRealmName()
-            )
-            local identity = Names.identity(name, realm)
-            if name == "" or realm == "" or seenIdentities[identity] then
+            local name = info.name
+            local realm
+            if flavor == ClientFlavor.RETAIL then
+                name, realm = Names.splitDisplayName(
+                    info.name,
+                    GetNormalizedRealmName()
+                )
+            end
+
+            local identityInput = {
+                flavor = flavor,
+                region = region,
+                name = name,
+                guid = info.guid,
+            }
+            if flavor == ClientFlavor.RETAIL then
+                identityInput.realm = realm
+            end
+            local characterIdentity = CharacterIdentity.create(identityInput)
+            local identity = characterIdentity and characterIdentity.key
+            if identity == nil or seenIdentities[identity] then
                 return incomplete("guild member names are incomplete or duplicated")
             end
             seenIdentities[identity] = true
@@ -194,9 +239,9 @@ local function createRetailApi()
             members[#members + 1] = {
                 identity = identity,
                 guid = info.guid,
-                name = name,
-                realm = realm,
-                displayName = displayName,
+                name = characterIdentity.name,
+                realm = characterIdentity.realm,
+                displayName = characterIdentity.displayName,
                 rankName = info.guildRank,
                 rankIndex = info.guildRankOrder,
                 level = info.level,
@@ -207,6 +252,10 @@ local function createRetailApi()
                 lastOnline = lastOnline,
                 observedAt = copyTimestamp(scannedAt),
             }
+        end
+
+        if #members ~= clubInfo.memberCount then
+            return incomplete("one or more guild members are partial")
         end
 
         table.sort(members, function(left, right)
@@ -417,7 +466,8 @@ function Roster.AcknowledgeNewsSet(setId)
     return true
 end
 
-Roster.CreateRetailApi = createRetailApi
+Roster.CreateModernApi = createModernApi
+Roster.CreateRetailApi = createModernApi
 RGMS.Roster = Roster
 
 if type(Roster.Scanner) ~= "table"
@@ -425,7 +475,7 @@ if type(Roster.Scanner) ~= "table"
     and type(C_GuildInfo) == "table"
     and type(C_Club) == "table" then
     Roster.Scanner = RGMS.RosterScanner.create({
-        api = createRetailApi(),
+        api = createModernApi(),
         ownership = RGMS.DatasetOwnership,
         reduceRoster = function(previousDataset, snapshot)
             return RGMS.RosterTenure.reduce(
@@ -495,7 +545,10 @@ if type(Roster.Scanner) ~= "table"
                 identity, rosterInitialized = RGMS.ActivateCurrentGuild()
             end
             Roster.RefreshStatus()
-            if identity ~= nil and rosterInitialized then
+            if Roster.IsScanInProgress()
+                and type(Roster.Scanner.OnDataUpdated) == "function" then
+                Roster.Scanner:OnDataUpdated()
+            elseif identity ~= nil and rosterInitialized then
                 Roster.RequestAutomaticScan()
             end
         end
