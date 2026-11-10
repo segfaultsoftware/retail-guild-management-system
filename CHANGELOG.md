@@ -11,6 +11,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Added Windows development-link support for the World of Warcraft Forever
   client, including safe unlinking.
+- Added a bounded standalone Retail and Forever runtime probe, privacy-safe
+  fixture-export workflow, validated sanitized live-client fixtures including
+  supplemental same-first Forever evidence, automated evidence assertions, and
+  a decision record for portable identity and roster-delivery contracts.
 
 ### Removed
 

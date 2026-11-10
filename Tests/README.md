@@ -78,6 +78,29 @@ both the scenario and the exact transition that failed.
 Live-client behavior that cannot be reproduced faithfully outside Retail is
 covered by [the MVP release-candidate checklist](../docs/MVP_SCENARIO_CHECKLIST.md).
 
+## Runtime contract evidence
+
+The sanitized Retail and Forever captures for runtime identity issue #154 live
+in `Tests/fixtures/runtime_contract`. Load them only through
+`Tests/runtime_contract_fixtures.lua`, which rejects malformed, incomplete,
+truncated, or over-capacity exports before returning their allowlisted data.
+
+`Tests/spec/runtime_contract_evidence_spec.lua` asserts the captured boundary
+matrix, streaming and convergence behavior, stable alias relationships, realm
+semantics, and GUID correlation behavior. Run it from Git Bash with:
+
+```text
+lua.exe Tests/run.lua Tests/spec/runtime_contract_evidence_spec.lua
+```
+
+The base Forever fixture preserves the full boundary and startup-streaming
+matrix but contains no shared-first-name pair. The supplemental
+`forever_same_first.lua` fixture proves that two members with one shared first
+alias retain distinct surname, full-name, and GUID aliases across initial login
+and reload. The evidence suite composes those independent facts to approve the
+opaque full-name identity and display-label contracts without pretending the
+two files form one continuous timeline or correlating aliases across files.
+
 ## Confirm failure behavior
 
 The passing suite includes runner self-tests for both successful and failing
