@@ -7,17 +7,6 @@ local ClientFlavor = type(RGMS.ClientFlavor) == "table"
 local GuildIdentity = type(RGMS.GuildIdentity) == "table"
     and RGMS.GuildIdentity
     or require("Core.GuildIdentity")
-local Realm = type(RGMS.Realm) == "table"
-    and RGMS.Realm
-    or require("Core.Realm")
-
-local REGION_NAMES = {
-    [1] = "US",
-    [2] = "KR",
-    [3] = "EU",
-    [4] = "TW",
-    [5] = "CN",
-}
 local SLOTS_PER_TAB = 98
 
 local function incomplete(message)
@@ -25,33 +14,18 @@ local function incomplete(message)
 end
 
 local function captureGuildIdentity()
-    local clubId = C_Club.GetGuildClubId()
-    if clubId == nil then
-        return incomplete("the guild club is not initialized")
+    if type(RGMS.ResolveCurrentGuildIdentity) ~= "function" then
+        return incomplete("the guild identity service is unavailable")
     end
 
-    local clubInfo = C_Club.GetClubInfo(clubId)
-    local guildName, _, _, guildRealm = GetGuildInfo("player")
-    guildName = type(clubInfo) == "table" and clubInfo.name or guildName
-    local normalizedRealm = guildRealm or GetNormalizedRealmName()
-    local displayRealm = guildRealm or GetRealmName()
-    if type(guildName) ~= "string" or guildName == ""
-        or type(normalizedRealm) ~= "string" or normalizedRealm == ""
-        or type(displayRealm) ~= "string" or displayRealm == "" then
-        return incomplete("guild name or realm is unavailable")
+    local identity, identityError = RGMS.ResolveCurrentGuildIdentity()
+    if identity == nil then
+        return incomplete(identityError or "the guild identity is unavailable")
     end
 
-    local identity, identityError = GuildIdentity.create({
-        flavor = ClientFlavor.RETAIL,
-        region = REGION_NAMES[GetCurrentRegion()] or "Unknown",
-        name = guildName,
-        realm = {
-            name = Realm.normalize(displayRealm),
-            slug = Realm.normalize(normalizedRealm),
-        },
-    })
-    if not identity then
-        return incomplete(identityError)
+    local valid, validationError = GuildIdentity.validate(identity)
+    if not valid then
+        return incomplete(validationError)
     end
     return identity
 end
@@ -66,8 +40,11 @@ local function displayedTabName(name, tabIndex)
     return "Tab " .. tostring(tabIndex)
 end
 
-local function createRetailApi()
+local function createModernApi()
     local api = {}
+    local supportsCraftingQuality =
+        type(ClientFlavor.supportsCraftingQuality) == "function"
+        and ClientFlavor.supportsCraftingQuality() == true
 
     function api:isOpen()
         return GuildBankFrame ~= nil
@@ -162,7 +139,8 @@ local function createRetailApi()
                 end
 
                 local craftingQuality
-                if type(C_TradeSkillUI) == "table"
+                if supportsCraftingQuality
+                    and type(C_TradeSkillUI) == "table"
                     and type(C_TradeSkillUI.GetItemReagentQualityByItemInfo) == "function" then
                     -- The Retail API accepts ItemInfo, but Midnight quality
                     -- reagents do not reliably resolve when the guild-bank
@@ -556,7 +534,8 @@ local function alignWithGuildBank()
     RGMS.UI.AlignToRightOf(GuildBankFrame)
 end
 
-Bank.CreateRetailApi = createRetailApi
+Bank.CreateModernApi = createModernApi
+Bank.CreateRetailApi = createModernApi
 RGMS.Bank = Bank
 
 if type(Bank.Scanner) ~= "table"
@@ -564,7 +543,7 @@ if type(Bank.Scanner) ~= "table"
     and type(C_Club) == "table"
     and type(GetNumGuildBankTabs) == "function" then
     Bank.Scanner = RGMS.BankScanner.create({
-        api = createRetailApi(),
+        api = createModernApi(),
         ownership = RGMS.DatasetOwnership,
         reduceBank = function(previousDataset, snapshot)
             return RGMS.BankState.reduce(

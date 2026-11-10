@@ -1,5 +1,5 @@
 -- Transaction coordinator for complete guild-bank observations. The scanner
--- owns no WoW frames or globals; the Retail adapter and deterministic tests
+-- owns no WoW frames or globals; the shared adapter and deterministic tests
 -- provide those through dependencies.
 
 local _, RGMS = ...

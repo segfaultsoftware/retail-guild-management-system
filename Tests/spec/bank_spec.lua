@@ -106,6 +106,7 @@ local function newHarness(options)
     local previousCreateFrame = CreateFrame
     local previousGuildBankFrame = GuildBankFrame
     local previousEnum = Enum
+    local previousAccountDB = RGMSAccountDB
     CreateFrame = function()
         return eventFrame
     end
@@ -129,6 +130,7 @@ local function newHarness(options)
             CreateFrame = previousCreateFrame
             GuildBankFrame = previousGuildBankFrame
             Enum = previousEnum
+            RGMSAccountDB = previousAccountDB
         end,
     }
 end
@@ -439,6 +441,86 @@ return {
         test.assert_true(harness.rgms.ActiveGuildIdentity == retail)
         test.assert_true(harness.rgms.DB == committedView)
         harness.restore()
+    end),
+
+    test.case("Forever preparation installs only a successful migrated account copy", function()
+        local forever = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Example Guild",
+            clubId = "Club-163",
+        }))
+        local characterModel = { ui = { marker = "ui" } }
+        local originalAccount = { marker = "original-account" }
+        local migratedAccount = { marker = "migrated-account" }
+        local originalView = { marker = "original-view" }
+        local migratedView = { marker = "migrated-view" }
+        local migrationCalls = 0
+        local viewCalls = 0
+        local successful = newHarness({
+            database = originalView,
+            activeGuildIdentity = forever,
+            resolveCurrentGuildIdentity = function()
+                return forever
+            end,
+            accountDataState = { enabled = true, model = originalAccount },
+            savedDataState = { enabled = true, model = characterModel },
+            bankMigration = {
+                initialize = function(account, character, identity)
+                    migrationCalls = migrationCalls + 1
+                    test.assert_true(account == originalAccount)
+                    test.assert_true(character == characterModel)
+                    test.assert_true(identity == forever)
+                    return migratedAccount
+                end,
+            },
+            accountData = {
+                view = function(account, identity, ui)
+                    viewCalls = viewCalls + 1
+                    test.assert_true(account == migratedAccount)
+                    test.assert_true(identity == forever)
+                    test.assert_true(ui == characterModel.ui)
+                    return migratedView
+                end,
+            },
+        })
+
+        test.assert_true(successful.bank.PrepareScan(forever))
+        test.assert_equal(migrationCalls, 1)
+        test.assert_equal(viewCalls, 1)
+        test.assert_true(successful.rgms.AccountDataState.model == migratedAccount)
+        test.assert_true(successful.rgms.DB == migratedView)
+        test.assert_true(RGMSAccountDB == migratedAccount)
+        successful.restore()
+
+        local failingAccount = { marker = "failing-account" }
+        local retainedView = { marker = "retained-view" }
+        local failed = newHarness({
+            database = retainedView,
+            activeGuildIdentity = forever,
+            resolveCurrentGuildIdentity = function()
+                return forever
+            end,
+            accountDataState = { enabled = true, model = failingAccount },
+            savedDataState = { enabled = true, model = characterModel },
+            bankMigration = {
+                initialize = function()
+                    return nil, "simulated migration failure"
+                end,
+            },
+            accountData = {
+                view = function()
+                    error("failed migration must not replace the active view")
+                end,
+            },
+        })
+
+        local prepared, prepareError = failed.bank.PrepareScan(forever)
+        test.assert_nil(prepared)
+        test.assert_equal(prepareError, "simulated migration failure")
+        test.assert_true(failed.rgms.AccountDataState.model == failingAccount)
+        test.assert_true(failed.rgms.DB == retainedView)
+        failed.restore()
     end),
 
     test.case("the Retail adapter captures valid guild-bank money in copper", function()
