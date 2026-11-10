@@ -38,7 +38,7 @@ ISC License. The complete license is included at `licenses/Lucide-ISC.txt`.
 
 ## LibDBIcon and embedded Ace libraries
 
-RGMS embeds the following files from the official LibDBIcon-1.0 v12.1.1
+RGMS embeds the following files from the official LibDBIcon-1.0 v12.1.2
 release archive:
 
 - `Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua`
@@ -46,13 +46,22 @@ release archive:
 - `Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua`
 - `Libs/LibStub/LibStub.lua`
 
-Source: <https://www.wowace.com/projects/libdbicon-1-0/files/9119909>
+Release: <https://www.wowace.com/projects/libdbicon-1-0/files/9278071>
 
-Archive: `LibDBIcon-1.0-v12.1.1.zip`
+Source: <https://repos.wowace.com/wow/libdbicon-1-0/trunk>
 
-Published: October 10, 2026
+Archive: `LibDBIcon-1.0-v12.1.2.zip`
 
-Published MD5: `f97a44d35b1c41a757c34cfb7881ff43`
+Published: October 21, 2026
+
+Published MD5: `593833235c154da98ff7d2b9fe8e0cab`
+
+The official project identifies Funkeh as owner and nebula169 as maintainer.
+Release v12.1.2 is the latest stable release at import time, and its published
+metadata explicitly supports Retail 12.1.5 and 12.1.7 plus Forever 1.60.1. Its
+four embedded runtime files are bundled here byte-for-byte without local
+modification; the release updates the standalone upstream manifest while
+retaining the capability-based Forever icon fix from v12.1.1.
 
 The LibDBIcon release is distributed under the Ace3 Style BSD license. LibStub
 also declares itself public domain in its source header.

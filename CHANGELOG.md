@@ -36,6 +36,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Updated the bundled LibDBIcon provenance to the maintained v12.1.2 release,
+  preserving the account-wide draggable launcher across Retail and Forever UI
+  configurations without product-specific positioning code.
 - Migrated Mains/Alts groups, private notes, live guild-note lookups, and tag
   assignments to opaque roster identity keys, preserving existing Retail note
   and tag data while keeping same-first-name Forever characters distinct.
