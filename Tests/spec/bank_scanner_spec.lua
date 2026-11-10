@@ -1,6 +1,8 @@
 local datasetOwnership = require("Core.DatasetOwnership")
+local clientFlavor = require("Core.ClientFlavor")
 local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local provisionModel = require("Provisions.Model")
 local savedData = require("Core.SavedData")
 local scannerModule = require("Bank.Scanner")
@@ -296,6 +298,72 @@ return {
         )
         test.assert_matches(harness.messages[1], "0 accessible")
         test.assert_false(harness.scanner:IsInProgress())
+    end),
+
+    test.case("Forever uses the shared scanner for zero partial and full permissions", function()
+        local forever = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Forever Vanguard",
+            clubId = "Club-163",
+        }))
+        local scenarios = {
+            {
+                tabs = { tab(1, false), tab(2, false) },
+                slotsByTab = {},
+                requests = {},
+                slotCount = 0,
+            },
+            {
+                tabs = {
+                    tab(1, true),
+                    tab(2, false),
+                    tab(3, true),
+                },
+                slotsByTab = {
+                    [1] = { slot(1, 3, 4) },
+                    [3] = { slot(3, 7, 2) },
+                },
+                requests = { 1, 3 },
+                slotCount = 2,
+            },
+            {
+                tabs = { tab(1, true), tab(2, true) },
+                slotsByTab = {
+                    [1] = { slot(1, 4, 8) },
+                    [2] = { slot(2, 9, 3) },
+                },
+                requests = { 1, 2 },
+                slotCount = 2,
+            },
+        }
+
+        for _, scenario in ipairs(scenarios) do
+            local harness = newHarness({
+                catalog = {
+                    guild = forever,
+                    tabs = scenario.tabs,
+                },
+                slotsByTab = scenario.slotsByTab,
+                money = 163000000,
+            })
+
+            test.assert_true(harness.scanner:Request("automatic"))
+            while harness.scanner:IsInProgress() do
+                test.assert_true(harness.scanner:OnSlotsChanged())
+            end
+
+            local committed = harness.current().bank
+            test.assert_equal(harness.requests, scenario.requests)
+            test.assert_equal(harness.commits(), 1)
+            test.assert_equal(committed.guild, forever)
+            test.assert_equal(committed.money, 163000000)
+            test.assert_equal(#committed.tabs, #scenario.tabs)
+            test.assert_equal(#committed.slots, scenario.slotCount)
+            for _, capturedSlot in ipairs(committed.slots) do
+                test.assert_nil(capturedSlot.craftingQuality)
+            end
+        end
     end),
 
     test.case("empty tab reads retry after one second and accept later data", function()
