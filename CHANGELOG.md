@@ -27,6 +27,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added Forever full-name capture to the shared modern guild-roster adapter,
   preserving Retail Name-Realm behavior while keeping surname-distinguished
   members separate through transactional retry and commit.
+- Retained last-good public and officer guild notes independently when Retail
+  or Forever temporarily returns secret values, with bounded refresh retries
+  and permission-safe officer-note visibility.
 
 ### Changed
 

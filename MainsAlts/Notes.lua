@@ -36,10 +36,60 @@ local function copyMember(member)
         displayName = member.displayName,
         guid = member.guid,
         index = member.index,
-        publicNote = type(member.publicNote) == "string" and member.publicNote or "",
-        officerNote = type(member.officerNote) == "string" and member.officerNote or "",
+        publicNote = member.publicNote,
+        publicNoteKnown = member.publicNoteKnown == true,
+        publicNoteAvailable = member.publicNoteAvailable ~= false,
+        officerNote = member.officerNote,
+        officerNoteKnown = member.officerNoteKnown == true,
+        officerNoteAvailable = member.officerNoteAvailable ~= false,
         isSelf = member.isSelf == true,
     }
+end
+
+local function sameObservedMember(member, previous)
+    return previous ~= nil
+        and (previous.guid == nil
+            or member.guid == nil
+            or previous.guid == member.guid)
+end
+
+local function mergeObservedMember(member, previous)
+    if type(member) ~= "table" then
+        return nil
+    end
+    local canRetainPrevious = sameObservedMember(member, previous)
+    local merged = {
+        identity = member.identity,
+        displayName = member.displayName,
+        guid = member.guid,
+        index = member.index,
+        publicNoteAvailable = member.publicNoteAvailable ~= false,
+        officerNoteAvailable = member.officerNoteAvailable ~= false,
+        isSelf = member.isSelf == true,
+    }
+
+    if merged.publicNoteAvailable then
+        merged.publicNote = type(member.publicNote) == "string"
+            and member.publicNote or ""
+        merged.publicNoteKnown = true
+    elseif canRetainPrevious and previous.publicNoteKnown == true then
+        merged.publicNote = previous.publicNote
+        merged.publicNoteKnown = true
+    else
+        merged.publicNoteKnown = false
+    end
+
+    if merged.officerNoteAvailable then
+        merged.officerNote = type(member.officerNote) == "string"
+            and member.officerNote or ""
+        merged.officerNoteKnown = true
+    elseif canRetainPrevious and previous.officerNoteKnown == true then
+        merged.officerNote = previous.officerNote
+        merged.officerNoteKnown = true
+    else
+        merged.officerNoteKnown = false
+    end
+    return merged
 end
 
 local function call(callback, ...)
@@ -67,6 +117,8 @@ function Notes.create(dependencies)
         loadRetryElapsed = 0,
         loadRequests = 0,
         loadNeedsRetry = false,
+        unavailableNotes = false,
+        unavailableFields = {},
         editor = nil,
         transaction = nil,
     }
@@ -93,9 +145,14 @@ function Notes.create(dependencies)
         return permissions.editPublic == true or member.isSelf == true
     end
 
-    local function applyEditorMember(editor, member, permissions, preservePrivateDraft)
-        local previousPrivate = editor.drafts.privateNote
-        editor.member = copyMember(member)
+    local function knownNote(member, field)
+        if member and member[field .. "Known"] == true then
+            return member[field]
+        end
+        return nil
+    end
+
+    local function applyEditorPermissions(editor, member, permissions)
         editor.permissions = {
             viewOfficer = permissions.viewOfficer == true,
             editOfficer = permissions.editOfficer == true,
@@ -104,13 +161,21 @@ function Notes.create(dependencies)
         local guildNotesReadOnly = dependencies.guildNotesReadOnly == true
         editor.publicEditable = not guildNotesReadOnly
             and member ~= nil and memberEditable(member, permissions)
+            and member.publicNoteAvailable ~= false
             or false
         editor.officerVisible = member ~= nil and permissions.viewOfficer == true
         editor.officerEditable = not guildNotesReadOnly
             and editor.officerVisible
             and permissions.editOfficer == true
-        editor.baseline.publicNote = member and member.publicNote or ""
-        editor.baseline.officerNote = member and member.officerNote or ""
+            and member.officerNoteAvailable ~= false
+    end
+
+    local function applyEditorMember(editor, member, permissions, preservePrivateDraft)
+        local previousPrivate = editor.drafts.privateNote
+        editor.member = copyMember(member)
+        applyEditorPermissions(editor, member, permissions)
+        editor.baseline.publicNote = knownNote(member, "publicNote")
+        editor.baseline.officerNote = knownNote(member, "officerNote")
         editor.drafts.publicNote = editor.baseline.publicNote
         editor.drafts.officerNote = editor.baseline.officerNote
         if preservePrivateDraft then
@@ -136,9 +201,21 @@ function Notes.create(dependencies)
             return editor.member ~= member
         end
         return editor.member.guid ~= member.guid
+            or editor.member.publicNoteKnown ~= member.publicNoteKnown
             or editor.member.publicNote ~= member.publicNote
             or ((editor.officerVisible or permissions.viewOfficer == true)
-                and editor.member.officerNote ~= member.officerNote)
+                and (editor.member.officerNoteKnown ~= member.officerNoteKnown
+                    or editor.member.officerNote ~= member.officerNote))
+    end
+
+    local function editorAvailabilityChanged(editor, member)
+        if editor.member == nil or member == nil then
+            return false
+        end
+        return editor.member.publicNoteAvailable
+                ~= member.publicNoteAvailable
+            or editor.member.officerNoteAvailable
+                ~= member.officerNoteAvailable
     end
 
     local function snapshotIsStale(snapshot)
@@ -155,6 +232,9 @@ function Notes.create(dependencies)
             controller.sourceRevision = snapshot.revision
         end
 
+        local previousCache = controller.cache
+        local wasLoading = controller.loading
+        local previousUnavailableFields = controller.unavailableFields
         controller.revision = controller.revision + 1
         controller.permissions = {
             viewOfficer = snapshot.permissions
@@ -165,17 +245,63 @@ function Notes.create(dependencies)
                 and snapshot.permissions.editPublic == true,
         }
         controller.cache = {}
+        local notesUnavailable = false
+        local newlyUnavailable = false
+        local unavailableFields = {}
         for identity, member in pairs(snapshot.members or {}) do
-            local copied = copyMember(member)
+            local previousMember = previousCache[identity]
+            local copied = mergeObservedMember(member, previousMember)
             copied.revision = controller.revision
             controller.cache[identity] = copied
+            local samePreviousMember = sameObservedMember(
+                copied,
+                previousMember
+            )
+            local fields
+            if copied.publicNoteAvailable == false then
+                fields = { publicNote = true }
+                notesUnavailable = true
+                local previousFields = previousUnavailableFields[identity]
+                if not samePreviousMember
+                    or not previousFields
+                    or not previousFields.publicNote then
+                    newlyUnavailable = true
+                end
+            end
+            if controller.permissions.viewOfficer
+                and copied.officerNoteAvailable == false then
+                fields = fields or {}
+                fields.officerNote = true
+                notesUnavailable = true
+                local previousFields = previousUnavailableFields[identity]
+                if not samePreviousMember
+                    or not previousFields
+                    or not previousFields.officerNote then
+                    newlyUnavailable = true
+                end
+            end
+            if fields then
+                unavailableFields[identity] = fields
+            end
         end
+        controller.unavailableFields = unavailableFields
         controller.cacheLoaded = true
         controller.loading = false
         controller.timedOut = false
         controller.loadElapsed = 0
         controller.loadRetryElapsed = 0
-        controller.loadNeedsRetry = false
+        if notesUnavailable then
+            if newlyUnavailable and not wasLoading then
+                controller.loadRequests = 0
+            end
+            controller.unavailableNotes = true
+            controller.loadNeedsRetry = controller.loadRequests
+                < Notes.MAX_VERIFY_REQUESTS
+        else
+            controller.unavailableNotes = false
+            controller.loadNeedsRetry = false
+            controller.loadRequests = 0
+        end
 
         -- A completed request also changes the meaning of unchanged entries:
         -- row indicators may now include live notes again after loading.
@@ -199,6 +325,7 @@ function Notes.create(dependencies)
                 or editor.permissions.editOfficer ~= controller.permissions.editOfficer
                 or editor.permissions.editPublic ~= controller.permissions.editPublic then
                 if editorDirty(editor) then
+                    applyEditorPermissions(editor, member, controller.permissions)
                     editor.status = "conflict"
                     editor.error = "Guild notes changed while this draft was open. Reopen the character to continue."
                     editor.confirmed = copyMember(member)
@@ -208,7 +335,16 @@ function Notes.create(dependencies)
                     editor.status = member and "ready" or "private-only"
                     editor.error = nil
                 end
+            elseif editorAvailabilityChanged(editor, member) then
+                editor.member = copyMember(member)
+                editor.confirmed = copyMember(member)
+                applyEditorPermissions(editor, member, controller.permissions)
+                editor.loadedRevision = controller.revision
             end
+            notifyEditor()
+        elseif editor then
+            local member = controller.cache[editor.identity]
+            applyEditorPermissions(editor, member, controller.permissions)
             notifyEditor()
         end
         return true
@@ -365,6 +501,13 @@ function Notes.create(dependencies)
         if not editor then
             return nil
         end
+        local confirmed = copyMember(editor.confirmed)
+        local officerNote
+        if editor.officerVisible then
+            officerNote = editor.drafts.officerNote
+        elseif confirmed then
+            confirmed.officerNote = nil
+        end
         return {
             identity = editor.identity,
             displayName = editor.displayName,
@@ -373,9 +516,9 @@ function Notes.create(dependencies)
             drafts = {
                 privateNote = editor.drafts.privateNote,
                 publicNote = editor.drafts.publicNote,
-                officerNote = editor.drafts.officerNote,
+                officerNote = officerNote,
             },
-            confirmed = copyMember(editor.confirmed),
+            confirmed = confirmed,
             publicVisible = editor.member ~= nil or editor.status == "loading"
                 or editor.status == "load-failed",
             publicEditable = editor.publicEditable == true,
@@ -391,7 +534,7 @@ function Notes.create(dependencies)
     end
 
     function controller:RequestLoad()
-        if self.loading then
+        if self.loading or self.loadNeedsRetry then
             return true, "coalesced"
         end
         if self.transaction then
@@ -458,13 +601,13 @@ function Notes.create(dependencies)
             loadedRevision = self.cacheLoaded and self.revision or nil,
             baseline = {
                 privateNote = savedPrivate,
-                publicNote = member and member.publicNote or "",
-                officerNote = member and member.officerNote or "",
+                publicNote = knownNote(member, "publicNote"),
+                officerNote = knownNote(member, "officerNote"),
             },
             drafts = {
                 privateNote = savedPrivate,
-                publicNote = member and member.publicNote or "",
-                officerNote = member and member.officerNote or "",
+                publicNote = knownNote(member, "publicNote"),
+                officerNote = knownNote(member, "officerNote"),
             },
             permissions = {},
         }
@@ -509,8 +652,10 @@ function Notes.create(dependencies)
         if not member then
             return false
         end
-        return hasText(member.publicNote)
-            or (self.permissions.viewOfficer and hasText(member.officerNote))
+        return (member.publicNoteKnown and hasText(member.publicNote))
+            or (self.permissions.viewOfficer
+                and member.officerNoteKnown
+                and hasText(member.officerNote))
     end
 
     function controller:GetSearchableNotes(identity)
@@ -521,8 +666,11 @@ function Notes.create(dependencies)
         if not member then
             return {}
         end
-        local notes = { member.publicNote }
-        if self.permissions.viewOfficer then
+        local notes = {}
+        if member.publicNoteKnown then
+            notes[#notes + 1] = member.publicNote
+        end
+        if self.permissions.viewOfficer and member.officerNoteKnown then
             notes[#notes + 1] = member.officerNote
         end
         return notes
@@ -555,16 +703,27 @@ function Notes.create(dependencies)
         if not snapshot then
             return nil, captureError or captureState or "guild notes are unavailable"
         end
-        local current = snapshot.members[editor.identity]
+        local observed = snapshot.members[editor.identity]
+        local current = mergeObservedMember(
+            observed,
+            self.cache[editor.identity]
+        )
         local permissions = snapshot.permissions or {}
+        local publicChanged = editor.drafts.publicNote
+            ~= editor.baseline.publicNote
+        local officerChanged = editor.drafts.officerNote
+            ~= editor.baseline.officerNote
         if editor.member == nil then
             if current ~= nil then
                 return nil, "Guild membership changed; reopen the character to continue"
             end
         elseif current == nil
             or current.guid ~= editor.member.guid
-            or current.publicNote ~= editor.baseline.publicNote
-            or current.officerNote ~= editor.baseline.officerNote then
+            or (current.publicNoteAvailable
+                and current.publicNote ~= editor.baseline.publicNote)
+            or ((editor.officerVisible or permissions.viewOfficer == true)
+                and current.officerNoteAvailable
+                and current.officerNote ~= editor.baseline.officerNote) then
             editor.status = "conflict"
             editor.error = "Guild notes changed before Save. Reopen the character to continue."
             editor.confirmed = copyMember(current)
@@ -572,14 +731,22 @@ function Notes.create(dependencies)
             return nil, editor.error
         end
 
-        local publicChanged = editor.drafts.publicNote ~= editor.baseline.publicNote
-        local officerChanged = editor.drafts.officerNote ~= editor.baseline.officerNote
         if editor.officerVisible and permissions.viewOfficer ~= true then
+            applyEditorPermissions(editor, current, permissions)
+            notifyEditor()
             return nil, "Officer Note is no longer visible"
+        end
+        if publicChanged and current
+            and current.publicNoteAvailable ~= true then
+            return nil, "Public Note is temporarily unavailable"
         end
         if publicChanged and (not current
             or not memberEditable(current, permissions)) then
             return nil, "Public Note is no longer editable"
+        end
+        if officerChanged and current
+            and current.officerNoteAvailable ~= true then
+            return nil, "Officer Note is temporarily unavailable"
         end
         if officerChanged and (not current
             or permissions.viewOfficer ~= true
@@ -625,13 +792,15 @@ function Notes.create(dependencies)
         local snapshot, state, message = captureSnapshot()
         if not snapshot then
             if state == "incomplete" then
-                if self.loading then
-                    self.loadNeedsRetry = true
+                if self.loading or self.unavailableNotes then
+                    self.loadNeedsRetry = self.loadRequests
+                        < Notes.MAX_VERIFY_REQUESTS
                 end
                 return false, "incomplete"
             end
-            if self.loading then
-                self.loadNeedsRetry = true
+            if self.loading or self.unavailableNotes then
+                self.loadNeedsRetry = self.loadRequests
+                    < Notes.MAX_VERIFY_REQUESTS
             end
             return nil, message or state
         end
@@ -647,11 +816,16 @@ function Notes.create(dependencies)
         local member = self.cache[transaction.identity]
         transaction.latestMember = copyMember(member)
         local change = transaction.current
-        local actual = member and member[change.kind .. "Note"] or nil
+        local available = member
+            and member[change.kind .. "NoteAvailable"] == true
+        local actual
+        if available then
+            actual = member[change.kind .. "Note"]
+        end
         local expected = transaction.stage == "rollback"
             and change.baseline
             or change.value
-        if actual ~= expected then
+        if not available or actual ~= expected then
             return false, "awaiting-verification"
         end
 
@@ -666,24 +840,31 @@ function Notes.create(dependencies)
         elapsed = tonumber(elapsed) or 0
         if self.loading then
             self.loadElapsed = self.loadElapsed + elapsed
+        end
+        if self.loading or self.loadNeedsRetry then
             self.loadRetryElapsed = self.loadRetryElapsed + elapsed
-            if self.loadElapsed >= Notes.LOAD_TIMEOUT_SECONDS then
-                self.loading = false
-                self.timedOut = true
-                self.loadNeedsRetry = false
-                if self.editor then
-                    self.editor.status = "load-failed"
-                    self.editor.error = "Unable to load guild notes"
-                end
-                notifyCache(nil)
-                notifyEditor()
-            elseif self.loadNeedsRetry
-                and self.loadRetryElapsed >= Notes.RETRY_INTERVAL_SECONDS
-                and self.loadRequests < Notes.MAX_VERIFY_REQUESTS then
+        end
+        if self.loading and self.loadElapsed >= Notes.LOAD_TIMEOUT_SECONDS then
+            self.loading = false
+            self.timedOut = true
+            self.loadNeedsRetry = false
+            if self.editor then
+                self.editor.status = "load-failed"
+                self.editor.error = "Unable to load guild notes"
+            end
+            notifyCache(nil)
+            notifyEditor()
+        elseif self.loadNeedsRetry
+            and not self.transaction
+            and self.loadRetryElapsed >= Notes.RETRY_INTERVAL_SECONDS then
+            if self.loadRequests < Notes.MAX_VERIFY_REQUESTS then
                 self.loadRetryElapsed = 0
                 self.loadRequests = self.loadRequests + 1
-                self.loadNeedsRetry = false
+                self.loadNeedsRetry = self.loadRequests
+                    < Notes.MAX_VERIFY_REQUESTS
                 requestRoster()
+            else
+                self.loadNeedsRetry = false
             end
         end
 

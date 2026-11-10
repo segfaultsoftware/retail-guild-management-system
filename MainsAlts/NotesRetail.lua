@@ -85,15 +85,55 @@ local function booleanApi(namespaceName, globalName)
     return called and value == true
 end
 
+local function isSecretValue(value)
+    local callback = _G.issecretvalue
+    if type(callback) ~= "function" then
+        return false
+    end
+    return callback(value) == true
+end
+
+local function normalizeUsableNote(value)
+    if type(value) == "string" then
+        return value
+    end
+    return ""
+end
+
+local function readNoteField(info, field)
+    if isSecretValue(info[field]) then
+        return nil, false
+    end
+    local value = info[field]
+    return normalizeUsableNote(value), true
+end
+
+local function readNamespacedPublicNote(info)
+    if isSecretValue(info.note) then
+        return nil, false
+    end
+    local value = info.note
+    if value ~= nil then
+        return normalizeUsableNote(value), true
+    end
+    return readNoteField(info, "publicNote")
+end
+
 local function readRosterInfo(index)
     if type(C_GuildInfo) == "table"
         and type(C_GuildInfo.GetGuildRosterInfo) == "function" then
         local called, info = pcall(C_GuildInfo.GetGuildRosterInfo, index)
         if called and type(info) == "table" then
+            local publicNote, publicNoteAvailable =
+                readNamespacedPublicNote(info)
+            local officerNote, officerNoteAvailable =
+                readNoteField(info, "officerNote")
             return {
                 name = info.name,
-                publicNote = info.note or info.publicNote or "",
-                officerNote = info.officerNote or "",
+                publicNote = publicNote,
+                publicNoteAvailable = publicNoteAvailable,
+                officerNote = officerNote,
+                officerNoteAvailable = officerNoteAvailable,
                 guid = info.guid or info.GUID or info.playerGUID
                     or info.memberGUID or info.guildMemberGUID,
             }
@@ -104,13 +144,31 @@ local function readRosterInfo(index)
     end
     local name, _, _, _, _, _, publicNote, officerNote,
         _, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(index)
+    local publicNoteAvailable
+    if isSecretValue(publicNote) then
+        publicNote = nil
+        publicNoteAvailable = false
+    else
+        publicNote = normalizeUsableNote(publicNote)
+        publicNoteAvailable = true
+    end
+    local officerNoteAvailable
+    if isSecretValue(officerNote) then
+        officerNote = nil
+        officerNoteAvailable = false
+    else
+        officerNote = normalizeUsableNote(officerNote)
+        officerNoteAvailable = true
+    end
     if type(name) ~= "string" or name == "" then
         return nil
     end
     return {
         name = name,
-        publicNote = publicNote or "",
-        officerNote = officerNote or "",
+        publicNote = publicNote,
+        publicNoteAvailable = publicNoteAvailable,
+        officerNote = officerNote,
+        officerNoteAvailable = officerNoteAvailable,
         guid = guid,
     }
 end
@@ -189,7 +247,9 @@ function Retail.createApi()
                 guid = info.guid,
                 index = index,
                 publicNote = info.publicNote,
+                publicNoteAvailable = info.publicNoteAvailable,
                 officerNote = info.officerNote,
+                officerNoteAvailable = info.officerNoteAvailable,
                 isSelf = identity == selfIdentity,
             }
             count = count + 1

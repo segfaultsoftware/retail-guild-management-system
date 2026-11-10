@@ -2,15 +2,24 @@ local notes = require("MainsAlts.Notes")
 local test = require("Tests.lib.runner")
 
 local function cloneMember(member)
-    return {
+    local publicNoteAvailable = member.publicNoteAvailable ~= false
+    local officerNoteAvailable = member.officerNoteAvailable ~= false
+    local cloned = {
         identity = member.identity,
         displayName = member.displayName,
         guid = member.guid,
         index = member.index,
-        publicNote = member.publicNote,
-        officerNote = member.officerNote,
+        publicNoteAvailable = publicNoteAvailable,
+        officerNoteAvailable = officerNoteAvailable,
         isSelf = member.isSelf,
     }
+    if publicNoteAvailable then
+        cloned.publicNote = member.publicNote
+    end
+    if officerNoteAvailable then
+        cloned.officerNote = member.officerNote
+    end
+    return cloned
 end
 
 local function newHarness(options)
@@ -104,6 +113,12 @@ local function newHarness(options)
     })
     local function updateServer(kind, value)
         server["main-area52"][kind .. "Note"] = value
+        server["main-area52"][kind .. "NoteAvailable"] = true
+        sourceRevision = sourceRevision + 1
+    end
+    local function restrictServer(kind)
+        server["main-area52"][kind .. "Note"] = nil
+        server["main-area52"][kind .. "NoteAvailable"] = false
         sourceRevision = sourceRevision + 1
     end
     return controller, calls, {
@@ -112,6 +127,7 @@ local function newHarness(options)
         setIncomplete = function(value) incomplete = value == true end,
         setScanning = function(value) scanning = value == true end,
         updateServer = updateServer,
+        restrictServer = restrictServer,
         bumpRevision = function() sourceRevision = sourceRevision + 1 end,
         setRevision = function(value) sourceRevision = value end,
     }
@@ -241,6 +257,278 @@ return {
         test.assert_equal(controller:GetSearchableNotes("main-area52"), {
             "new confirmed public",
         })
+    end),
+
+    test.case("first restricted observations stay unknown and retry without invalidating the roster", function()
+        local controller, calls, state = newHarness({
+            members = {
+                ["main-area52"] = {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    guid = "Player-1",
+                    index = 1,
+                    publicNote = {},
+                    publicNoteAvailable = false,
+                    officerNote = {},
+                    officerNoteAvailable = false,
+                    isSelf = false,
+                },
+            },
+        })
+
+        state.bumpRevision()
+        test.assert_true(load(controller))
+        local cached = controller.cache["main-area52"]
+        test.assert_false(cached.publicNoteKnown)
+        test.assert_false(cached.publicNoteAvailable)
+        test.assert_nil(cached.publicNote)
+        test.assert_false(cached.officerNoteKnown)
+        test.assert_false(cached.officerNoteAvailable)
+        test.assert_nil(cached.officerNote)
+        test.assert_true(controller.cacheLoaded)
+        test.assert_false(controller.loading)
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {})
+        test.assert_false(controller:HasActiveNote("main-area52", ""))
+
+        local model = controller:Open(
+            "main-area52",
+            "Main-Area52",
+            "private"
+        )
+        test.assert_equal(model.status, "ready")
+        test.assert_nil(model.drafts.publicNote)
+        test.assert_nil(model.drafts.officerNote)
+        test.assert_false(model.publicEditable)
+        test.assert_true(model.officerVisible)
+        test.assert_false(model.officerEditable)
+
+        local coalesced, reason = controller:RequestLoad()
+        test.assert_true(coalesced)
+        test.assert_equal(reason, "coalesced")
+        test.assert_equal(calls.requests, 1)
+        controller:Update(1)
+        controller:Update(1)
+        controller:Update(1)
+        test.assert_equal(calls.requests, notes.MAX_VERIFY_REQUESTS)
+        test.assert_false(controller.loadNeedsRetry)
+    end),
+
+    test.case("newly restricted fields receive a fresh bounded retry cadence", function()
+        local controller, calls, state = newHarness({
+            members = {
+                ["main-area52"] = {
+                    identity = "main-area52",
+                    displayName = "Main-Area52",
+                    guid = "Player-1",
+                    index = 1,
+                    publicNoteAvailable = false,
+                    officerNote = "officer",
+                    officerNoteAvailable = true,
+                    isSelf = false,
+                },
+            },
+        })
+
+        state.bumpRevision()
+        test.assert_true(load(controller))
+        for _ = 1, notes.MAX_VERIFY_REQUESTS do
+            controller:Update(1)
+        end
+        test.assert_equal(calls.requests, notes.MAX_VERIFY_REQUESTS)
+        test.assert_false(controller.loadNeedsRetry)
+
+        state.updateServer("public", "public restored")
+        state.restrictServer("officer")
+        test.assert_true(controller:OnRosterUpdated())
+        test.assert_true(controller.loadNeedsRetry)
+        for _ = 1, notes.MAX_VERIFY_REQUESTS do
+            controller:Update(1)
+        end
+        test.assert_equal(calls.requests, notes.MAX_VERIFY_REQUESTS * 2)
+        test.assert_false(controller.loadNeedsRetry)
+    end),
+
+    test.case("conflicting GUIDs cannot inherit notes or exhausted retries", function()
+        local controller, calls, state = newHarness()
+        state.bumpRevision()
+        load(controller)
+
+        state.restrictServer("public")
+        state.restrictServer("officer")
+        test.assert_true(controller:OnRosterUpdated())
+        for _ = 1, notes.MAX_VERIFY_REQUESTS do
+            controller:Update(1)
+        end
+        test.assert_false(controller.loadNeedsRetry)
+        local exhaustedRequests = calls.requests
+
+        state.server["main-area52"].guid = "Player-2"
+        state.bumpRevision()
+        test.assert_true(controller:OnRosterUpdated())
+
+        local cached = controller.cache["main-area52"]
+        test.assert_equal(cached.guid, "Player-2")
+        test.assert_false(cached.publicNoteKnown)
+        test.assert_nil(cached.publicNote)
+        test.assert_false(cached.officerNoteKnown)
+        test.assert_nil(cached.officerNote)
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {})
+        test.assert_false(controller:HasActiveNote("main-area52", ""))
+        test.assert_true(controller.loadNeedsRetry)
+        controller:Update(1)
+        test.assert_equal(calls.requests, exhaustedRequests + 1)
+    end),
+
+    test.case("public and officer restrictions retain and refresh independently", function()
+        local controller, _, state = newHarness()
+        state.bumpRevision()
+        load(controller)
+        controller:Open("main-area52", "Main-Area52", "private")
+
+        state.restrictServer("public")
+        test.assert_true(controller:OnRosterUpdated())
+        local model = controller:GetEditorModel()
+        test.assert_equal(model.status, "ready")
+        test.assert_equal(model.drafts.publicNote, "public")
+        test.assert_false(model.publicEditable)
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "public",
+            "officer",
+        })
+
+        state.updateServer("officer", "new officer")
+        test.assert_true(controller:OnRosterUpdated())
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "public",
+            "new officer",
+        })
+
+        state.updateServer("public", "new public")
+        state.restrictServer("officer")
+        test.assert_true(controller:OnRosterUpdated())
+        model = controller:GetEditorModel()
+        test.assert_equal(model.drafts.publicNote, "new public")
+        test.assert_equal(model.drafts.officerNote, "new officer")
+        test.assert_true(model.publicEditable)
+        test.assert_false(model.officerEditable)
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "new public",
+            "new officer",
+        })
+        test.assert_true(controller:HasActiveNote("main-area52", ""))
+    end),
+
+    test.case("officer permission loss hides retained values during verification", function()
+        local controller, calls, state = newHarness()
+        state.bumpRevision()
+        load(controller)
+        controller:Open("main-area52", "Main-Area52", "private")
+        test.assert_true(controller:SetDraft("publicNote", "new public"))
+        test.assert_true(controller:Save())
+
+        state.permissions.viewOfficer = false
+        state.permissions.editOfficer = false
+        state.restrictServer("officer")
+        local verified, reason = controller:OnRosterUpdated()
+        test.assert_false(verified)
+        test.assert_equal(reason, "awaiting-verification")
+        test.assert_not_nil(controller.transaction)
+        local model = controller:GetEditorModel()
+        test.assert_true(model.saving)
+        test.assert_false(model.officerVisible)
+        test.assert_nil(model.drafts.officerNote)
+        test.assert_nil(model.confirmed.officerNote)
+        test.assert_equal(controller.cache["main-area52"].officerNote, "officer")
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "public",
+        })
+
+        state.updateServer("public", "new public")
+        test.assert_true(controller:OnRosterUpdated())
+        test.assert_nil(controller.transaction)
+        test.assert_equal(calls.completed, 1)
+        test.assert_false(controller:GetEditorModel().officerVisible)
+    end),
+
+    test.case("restriction clearing follows clean and dirty editor revision rules", function()
+        local controller, _, state = newHarness()
+        state.bumpRevision()
+        load(controller)
+        state.restrictServer("public")
+        controller:OnRosterUpdated()
+        controller:Open("main-area52", "Main-Area52", "private")
+        test.assert_true(controller:SetDraft("privateNote", "private draft"))
+
+        state.updateServer("public", "usable again")
+        test.assert_true(controller:OnRosterUpdated())
+        local model = controller:GetEditorModel()
+        test.assert_true(model.conflicted)
+        test.assert_equal(model.drafts.privateNote, "private draft")
+        test.assert_equal(model.drafts.publicNote, "public")
+        test.assert_equal(model.confirmed.publicNote, "usable again")
+        test.assert_equal(controller:GetSearchableNotes("main-area52"), {
+            "usable again",
+            "officer",
+        })
+        test.assert_true(controller:HasActiveNote("main-area52", ""))
+    end),
+
+    test.case("private saves survive restrictions while guild edits wait for usable fields", function()
+        local controller, calls, state = newHarness()
+        state.bumpRevision()
+        load(controller)
+        controller:Open("main-area52", "Main-Area52", "old private")
+        test.assert_true(controller:SetDraft("privateNote", "new private"))
+        state.restrictServer("public")
+        state.restrictServer("officer")
+        test.assert_true(controller:OnRosterUpdated())
+        local model = controller:GetEditorModel()
+        test.assert_false(model.conflicted)
+        test.assert_equal(model.drafts.privateNote, "new private")
+        test.assert_true(controller:Save())
+        test.assert_equal(calls.writes, {})
+        test.assert_equal(calls.commits, {
+            { identity = "main-area52", value = "new private" },
+        })
+
+        local second, secondCalls, secondState = newHarness()
+        secondState.bumpRevision()
+        load(second)
+        second:Open("main-area52", "Main-Area52", "private")
+        test.assert_true(second:SetDraft("publicNote", "new public"))
+        secondState.restrictServer("public")
+        local saved, saveError = second:Save()
+        test.assert_nil(saved)
+        test.assert_matches(saveError, "temporarily unavailable")
+        test.assert_equal(secondCalls.writes, {})
+        test.assert_equal(secondCalls.commits, {})
+    end),
+
+    test.case("unavailable write observations cannot verify retained values", function()
+        local controller, calls, state = newHarness()
+        state.bumpRevision()
+        load(controller)
+        controller:Open("main-area52", "Main-Area52", "private")
+        test.assert_true(controller:SetDraft("publicNote", "new public"))
+        test.assert_true(controller:Save())
+
+        state.server["main-area52"].publicNote = "new public"
+        state.server["main-area52"].publicNoteAvailable = false
+        state.bumpRevision()
+        local verified, reason = controller:OnRosterUpdated()
+        test.assert_false(verified)
+        test.assert_equal(reason, "awaiting-verification")
+        test.assert_not_nil(controller.transaction)
+        test.assert_equal(calls.commits, {})
+        test.assert_equal(
+            controller.cache["main-area52"].publicNote,
+            "public"
+        )
+
+        state.updateServer("public", "new public")
+        test.assert_true(controller:OnRosterUpdated())
+        test.assert_nil(controller.transaction)
+        test.assert_equal(calls.completed, 1)
     end),
 
     test.case("Retail mode exposes guild notes as read-only", function()
