@@ -15,6 +15,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   fixture-export workflow, validated sanitized live-client fixtures including
   supplemental same-first Forever evidence, automated evidence assertions, and
   a decision record for portable identity and roster-delivery contracts.
+- Added early-loaded, fail-closed Retail and Forever client-flavor detection
+  with shared-Mainline and crafting-quality semantic capability queries.
 
 ### Removed
 
