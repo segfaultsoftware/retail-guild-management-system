@@ -1,21 +1,34 @@
+local accountData = require("Core.AccountData")
+local clientFlavor = require("Core.ClientFlavor")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
 
 local function guild(name, realmSlug, overrides)
-    local identity = fixtures.guild_identity({
-        id = "guild-" .. realmSlug,
+    local input = {
+        flavor = clientFlavor.RETAIL,
+        region = "US",
         name = name,
         realm = {
             name = realmSlug,
             slug = realmSlug,
         },
-    })
+    }
     for key, value in pairs(overrides or {}) do
-        identity[key] = value
+        input[key] = value
     end
-    return identity
+    return assert(guildIdentity.create(input))
+end
+
+local function foreverGuild(region, clubId, name)
+    return assert(guildIdentity.create({
+        flavor = clientFlavor.FOREVER,
+        region = region,
+        name = name or "Night Shift",
+        clubId = clubId,
+    }))
 end
 
 local function laterTimestamp()
@@ -76,10 +89,9 @@ local function completeBank(transaction, quantity)
 end
 
 return {
-    test.case("guild identity uses exact name and API-normalized realm", function()
+    test.case("guild ownership delegates to the shared identity contract", function()
         local original = guild("Night Shift", "area-52")
         local metadataChanged = guild("Night Shift", "area-52", {
-            id = "different-api-id",
             region = "EU",
             realm = {
                 name = "Different Display Name",
@@ -94,6 +106,26 @@ return {
         ))
         test.assert_false(datasetOwnership.sameGuild(original, guild("Night shift", "area-52")))
         test.assert_false(datasetOwnership.sameGuild(original, guild("Night Shift", "illidan")))
+    end),
+
+    test.case("Forever ownership is isolated from Retail club and region peers", function()
+        local original = foreverGuild("US", "Club-001", "Night Shift")
+        local renamed = foreverGuild("US", "Club-001", "Renamed Guild")
+        local european = foreverGuild("EU", "Club-001", "Night Shift")
+        local otherClub = foreverGuild("US", "Club-002", "Night Shift")
+        local retail = guild("Night Shift", "Club-001")
+
+        test.assert_true(datasetOwnership.sameGuild(original, renamed))
+        test.assert_false(datasetOwnership.sameGuild(original, european))
+        test.assert_false(datasetOwnership.sameGuild(original, otherClub))
+        test.assert_false(datasetOwnership.sameGuild(original, retail))
+
+        local same, sameError = datasetOwnership.sameGuild(
+            { flavor = clientFlavor.FOREVER },
+            original
+        )
+        test.assert_nil(same)
+        test.assert_matches(sameError, "left guild identity is invalid")
     end),
 
     test.case("first successful scan binds only its dataset", function()
@@ -235,5 +267,55 @@ return {
         test.assert_equal(harness.current(), original)
         test.assert_equal(harness.commits(), 0)
         test.assert_equal(harness.messages, {})
+    end),
+
+    test.case("account commit rejects a scan after product or region changes", function()
+        local captured = foreverGuild("US", "Club-001")
+        local currentIdentity = captured
+        local current = accountData.newModel()
+        local original = current
+        local commits = 0
+        local reconciles = 0
+        local cleanups = 0
+        local controller = datasetOwnership.create({
+            savedData = savedData,
+            accountData = accountData,
+            getSavedData = function() return current end,
+            getCurrentGuildIdentity = function()
+                return currentIdentity
+            end,
+            reconcileRosterFeatures = function()
+                reconciles = reconciles + 1
+                return {}, {}
+            end,
+            prepareCharacterCommit = function()
+                cleanups = cleanups + 1
+                return savedData.newModel()
+            end,
+            commit = function(model)
+                current = model
+                commits = commits + 1
+            end,
+            print = function() end,
+        })
+
+        local transaction = assert(controller:begin("roster", captured))
+        completeRoster(transaction, "CapturedMember")
+        currentIdentity = foreverGuild("EU", "Club-001")
+
+        local committed, commitError = controller:finish(transaction, "success")
+        test.assert_nil(committed)
+        test.assert_equal(commitError, "current guild changed during dataset transaction")
+        test.assert_true(current == original)
+        test.assert_equal(commits, 0)
+        test.assert_equal(reconciles, 0)
+        test.assert_equal(cleanups, 0)
+        test.assert_nil(accountData.findGuild(current, captured))
+
+        currentIdentity = guild("Night Shift", "area-52")
+        committed, commitError = controller:finish(transaction, "success")
+        test.assert_nil(committed)
+        test.assert_equal(commitError, "current guild changed during dataset transaction")
+        test.assert_equal(commits, 0)
     end),
 }

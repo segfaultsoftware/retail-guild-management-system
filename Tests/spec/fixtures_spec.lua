@@ -6,8 +6,22 @@ return {
         local guild = fixtures.guild_identity({ name = "Night Shift" })
 
         test.assert_equal(guild.name, "Night Shift")
+        test.assert_equal(guild.flavor, "retail")
         test.assert_equal(guild.region, "US")
         test.assert_equal(guild.realm.slug, "example-realm")
+        test.assert_equal(guild.key, "11:Night Shift:example-realm")
+        test.assert_nil(guild.id)
+    end),
+
+    test.case("legacy guild identities preserve the pre-product-aware shape", function()
+        local guild = fixtures.legacy_guild_identity({ name = "Night Shift" })
+
+        test.assert_equal(guild.name, "Night Shift")
+        test.assert_equal(guild.region, "US")
+        test.assert_equal(guild.realm.slug, "example-realm")
+        test.assert_not_nil(guild.id)
+        test.assert_nil(guild.flavor)
+        test.assert_nil(guild.key)
     end),
 
     test.case("roster fixtures include ranks and members", function()
@@ -60,11 +74,13 @@ return {
         local current = fixtures.saved_model()
         local previous = fixtures.saved_model_v0()
 
-        test.assert_equal(current.schemaVersion, 8)
+        test.assert_equal(current.schemaVersion, 9)
         test.assert_equal(current.roster.guild.name, "Example Guild")
+        test.assert_equal(current.roster.guild.flavor, "retail")
         test.assert_equal(current.ui.windowPosition.point, "TOPLEFT")
         test.assert_equal(previous.schemaVersion, 0)
         test.assert_equal(previous.roster.guildIdentity.name, "Example Guild")
+        test.assert_nil(previous.roster.guildIdentity.flavor)
         test.assert_nil(previous.ui)
     end),
 }

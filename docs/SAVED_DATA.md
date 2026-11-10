@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 10
+## Account-wide schema: version 11
 
 ```text
 {
-  schemaVersion = 10,
+  schemaVersion = 11,
   settings = {
     minimapPos = number,
   },
@@ -87,13 +87,44 @@ in copper. Older snapshots migrate without an invented amount and remain blank
 in the Provisions view until the next successful bank scan. Version 9 adds an
 empty chart history to every guild partition without backfilling older roster
 or bank snapshots. Version 10 removes the discontinued item-chart history from
-every guild partition while preserving Gold and Members observations.
+every guild partition while preserving Gold and Members observations. Version
+11 converts every existing partition identity and every nested roster or bank
+identity to the product-aware contract, inferring Retail for all historical
+data. The conversion verifies that each new Retail identity produces the
+existing map key and never re-keys `guilds`; a mismatch disables the account
+store and preserves the supplied table for recovery.
 
-A `GuildKey` is a deterministic, collision-safe combination of the exact guild
-name and the case-insensitive canonical realm slug. Consequently, identically
-named guilds on different realms are separate, while realm capitalization and
-repeated realm suffixes normalize to the same partition. Guild ID, region, and
-display-realm fields remain metadata and do not change ownership.
+A `GuildIdentity` has one of these canonical shapes (fields shown as `nil` are
+absent from the saved Lua table):
+
+```text
+Retail = {
+  key = EstablishedRetailGuildKey,
+  flavor = "retail",
+  region = Region,
+  name = ExactGuildName,
+  realm = { name = CanonicalRealmName, slug = CanonicalRealmSlug },
+  displayName = ExactGuildName,
+  clubId = nil,
+}
+
+Forever = {
+  key = OpaqueForeverGuildKey,
+  flavor = "forever",
+  region = Region,
+  name = ExactGuildName,
+  realm = nil,
+  displayName = ExactGuildName,
+  clubId = StableGuildClubId,
+}
+```
+
+Retail keys remain the byte-for-byte established combination of exact guild
+name and case-insensitive canonical realm slug. Forever keys use a separate,
+versioned namespace containing product, region, and stable guild club ID, so
+they cannot collide with Retail or with the same club ID in another region.
+Callers treat both key forms as opaque and compare validated identities through
+the shared guild-identity service.
 
 Roster and bank initialization flags are independent. `false` means no
 account-wide decision has been made for that dataset. `true` with empty
@@ -119,11 +150,11 @@ interior whitespace and non-ASCII spelling. Every guild catalog contains `me`;
 custom definitions remain saved even when unused. Assignments are removed only
 when their character leaves the retained roster database.
 
-## Per-character schema: version 8
+## Per-character schema: version 9
 
 ```text
 {
-  schemaVersion = 8,
+  schemaVersion = 9,
   roster = DeprecatedRosterDataset,
   bank = DeprecatedBankDataset,
   ui = {
@@ -134,14 +165,15 @@ when their character leaves the retained roster database.
 }
 ```
 
-The version 0 through 8 migrations remain supported. Version 8 adds per-character
-numeric rank and bank-tab selections, so renaming an option does not invalidate
-it. When the current guild's
-account-wide roster is uninitialized, only the logged-in character's matching
-deprecated roster can seed it. A missing or foreign-guild snapshot initializes
-an empty current-guild roster instead. An already initialized roster, including
-an intentionally empty reset state, is authoritative and is never repopulated
-from another character.
+Saved data from versions 0 through 8 remains migratable. Version 8 adds
+per-character numeric rank and bank-tab selections, so renaming an option does
+not invalidate it. Version 9 infers Retail for guild identities in both
+deprecated datasets and stores the canonical product-aware shape. When the
+current guild's account-wide roster is uninitialized, only the logged-in
+character's matching deprecated roster can seed it. A missing or foreign-guild
+snapshot initializes an empty current-guild roster instead. An already
+initialized roster, including an intentionally empty reset state, is
+authoritative and is never repopulated from another character.
 
 Bank migration is deliberately deferred until the guild bank is open and a scan
 is about to start. An uninitialized current-guild bank is seeded only from the
@@ -163,10 +195,10 @@ shared account-wide.
 
 ## Dataset shapes
 
-Roster and bank dataset records retain the existing schema-8 shapes. A
-successful observation includes its guild identity and scan timestamp. An
-empty uninitialized or reset dataset has empty collections and no guild or
-timestamp.
+Roster and bank observation records retain their established fields, with the
+legacy guild value replaced by the canonical product-aware `GuildIdentity`. A
+successful observation includes that identity and a scan timestamp. An empty
+uninitialized or reset dataset has empty collections and no guild or timestamp.
 
 Roster members retain canonical `Name-Realm`, rank, online, observation,
 rank-tenure, and missing-member fields. Bank tabs retain access state and
@@ -187,6 +219,11 @@ matching legacy data or an empty baseline. Failure, timeout, partial data, or
 cancellation then discards the detached scan work while preserving that baseline
 and the still-pending per-character bank data.
 
+Before publishing, the transaction compares its captured guild with a freshly
+resolved active guild through the shared identity contract. If product, region,
+or ownership changed while the scan was running, the commit is rejected before
+account data, deprecated character data, or the active view can change.
+
 Only a complete, validated success atomically replaces that one dataset and its
 same-day chart observation in the matching guild partition and marks its
 initialization flag true. A successful
@@ -201,6 +238,11 @@ flag, groups, notes, provisions, tag definitions and assignments, and every
 other guild partition remain unchanged. Successful roster commits reconcile assignments
 against the retained roster while preserving the complete tag catalog.
 
+Each SavedVariables store loads, migrates, and validates a detached copy. A
+failure returns the established disabled/recovery state with the complete
+supplied table untouched. Account and per-character stores recover
+independently; RGMS does not impose a cross-store transaction.
+
 ## Reset and recovery
 
 Confirming `/rgms reset` while guilded clears the current guild's roster, bank,
@@ -210,8 +252,10 @@ It leaves both dataset initialization flags true, preserves
 all other guild partitions and deprecated per-character observations, and
 preserves the character's window position. The initialized empty datasets
 prevent legacy repopulation; the next successful roster or bank scan removes
-only the corresponding deprecated dataset for the current character. A
-guildless manual reset is rejected without mutation.
+only the corresponding deprecated dataset for the current character. Reset
+resolves the current product-aware identity again instead of trusting a stale
+active view, so it cannot clear a same-named guild from another product or
+region. A guildless manual reset is rejected without mutation.
 
 Malformed or unsupported account data disables scans and reports without
 overwriting the original. Accepted account recovery creates a fresh account
@@ -221,11 +265,29 @@ Per-character recovery continues to retain only a valid window position.
 ## Guild activation
 
 RGMS resolves the logged-in character's guild at addon load, player login, and
-guild-membership changes. Activation initializes the current guild's roster
-partition conservatively, selects it for display, and starts the normal roster
+guild-membership changes. Retail resolution uses the canonical realm contract;
+Forever resolution uses product, region, and the stable guild club ID and never
+uses realm APIs as ownership fallback. Missing required inputs fail closed.
+Activation initializes the current guild's roster partition conservatively,
+selects only that opaque-key partition for display, and starts the normal roster
 scan. A guildless character still receives an empty transient view. Bank
 partitions are not initialized during activation or merely by opening RGMS. They
 are initialized immediately before an eligible scan after the guild bank opens.
+
+## Migration implementation choice
+
+The schema migration remains project-owned after evaluating established shared
+libraries. [AceDB-3.0](https://github.com/WoWUIDev/Ace3) is actively maintained
+and broadly adopted for profiles, namespaces, and defaults, but it does not
+provide RGMS's strict versioned validation, opaque guild ownership contract, or
+copy-on-write rollback. [LibSerialize](https://github.com/rossnichols/LibSerialize)
+is maintained, MIT-licensed, and Lua-compatible, but serializes arbitrary values
+rather than migrating WoW SavedVariables already loaded as tables. The current
+[LibSavedVars](https://github.com/silvereyes333/LibSavedVars) implementation is
+small and targets Elder Scrolls Online rather than World of Warcraft. Reusing
+RGMS's existing validators and detached-copy loaders therefore keeps the change
+smaller and makes exact Retail-key preservation and per-store atomicity directly
+testable without adding an unrelated framework.
 
 Sharing is limited to the local account's SavedVariables. RGMS performs no
 player-to-player synchronization and provides no browser for inactive guilds.

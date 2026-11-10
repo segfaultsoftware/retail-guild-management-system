@@ -5,9 +5,9 @@
 local _, RGMS = ...
 
 local DatasetOwnership = {}
-local Realm = type(RGMS) == "table"
-    and RGMS.Realm
-    or require("Core.Realm")
+local GuildIdentity = type(RGMS) == "table"
+    and RGMS.GuildIdentity
+    or require("Core.GuildIdentity")
 
 local DATASET_CHANGE_MESSAGES = {
     roster = "Detected guild change; resetting roster data",
@@ -18,20 +18,8 @@ local function validDatasetName(datasetName)
     return DATASET_CHANGE_MESSAGES[datasetName] ~= nil
 end
 
--- realm.slug is the canonical realm value captured from the Retail API. Realm
--- identity is case-insensitive; the remaining fields are metadata and
--- deliberately do not affect ownership.
 function DatasetOwnership.sameGuild(left, right)
-    return type(left) == "table"
-        and type(right) == "table"
-        and type(left.realm) == "table"
-        and type(right.realm) == "table"
-        and type(left.name) == "string"
-        and left.name ~= ""
-        and left.name == right.name
-        and type(left.realm.slug) == "string"
-        and left.realm.slug ~= ""
-        and Realm.key(left.realm.slug) == Realm.key(right.realm.slug)
+    return GuildIdentity.same(left, right)
 end
 
 function DatasetOwnership.create(dependencies)
@@ -101,8 +89,17 @@ function DatasetOwnership.create(dependencies)
         end
 
         local currentGuild = currentModel[datasetName].guild
-        local sameGuild = currentGuild ~= nil
-            and DatasetOwnership.sameGuild(currentGuild, capturedGuild)
+        local sameGuild = false
+        if currentGuild ~= nil then
+            local sameError
+            sameGuild, sameError = DatasetOwnership.sameGuild(
+                currentGuild,
+                capturedGuild
+            )
+            if sameGuild == nil then
+                return nil, sameError
+            end
+        end
         local workingModel
         local workingError
         if sameGuild then
@@ -145,11 +142,33 @@ function DatasetOwnership.create(dependencies)
         if status ~= "success" then
             return nil, "transaction status must be success, failed, or canceled"
         end
-        if not DatasetOwnership.sameGuild(transaction.dataset.guild, transaction.guild) then
-            return nil, "transaction dataset guild does not match its captured guild"
+        local datasetMatches, datasetMatchError = DatasetOwnership.sameGuild(
+            transaction.dataset.guild,
+            transaction.guild
+        )
+        if not datasetMatches then
+            return nil, datasetMatchError
+                or "transaction dataset guild does not match its captured guild"
         end
 
         if dependencies.accountData then
+            if type(dependencies.getCurrentGuildIdentity) == "function" then
+                local currentGuild, currentGuildError =
+                    dependencies.getCurrentGuildIdentity()
+                if currentGuild == nil then
+                    return nil, currentGuildError
+                        or "current guild identity is unavailable"
+                end
+                local stillCurrent, comparisonError = DatasetOwnership.sameGuild(
+                    currentGuild,
+                    transaction.guild
+                )
+                if not stillCurrent then
+                    return nil, comparisonError
+                        or "current guild changed during dataset transaction"
+                end
+            end
+
             local currentModel = dependencies.getSavedData()
             local committedModel
             local guildOrError
@@ -254,8 +273,19 @@ function DatasetOwnership.create(dependencies)
 
         local currentModel = dependencies.getSavedData()
         local currentGuild = currentModel[transaction.datasetName].guild
-        local guildChanged = currentGuild ~= nil
-            and not DatasetOwnership.sameGuild(currentGuild, transaction.guild)
+        local guildChanged = false
+        if currentGuild ~= nil then
+            local sameError
+            local same
+            same, sameError = DatasetOwnership.sameGuild(
+                currentGuild,
+                transaction.guild
+            )
+            if same == nil then
+                return nil, sameError
+            end
+            guildChanged = not same
+        end
         local committedModel, commitError = dependencies.savedData.replaceDataset(
             currentModel,
             transaction.datasetName,
@@ -283,6 +313,12 @@ if type(RGMS) == "table" then
         accountData = RGMS.AccountData,
         getSavedData = function()
             return RGMSAccountDB
+        end,
+        getCurrentGuildIdentity = function()
+            if type(RGMS.ResolveCurrentGuildIdentity) ~= "function" then
+                return nil, "current guild identity resolver is unavailable"
+            end
+            return RGMS.ResolveCurrentGuildIdentity()
         end,
         commit = function(model, guildIdentity, characterModel)
             RGMSAccountDB = model

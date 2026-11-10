@@ -4,6 +4,12 @@ local Roster = RGMS.Roster or {}
 local Names = type(RGMS.RosterNames) == "table"
     and RGMS.RosterNames
     or require("Roster.Names")
+local ClientFlavor = type(RGMS.ClientFlavor) == "table"
+    and RGMS.ClientFlavor
+    or require("Core.ClientFlavor")
+local GuildIdentity = type(RGMS.GuildIdentity) == "table"
+    and RGMS.GuildIdentity
+    or require("Core.GuildIdentity")
 local Realm = type(RGMS.Realm) == "table"
     and RGMS.Realm
     or require("Core.Realm")
@@ -63,6 +69,18 @@ local function createRetailApi()
         end
         normalizedRealm = Realm.normalize(normalizedRealm)
         displayRealm = Realm.normalize(displayRealm)
+        local guildIdentity, identityError = GuildIdentity.create({
+            flavor = ClientFlavor.RETAIL,
+            region = REGION_NAMES[GetCurrentRegion()] or "Unknown",
+            name = guildName,
+            realm = {
+                name = displayRealm,
+                slug = normalizedRealm,
+            },
+        })
+        if not guildIdentity then
+            return incomplete(identityError)
+        end
 
         local numberOfRanks = GuildControlGetNumRanks()
         if type(numberOfRanks) ~= "number" or numberOfRanks < 1 then
@@ -194,15 +212,7 @@ local function createRetailApi()
         end)
 
         return {
-            guild = {
-                id = tostring(clubId),
-                name = guildName,
-                realm = {
-                    name = displayRealm,
-                    slug = normalizedRealm,
-                },
-                region = REGION_NAMES[GetCurrentRegion()] or "Unknown",
-            },
+            guild = guildIdentity,
             scannedAt = scannedAt,
             ranks = ranks,
             members = members,
@@ -420,6 +430,7 @@ if type(Roster.Scanner) ~= "table"
             )
         end,
         canScan = Roster.CanScan,
+        getCurrentGuildIdentity = RGMS.ResolveCurrentGuildIdentity,
         isScanLocked = RGMS.IsScanLocked,
         beginScan = function()
             return RGMS.BeginScan("roster")

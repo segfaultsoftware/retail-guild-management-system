@@ -1,20 +1,33 @@
 local accountData = require("Core.AccountData")
+local clientFlavor = require("Core.ClientFlavor")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local rosterMigration = require("Core.RosterMigration")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
 
-local function guild(name, realm)
-    return fixtures.guild_identity({
-        id = "guild-" .. realm,
+local function guild(name, realm, region)
+    return assert(guildIdentity.create({
+        flavor = clientFlavor.RETAIL,
+        region = region or "US",
         name = name,
         realm = { name = realm, slug = realm },
-    })
+    }))
+end
+
+local function foreverGuild(name, region, clubId)
+    return assert(guildIdentity.create({
+        flavor = clientFlavor.FOREVER,
+        region = region,
+        name = name,
+        clubId = clubId,
+    }))
 end
 
 local function legacyCharacter(identity, memberName, position)
     local character = savedData.newModel()
+    local memberRealm = identity.realm and identity.realm.slug or "Forever"
     character.roster = {
         guild = identity,
         scannedAt = fixtures.timestamp(),
@@ -22,8 +35,8 @@ local function legacyCharacter(identity, memberName, position)
         members = {
             fixtures.roster_member({
                 name = memberName,
-                realm = identity.realm.slug,
-                displayName = memberName .. "-" .. identity.realm.slug,
+                realm = memberRealm,
+                displayName = memberName .. "-" .. memberRealm,
             }),
         },
     }
@@ -76,6 +89,45 @@ return {
         test.assert_equal(current.roster, { ranks = {}, members = {} })
         test.assert_nil(accountData.findGuild(account, formerGuild))
         test.assert_equal(character.roster.members[1].name, "Former")
+    end),
+
+    test.case("Retail legacy roster cannot seed a same-named Forever partition", function()
+        local retail = guild("Night Shift", "area-52")
+        local forever = foreverGuild("Night Shift", "US", "guild-area-52")
+        local character = legacyCharacter(retail, "RetailOnly", nil)
+        local account, initialized, imported = rosterMigration.initialize(
+            accountData.newModel(),
+            character,
+            forever
+        )
+
+        test.assert_true(initialized)
+        test.assert_false(imported)
+        test.assert_equal(
+            accountData.findGuild(account, forever).roster,
+            { ranks = {}, members = {} }
+        )
+        test.assert_nil(accountData.findGuild(account, retail))
+        test.assert_equal(character.roster.members[1].name, "RetailOnly")
+    end),
+
+    test.case("Forever roster migration keeps regions isolated", function()
+        local us = foreverGuild("Night Shift", "US", "Club-001")
+        local eu = foreverGuild("Night Shift", "EU", "Club-001")
+        local character = legacyCharacter(us, "USOnly", nil)
+        local account, initialized, imported = rosterMigration.initialize(
+            accountData.newModel(),
+            character,
+            eu
+        )
+
+        test.assert_true(initialized)
+        test.assert_false(imported)
+        test.assert_equal(
+            accountData.findGuild(account, eu).roster,
+            { ranks = {}, members = {} }
+        )
+        test.assert_nil(accountData.findGuild(account, us))
     end),
 
     test.case("bank initialization does not suppress roster migration", function()

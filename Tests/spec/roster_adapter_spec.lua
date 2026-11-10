@@ -1,4 +1,6 @@
+local clientFlavor = require("Core.ClientFlavor")
 local dateTime = require("Core.DateTime")
+local guildIdentity = require("Core.GuildIdentity")
 local test = require("Tests.lib.runner")
 
 local GLOBAL_NAMES = {
@@ -155,9 +157,13 @@ return {
             test.assert_equal(harness.requested(), 1)
 
             local snapshot = harness.api:captureSnapshot()
+            test.assert_true(guildIdentity.validate(snapshot.guild))
+            test.assert_equal(snapshot.guild.flavor, clientFlavor.RETAIL)
             test.assert_equal(snapshot.guild.name, "Example Guild")
+            test.assert_equal(snapshot.guild.displayName, "Example Guild")
             test.assert_equal(snapshot.guild.realm.slug, "ExampleRealm")
             test.assert_equal(snapshot.guild.region, "US")
+            test.assert_nil(snapshot.guild.clubId)
             test.assert_equal(snapshot.scannedAt.iso8601, "2024-06-01T12:34:56Z")
             test.assert_equal(#snapshot.ranks, 3)
             test.assert_equal(snapshot.ranks[3].name, "Empty Rank")

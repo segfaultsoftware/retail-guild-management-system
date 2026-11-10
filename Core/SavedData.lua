@@ -6,9 +6,15 @@ local _, RGMS = ...
 
 local SavedData = {}
 local DateTime = type(RGMS) == "table" and RGMS.DateTime or require("Core.DateTime")
+local ClientFlavor = type(RGMS) == "table"
+    and RGMS.ClientFlavor
+    or require("Core.ClientFlavor")
+local GuildIdentity = type(RGMS) == "table"
+    and RGMS.GuildIdentity
+    or require("Core.GuildIdentity")
 local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
 
-SavedData.CURRENT_SCHEMA_VERSION = 8
+SavedData.CURRENT_SCHEMA_VERSION = 9
 
 local ANCHOR_POINTS = {
     TOPLEFT = true,
@@ -230,7 +236,7 @@ local function validateTimestamp(value, path)
     return true
 end
 
-local function validateGuildIdentity(value, path, requireCanonicalRealm)
+local function validateLegacyGuildIdentity(value, path, requireCanonicalRealm)
     local valid, validationError = validateExactTable(value, {
         id = true,
         name = true,
@@ -268,6 +274,55 @@ local function validateGuildIdentity(value, path, requireCanonicalRealm)
     end
 
     return true
+end
+
+local function validateCurrentGuildIdentity(value, path)
+    local valid, validationError = validateExactTable(value, {
+        key = true,
+        flavor = true,
+        region = true,
+        name = true,
+        realm = true,
+        displayName = true,
+        clubId = true,
+    }, path)
+    if not valid then
+        return nil, validationError
+    end
+
+    if value.realm ~= nil then
+        valid, validationError = validateExactTable(value.realm, {
+            name = true,
+            slug = true,
+        }, path .. ".realm")
+        if not valid then
+            return nil, validationError
+        end
+    end
+
+    valid, validationError = GuildIdentity.validate(value)
+    if not valid then
+        return nil, path .. " is invalid: " .. validationError
+    end
+    return true
+end
+
+function SavedData.migrateLegacyGuildIdentity(identity)
+    local valid, validationError = validateLegacyGuildIdentity(
+        identity,
+        "legacy guild identity",
+        true
+    )
+    if not valid then
+        return nil, validationError
+    end
+
+    return GuildIdentity.create({
+        flavor = ClientFlavor.RETAIL,
+        region = identity.region,
+        name = identity.name,
+        realm = identity.realm,
+    })
 end
 
 local function validateRosterRank(value, path)
@@ -678,7 +733,8 @@ local function validateDataset(
     path,
     collectionValidators,
     requireCanonicalRealm,
-    optionalFieldValidators
+    optionalFieldValidators,
+    identityValidator
 )
     local allowedKeys = {
         guild = true,
@@ -700,7 +756,7 @@ local function validateDataset(
         return nil, path .. ".guild and " .. path .. ".scannedAt must both be present or absent"
     end
     if value.guild ~= nil then
-        valid, validationError = validateGuildIdentity(
+        valid, validationError = (identityValidator or validateLegacyGuildIdentity)(
             value.guild,
             path .. ".guild",
             requireCanonicalRealm
@@ -782,7 +838,7 @@ function SavedData.validate(model)
     valid, validationError = validateDataset(model.roster, "saved data.roster", {
         ranks = validateRosterRank,
         members = validateCurrentRosterMember,
-    }, true)
+    }, nil, nil, validateCurrentGuildIdentity)
     if not valid then
         return nil, validationError
     end
@@ -794,7 +850,7 @@ function SavedData.validate(model)
         money = function(value, path)
             return requireInteger(value, path, 0)
         end,
-    })
+    }, validateCurrentGuildIdentity)
     if not valid then
         return nil, validationError
     end
@@ -845,10 +901,9 @@ function SavedData.validate(model)
 end
 
 function SavedData.copyGuildIdentity(identity)
-    local valid, validationError = validateGuildIdentity(
+    local valid, validationError = validateCurrentGuildIdentity(
         identity,
-        "guild identity",
-        false
+        "guild identity"
     )
     if not valid then
         return nil, validationError
@@ -858,8 +913,6 @@ function SavedData.copyGuildIdentity(identity)
     if not copied then
         return nil, copyError
     end
-    copied.realm.name = Realm.normalize(copied.realm.name)
-    copied.realm.slug = Realm.normalize(copied.realm.slug)
     return copied
 end
 
@@ -1391,6 +1444,128 @@ local function migrateVersionSeven(model)
     return model
 end
 
+local function migrateVersionEightDatasetIdentity(dataset, path)
+    if dataset.guild == nil then
+        return true
+    end
+
+    local migrated, migrationError = SavedData.migrateLegacyGuildIdentity(
+        dataset.guild
+    )
+    if not migrated then
+        return nil, path .. ".guild could not be migrated: "
+            .. tostring(migrationError)
+    end
+    dataset.guild = migrated
+    return true
+end
+
+local function migrateVersionEight(model)
+    if model.schemaVersion ~= 8 then
+        return nil, "schema version 8 migration received the wrong version"
+    end
+
+    local valid, migrationError = validateExactTable(model, {
+        schemaVersion = true,
+        roster = true,
+        bank = true,
+        ui = true,
+    }, "schema version 8 data")
+    if not valid then
+        return nil, migrationError
+    end
+
+    valid, migrationError = validateDataset(
+        model.roster,
+        "schema version 8 data.roster",
+        {
+            ranks = validateRosterRank,
+            members = validateCurrentRosterMember,
+        },
+        true
+    )
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = migrateVersionEightDatasetIdentity(
+        model.roster,
+        "schema version 8 data.roster"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    valid, migrationError = validateDataset(
+        model.bank,
+        "schema version 8 data.bank",
+        {
+            tabs = validateBankTab,
+            slots = validateBankSlot,
+        },
+        true,
+        {
+            money = function(value, path)
+                return requireInteger(value, path, 0)
+            end,
+        }
+    )
+    if not valid then
+        return nil, migrationError
+    end
+    for _, tab in ipairs(model.bank.tabs) do
+        if tab.lastAccessibleAt ~= nil
+            and tab.lastAccessibleAt.unixSeconds > model.bank.scannedAt.unixSeconds then
+            return nil, "schema version 8 data.bank.tabs lastAccessibleAt must not follow scannedAt"
+        end
+    end
+    valid, migrationError = migrateVersionEightDatasetIdentity(
+        model.bank,
+        "schema version 8 data.bank"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+
+    valid, migrationError = validateExactTable(model.ui, {
+        windowPosition = true,
+        selectedRosterRankIndex = true,
+        selectedBankTabIndex = true,
+    }, "schema version 8 data.ui")
+    if not valid then
+        return nil, migrationError
+    end
+    valid, migrationError = validateWindowPosition(
+        model.ui.windowPosition,
+        "schema version 8 data.ui.windowPosition"
+    )
+    if not valid then
+        return nil, migrationError
+    end
+    if model.ui.selectedRosterRankIndex ~= nil then
+        valid, migrationError = requireInteger(
+            model.ui.selectedRosterRankIndex,
+            "schema version 8 data.ui.selectedRosterRankIndex",
+            0
+        )
+        if not valid then
+            return nil, migrationError
+        end
+    end
+    if model.ui.selectedBankTabIndex ~= nil then
+        valid, migrationError = requireInteger(
+            model.ui.selectedBankTabIndex,
+            "schema version 8 data.ui.selectedBankTabIndex",
+            1
+        )
+        if not valid then
+            return nil, migrationError
+        end
+    end
+
+    model.schemaVersion = 9
+    return model
+end
+
 local MIGRATIONS = {
     [0] = migrateVersionZero,
     [1] = migrateVersionOne,
@@ -1400,6 +1575,7 @@ local MIGRATIONS = {
     [5] = migrateVersionFive,
     [6] = migrateVersionSix,
     [7] = migrateVersionSeven,
+    [8] = migrateVersionEight,
 }
 
 local function isLegacyDevelopmentState(value)

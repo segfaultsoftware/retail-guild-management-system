@@ -4,7 +4,9 @@
 local _, RGMS = ...
 
 local AccountData = {}
-local Realm = type(RGMS) == "table" and RGMS.Realm or require("Core.Realm")
+local GuildIdentity = type(RGMS) == "table"
+    and RGMS.GuildIdentity
+    or require("Core.GuildIdentity")
 local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
@@ -12,7 +14,7 @@ local ChartModel = type(RGMS) == "table"
     and RGMS.ChartModel
     or require("Charts.Model")
 
-AccountData.CURRENT_SCHEMA_VERSION = 10
+AccountData.CURRENT_SCHEMA_VERSION = 11
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -397,20 +399,11 @@ local function validateTags(value, path)
 end
 
 function AccountData.guildKey(identity)
-    if type(identity) ~= "table"
-        or type(identity.name) ~= "string"
-        or identity.name == ""
-        or type(identity.realm) ~= "table"
-        or type(identity.realm.slug) ~= "string"
-        or identity.realm.slug == "" then
-        return nil, "guild identity requires a name and normalized realm"
+    local valid, validationError = GuildIdentity.validate(identity)
+    if not valid then
+        return nil, validationError
     end
-
-    local realmKey = Realm.key(identity.realm.slug)
-    if type(realmKey) ~= "string" or realmKey == "" then
-        return nil, "guild identity requires a normalized realm"
-    end
-    return tostring(#identity.name) .. ":" .. identity.name .. ":" .. realmKey
+    return identity.key
 end
 
 function AccountData.newModel()
@@ -505,19 +498,13 @@ function AccountData.validate(model)
             end
         end
 
-        local canonicalIdentity, identityError = SavedData.copyGuildIdentity(guild.identity)
+        local canonicalIdentity, identityError = SavedData.copyGuildIdentity(
+            guild.identity
+        )
         if not canonicalIdentity then
             return nil, identityError
         end
-        if canonicalIdentity.realm.name ~= guild.identity.realm.name
-            or canonicalIdentity.realm.slug ~= guild.identity.realm.slug then
-            return nil, "account data guild identity realm must be canonical"
-        end
-        local expectedKey, keyError = AccountData.guildKey(guild.identity)
-        if not expectedKey then
-            return nil, keyError
-        end
-        if key ~= expectedKey then
+        if key ~= canonicalIdentity.key then
             return nil, "account data guild key does not match its identity"
         end
 
@@ -846,6 +833,71 @@ function AccountData.load(saved, currentPacificDate)
         end
         migratedFrom = migratedFrom or 9
         working.schemaVersion = 10
+    end
+    if working.schemaVersion == 10 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for key, guild in pairs(working.guilds) do
+            if type(key) ~= "string" or key == "" or type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data.guilds must use non-empty string keys and table values",
+                    saved
+                )
+            end
+
+            local migratedIdentity, identityError =
+                SavedData.migrateLegacyGuildIdentity(guild.identity)
+            if not migratedIdentity then
+                return disabledState(
+                    "corrupt",
+                    "account data.guilds[" .. key .. "].identity "
+                        .. tostring(identityError),
+                    saved
+                )
+            end
+            if migratedIdentity.key ~= key then
+                return disabledState(
+                    "corrupt",
+                    "account data migration cannot change guild partition key " .. key,
+                    saved
+                )
+            end
+            guild.identity = migratedIdentity
+
+            for _, datasetName in ipairs({ "roster", "bank" }) do
+                local dataset = guild[datasetName]
+                if type(dataset) == "table" and dataset.guild ~= nil then
+                    local migratedDatasetIdentity, datasetIdentityError =
+                        SavedData.migrateLegacyGuildIdentity(dataset.guild)
+                    if not migratedDatasetIdentity then
+                        return disabledState(
+                            "corrupt",
+                            "account data.guilds[" .. key .. "]."
+                                .. datasetName .. ".guild "
+                                .. tostring(datasetIdentityError),
+                            saved
+                        )
+                    end
+                    if migratedDatasetIdentity.key ~= key then
+                        return disabledState(
+                            "corrupt",
+                            "account data " .. datasetName
+                                .. " dataset does not match its guild partition",
+                            saved
+                        )
+                    end
+                    dataset.guild = migratedDatasetIdentity
+                end
+            end
+        end
+        migratedFrom = migratedFrom or 10
+        working.schemaVersion = 11
     end
     if currentPacificDate == nil and type(GetServerTime) == "function" then
         currentPacificDate = RGMS and RGMS.DateTime
