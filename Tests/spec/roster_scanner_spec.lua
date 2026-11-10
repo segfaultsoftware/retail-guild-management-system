@@ -1,6 +1,8 @@
+local clientFlavor = require("Core.ClientFlavor")
 local datasetOwnership = require("Core.DatasetOwnership")
 local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local savedData = require("Core.SavedData")
 local scannerModule = require("Roster.Scanner")
 local tenure = require("Roster.Tenure")
@@ -100,6 +102,7 @@ local function newHarness(options)
         canScan = function()
             return options.canScan ~= false
         end,
+        getCurrentGuildIdentity = options.getCurrentGuildIdentity,
         print = function(message)
             messages[#messages + 1] = message
         end,
@@ -172,6 +175,32 @@ return {
         test.assert_equal(harness.progress, { true, false })
         test.assert_equal(harness.successfulCompletions(), 1)
         test.assert_matches(harness.messages[1], "scan complete")
+    end),
+
+    test.case("request-time product identity cannot commit another product snapshot", function()
+        local retail = fixtures.guild_identity()
+        local forever = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = retail.name,
+            clubId = "Club-001",
+        }))
+        local snapshot = successfulSnapshot("ForeverMember")
+        snapshot.guild = forever
+        local harness = newHarness({
+            snapshot = snapshot,
+            getCurrentGuildIdentity = function() return retail end,
+        })
+
+        test.assert_true(harness.scanner:Request("manual"))
+        local completed, reason = harness.scanner:OnDataUpdated()
+
+        test.assert_nil(completed)
+        test.assert_equal(reason, "transaction-failure")
+        test.assert_true(harness.current() == harness.original)
+        test.assert_equal(harness.successfulCompletions(), 0)
+        test.assert_equal(harness.progress, { true, false })
+        test.assert_matches(harness.messages[1], "does not match its captured guild")
     end),
 
     test.case("successful and failed transactions preserve the missing lifecycle", function()

@@ -1,6 +1,9 @@
 -- Deterministic fixture builders for RGMS domain data. Defaults are fixed and
 -- never consult the current clock, local timezone, WoW installation, or network.
 
+local ClientFlavor = require("Core.ClientFlavor")
+local GuildIdentity = require("Core.GuildIdentity")
+
 local Fixtures = {}
 
 local function copy(value)
@@ -31,6 +34,23 @@ function Fixtures.timestamp(overrides)
 end
 
 function Fixtures.guild_identity(overrides)
+    local input = withOverrides({
+        flavor = ClientFlavor.RETAIL,
+        region = "US",
+        name = "Example Guild",
+        realm = {
+            name = "Example Realm",
+            slug = "example-realm",
+        },
+    }, overrides)
+    local identity, identityError = GuildIdentity.create(input)
+    if not identity then
+        error(identityError)
+    end
+    return identity
+end
+
+function Fixtures.legacy_guild_identity(overrides)
     return withOverrides({
         id = "guild-us-example-realm-00000001",
         name = "Example Guild",
@@ -119,7 +139,7 @@ function Fixtures.saved_model(overrides)
     local timestamp = Fixtures.timestamp()
 
     return withOverrides({
-        schemaVersion = 8,
+        schemaVersion = 9,
         roster = {
             guild = guild,
             scannedAt = timestamp,
@@ -148,7 +168,7 @@ local function removeVersionSevenBankFields(model)
 end
 
 function Fixtures.saved_model_v0(overrides)
-    local guild = Fixtures.guild_identity()
+    local guild = Fixtures.legacy_guild_identity()
     local timestamp = Fixtures.timestamp()
     local member = Fixtures.roster_member()
     member.displayName = nil
@@ -182,7 +202,7 @@ function Fixtures.saved_model_v0(overrides)
 end
 
 function Fixtures.saved_model_v1(overrides)
-    local model = Fixtures.saved_model(overrides)
+    local model = Fixtures.saved_model_v8(overrides)
     model.schemaVersion = 1
     for _, member in ipairs(model.roster.members) do
         member.displayName = nil
@@ -200,7 +220,7 @@ function Fixtures.saved_model_v1(overrides)
 end
 
 function Fixtures.saved_model_v2(overrides)
-    local model = Fixtures.saved_model(overrides)
+    local model = Fixtures.saved_model_v8(overrides)
     model.schemaVersion = 2
     for _, member in ipairs(model.roster.members) do
         member.rankTenureStartDate = nil
@@ -215,7 +235,7 @@ function Fixtures.saved_model_v2(overrides)
 end
 
 function Fixtures.saved_model_v3(overrides)
-    local model = Fixtures.saved_model(overrides)
+    local model = Fixtures.saved_model_v8(overrides)
     model.schemaVersion = 3
     for _, member in ipairs(model.roster.members) do
         member.lastSeenDate = nil
@@ -229,7 +249,7 @@ function Fixtures.saved_model_v3(overrides)
 end
 
 function Fixtures.saved_model_v4(overrides)
-    local model = Fixtures.saved_model(overrides)
+    local model = Fixtures.saved_model_v8(overrides)
     model.schemaVersion = 4
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
@@ -239,7 +259,7 @@ function Fixtures.saved_model_v4(overrides)
 end
 
 function Fixtures.saved_model_v5(overrides)
-    local model = Fixtures.saved_model(overrides)
+    local model = Fixtures.saved_model_v8(overrides)
     model.schemaVersion = 5
     for _, slot in ipairs(model.bank.slots) do
         slot.stableSinceDate = nil
@@ -249,10 +269,25 @@ function Fixtures.saved_model_v5(overrides)
 end
 
 function Fixtures.saved_model_v6(overrides)
-    local model = Fixtures.saved_model(overrides)
+    local model = Fixtures.saved_model_v8(overrides)
     model.schemaVersion = 6
     removeVersionSevenBankFields(model)
     return model
+end
+
+function Fixtures.saved_model_v7(overrides)
+    local model = Fixtures.saved_model_v8(overrides)
+    model.schemaVersion = 7
+    model.ui = { windowPosition = model.ui.windowPosition }
+    return model
+end
+
+function Fixtures.saved_model_v8(overrides)
+    local model = Fixtures.saved_model()
+    model.schemaVersion = 8
+    model.roster.guild = Fixtures.legacy_guild_identity()
+    model.bank.guild = Fixtures.legacy_guild_identity()
+    return withOverrides(model, overrides)
 end
 
 

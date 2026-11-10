@@ -3,6 +3,7 @@ local dateTime = require("Core.DateTime")
 local chartModel = require("Charts.Model")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local groups = require("MainsAlts.Groups")
 local tags = require("MainsAlts.Tags")
 local reset = require("Core.Reset")
@@ -10,12 +11,48 @@ local rosterNews = require("Roster.News")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
 
-local function guild(name, realm)
-    return fixtures.guild_identity({
-        id = "guild-" .. realm,
+local function guild(name, realm, region)
+    return assert(guildIdentity.create({
+        flavor = "retail",
+        region = region or "US",
         name = name,
         realm = { name = realm, slug = realm },
+    }))
+end
+
+local function foreverGuild(name, region, clubId)
+    return assert(guildIdentity.create({
+        flavor = "forever",
+        region = region,
+        name = name,
+        clubId = clubId,
+    }))
+end
+
+local function legacyIdentity(identity)
+    return fixtures.legacy_guild_identity({
+        id = "legacy-" .. identity.key,
+        name = identity.name,
+        realm = {
+            name = identity.realm.name,
+            slug = identity.realm.slug,
+        },
+        region = identity.region,
     })
+end
+
+local function downgradeGuildIdentities(model)
+    for _, partition in pairs(model.guilds) do
+        partition.identity = legacyIdentity(partition.identity)
+        for _, datasetName in ipairs({ "roster", "bank" }) do
+            if partition[datasetName].guild ~= nil then
+                partition[datasetName].guild = legacyIdentity(
+                    partition[datasetName].guild
+                )
+            end
+        end
+    end
+    return model
 end
 
 local function completedRoster(identity, memberName)
@@ -40,7 +77,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 10,
+            schemaVersion = 11,
             settings = {
                 minimapPos = 225,
             },
@@ -59,7 +96,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 10,
+            schemaVersion = 11,
             settings = {
                 minimapPos = 225,
             },
@@ -83,7 +120,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 10,
+            schemaVersion = 11,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -103,13 +140,14 @@ return {
             completedRoster(identity, "Main")
         ))
         original.schemaVersion = 3
+        downgradeGuildIdentities(original)
         accountData.findGuild(original, identity).tags = nil
 
         local state = accountData.load(original)
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
@@ -126,6 +164,7 @@ return {
             completedRoster(identity, "Main")
         ))
         original.schemaVersion = 4
+        downgradeGuildIdentities(original)
         local originalGuild = accountData.findGuild(original, identity)
         originalGuild.rosterObservation = nil
         originalGuild.newsSets = nil
@@ -135,7 +174,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
         test.assert_nil(migratedGuild.rosterObservation)
         test.assert_equal(migratedGuild.newsSets, {})
         test.assert_nil(originalGuild.newsSets)
@@ -150,6 +189,7 @@ return {
             completedRoster(identity, "Main")
         ))
         original.schemaVersion = 5
+        downgradeGuildIdentities(original)
         local originalGuild = accountData.findGuild(original, identity)
         originalGuild.provisions = nil
         originalGuild.nextProvisionId = nil
@@ -159,7 +199,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
         test.assert_equal(migratedGuild.provisions, {})
         test.assert_equal(migratedGuild.nextProvisionId, 1)
         test.assert_nil(originalGuild.provisions)
@@ -178,13 +218,14 @@ return {
             5
         ))
         original.schemaVersion = 6
+        downgradeGuildIdentities(original)
 
         local state = accountData.load(original)
         local migratedGuild = accountData.findGuild(state.model, identity)
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
         test.assert_equal(migratedGuild.provisions[1].id, 1)
         test.assert_equal(migratedGuild.provisions[2].id, 3)
         test.assert_equal(migratedGuild.provisions[3].id, 4)
@@ -206,13 +247,14 @@ return {
             }
         ))
         original.schemaVersion = 7
+        downgradeGuildIdentities(original)
 
         local state = accountData.load(original)
         local migratedBank = accountData.findGuild(state.model, identity).bank
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 7)
-        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
         test.assert_nil(migratedBank.money)
         test.assert_equal(original.schemaVersion, 7)
     end),
@@ -232,6 +274,7 @@ return {
             }
         ))
         original.schemaVersion = 8
+        downgradeGuildIdentities(original)
         accountData.findGuild(original, identity).chartHistory = nil
 
         local state = accountData.load(original, "2024-06-01")
@@ -239,7 +282,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 8)
-        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
         test.assert_equal(migratedGuild.chartHistory, {
             gold = {}, members = {},
         })
@@ -263,6 +306,7 @@ return {
             }
         ))
         original.schemaVersion = 9
+        downgradeGuildIdentities(original)
         local originalHistory = accountData.findGuild(original, identity).chartHistory
         originalHistory.items = {
             {
@@ -278,7 +322,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 9)
-        test.assert_equal(state.model.schemaVersion, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
         test.assert_equal(migratedHistory, {
             gold = { { date = "2024-06-01", value = 500 } },
             members = {
@@ -290,6 +334,81 @@ return {
             },
         })
         test.assert_equal(originalHistory.items[1].name, "Obsolete")
+    end),
+
+    test.case("version 10 infers Retail identities without changing partition keys", function()
+        local identity = guild("Night Shift", "Area-52")
+        local original = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            identity,
+            "roster",
+            completedRoster(identity, "Main")
+        ))
+        original = assert(accountData.replaceDataset(
+            original,
+            identity,
+            "bank",
+            {
+                guild = identity,
+                scannedAt = fixtures.timestamp(),
+                tabs = { fixtures.bank_tab() },
+                slots = { fixtures.bank_slot() },
+            }
+        ))
+        original.schemaVersion = 10
+        downgradeGuildIdentities(original)
+        local expectedKey = identity.key
+        local originalIdentity = original.guilds[expectedKey].identity
+
+        local state = accountData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 10)
+        test.assert_equal(state.model.schemaVersion, 11)
+        test.assert_equal(state.model.guilds[expectedKey].identity, identity)
+        test.assert_equal(
+            state.model.guilds[expectedKey].roster.guild,
+            identity
+        )
+        test.assert_equal(
+            state.model.guilds[expectedKey].bank.guild,
+            identity
+        )
+        test.assert_nil(state.model.guilds[identity.key .. "-migrated"])
+        test.assert_equal(original.schemaVersion, 10)
+        test.assert_true(original.guilds[expectedKey].identity == originalIdentity)
+        test.assert_equal(original.guilds[expectedKey].identity.id, "legacy-" .. identity.key)
+    end),
+
+    test.case("failed identity migration preserves the complete account store", function()
+        local validIdentity = guild("Night Shift", "area-52")
+        local malformedIdentity = guild("Day Shift", "illidan")
+        local original = assert(accountData.replaceProvisions(
+            accountData.newModel(),
+            validIdentity,
+            {},
+            1
+        ))
+        original = assert(accountData.replaceProvisions(
+            original,
+            malformedIdentity,
+            {},
+            1
+        ))
+        original.schemaVersion = 10
+        downgradeGuildIdentities(original)
+        local malformedKey = malformedIdentity.key
+        original.guilds[malformedKey].identity.region = "Unknown"
+        local originalValidIdentity = original.guilds[validIdentity.key].identity
+
+        local state = accountData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_true(state.original == original)
+        test.assert_true(original.guilds[validIdentity.key].identity == originalValidIdentity)
+        test.assert_equal(original.schemaVersion, 10)
+        test.assert_equal(original.guilds[malformedKey].identity.region, "Unknown")
     end),
 
     test.case("bank money round trips within only its guild partition", function()
@@ -422,9 +541,7 @@ return {
             completedRoster(identity, "First")
         ))
 
-        local metadataVariant = guild("Night Shift", "area-52")
-        metadataVariant.id = "different-id"
-        metadataVariant.region = "EU"
+        local metadataVariant = guild("Night Shift", "area-52", "EU")
         local first = accountData.findGuild(model, identity)
         local second = accountData.findGuild(model, metadataVariant)
 
@@ -461,6 +578,38 @@ return {
         test.assert_equal(accountData.findGuild(model, firstIdentity).roster.members[1].name, "First")
         test.assert_equal(accountData.findGuild(model, secondIdentity).roster.members[1].name, "Second")
         test.assert_equal(accountData.findGuild(model, thirdIdentity).roster.members[1].name, "Third")
+    end),
+
+    test.case("Forever partitions cannot collide with Retail or another region", function()
+        local retail = guild("Night Shift", "area-52", "US")
+        local foreverUS = foreverGuild("Night Shift", "US", 4242)
+        local foreverEU = foreverGuild("Night Shift", "EU", 4242)
+        local model = accountData.newModel()
+
+        model = assert(accountData.replaceProvisions(model, retail, {
+            { id = 1, name = "Retail Supply", quality = "either", target = 1 },
+        }, 2))
+        model = assert(accountData.replaceProvisions(model, foreverUS, {
+            { id = 1, name = "US Supply", quality = "either", target = 1 },
+        }, 2))
+        model = assert(accountData.replaceProvisions(model, foreverEU, {
+            { id = 1, name = "EU Supply", quality = "either", target = 1 },
+        }, 2))
+
+        test.assert_false(retail.key == foreverUS.key)
+        test.assert_false(foreverUS.key == foreverEU.key)
+        test.assert_equal(
+            accountData.findGuild(model, retail).provisions[1].name,
+            "Retail Supply"
+        )
+        test.assert_equal(
+            accountData.findGuild(model, foreverUS).provisions[1].name,
+            "US Supply"
+        )
+        test.assert_equal(
+            accountData.findGuild(model, foreverEU).provisions[1].name,
+            "EU Supply"
+        )
     end),
 
     test.case("roster news persists account-wide inside only its guild partition", function()
@@ -1030,6 +1179,49 @@ return {
         test.assert_nil(character.ui.selectedRosterRankIndex)
         test.assert_nil(character.ui.selectedBankTabIndex)
         test.assert_equal(character.roster.members[1].name, "Aeloria")
+    end),
+
+    test.case("reset keeps same-named product and region partitions isolated", function()
+        local retail = guild("Night Shift", "area-52", "US")
+        local foreverUS = foreverGuild("Night Shift", "US", 4242)
+        local foreverEU = foreverGuild("Night Shift", "EU", 4242)
+        local account = accountData.newModel()
+        for _, entry in ipairs({
+            { identity = retail, name = "Retail Supply" },
+            { identity = foreverUS, name = "US Supply" },
+            { identity = foreverEU, name = "EU Supply" },
+        }) do
+            account = assert(accountData.replaceProvisions(account, entry.identity, {
+                { id = 1, name = entry.name, quality = "either", target = 1 },
+            }, 2))
+        end
+        local character = fixtures.saved_model()
+        local controller = reset.create({
+            savedData = savedData,
+            accountData = accountData,
+            getSavedData = function() return character end,
+            getAccountData = function() return account end,
+            getGuildIdentity = function() return foreverUS end,
+            getState = function() return { enabled = true } end,
+            commitAccount = function(newAccount, newCharacter)
+                account = newAccount
+                character = newCharacter
+            end,
+            showConfirmation = function() end,
+            print = function() end,
+        })
+
+        test.assert_true(controller:confirm(controller:requestManual()))
+
+        test.assert_equal(accountData.findGuild(account, foreverUS).provisions, {})
+        test.assert_equal(
+            accountData.findGuild(account, retail).provisions[1].name,
+            "Retail Supply"
+        )
+        test.assert_equal(
+            accountData.findGuild(account, foreverEU).provisions[1].name,
+            "EU Supply"
+        )
     end),
 
     test.case("guildless reset leaves account data unchanged", function()

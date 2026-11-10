@@ -89,7 +89,6 @@ end
 
 function MvpFixtures.guild_a()
     return fixtures.guild_identity({
-        id = "guild-us-pacific-a-0001",
         name = "Pacific Vanguard",
         realm = {
             name = "Example Realm",
@@ -100,7 +99,6 @@ end
 
 function MvpFixtures.guild_b()
     return fixtures.guild_identity({
-        id = "guild-us-pacific-b-0002",
         name = "Second Sunrise",
         realm = {
             name = "Other Realm",
@@ -229,7 +227,7 @@ end
 
 function MvpFixtures.empty_model(windowPosition)
     return {
-        schemaVersion = 8,
+        schemaVersion = 9,
         roster = {
             ranks = {},
             members = {},

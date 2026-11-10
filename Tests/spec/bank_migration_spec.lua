@@ -1,16 +1,28 @@
 local accountData = require("Core.AccountData")
 local bankMigration = require("Core.BankMigration")
+local clientFlavor = require("Core.ClientFlavor")
 local datasetOwnership = require("Core.DatasetOwnership")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
 
-local function guild(name, realm)
-    return fixtures.guild_identity({
-        id = "guild-" .. realm,
+local function guild(name, realm, region)
+    return assert(guildIdentity.create({
+        flavor = clientFlavor.RETAIL,
+        region = region or "US",
         name = name,
         realm = { name = realm, slug = realm },
-    })
+    }))
+end
+
+local function foreverGuild(name, region, clubId)
+    return assert(guildIdentity.create({
+        flavor = clientFlavor.FOREVER,
+        region = region,
+        name = name,
+        clubId = clubId,
+    }))
 end
 
 local function legacyCharacter(identity, quantity, position)
@@ -63,6 +75,45 @@ return {
         test.assert_equal(current.bank, { tabs = {}, slots = {} })
         test.assert_nil(accountData.findGuild(account, formerGuild))
         test.assert_equal(character.bank.slots[1].quantity, 11)
+    end),
+
+    test.case("Retail legacy bank cannot seed a same-named Forever partition", function()
+        local retail = guild("Night Shift", "area-52")
+        local forever = foreverGuild("Night Shift", "US", "guild-area-52")
+        local character = legacyCharacter(retail, 17)
+        local account, initialized, imported = bankMigration.initialize(
+            accountData.newModel(),
+            character,
+            forever
+        )
+
+        test.assert_true(initialized)
+        test.assert_false(imported)
+        test.assert_equal(
+            accountData.findGuild(account, forever).bank,
+            { tabs = {}, slots = {} }
+        )
+        test.assert_nil(accountData.findGuild(account, retail))
+        test.assert_equal(character.bank.slots[1].quantity, 17)
+    end),
+
+    test.case("Forever bank migration keeps regions isolated", function()
+        local us = foreverGuild("Night Shift", "US", "Club-001")
+        local eu = foreverGuild("Night Shift", "EU", "Club-001")
+        local character = legacyCharacter(us, 23)
+        local account, initialized, imported = bankMigration.initialize(
+            accountData.newModel(),
+            character,
+            eu
+        )
+
+        test.assert_true(initialized)
+        test.assert_false(imported)
+        test.assert_equal(
+            accountData.findGuild(account, eu).bank,
+            { tabs = {}, slots = {} }
+        )
+        test.assert_nil(accountData.findGuild(account, us))
     end),
 
     test.case("roster initialization does not suppress bank migration", function()

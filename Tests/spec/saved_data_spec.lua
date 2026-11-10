@@ -1,4 +1,6 @@
+local clientFlavor = require("Core.ClientFlavor")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
 
@@ -10,7 +12,7 @@ return {
         test.assert_true(state.initialized)
         test.assert_equal(state.status, "ready")
         test.assert_equal(state.model, {
-            schemaVersion = 8,
+            schemaVersion = 9,
             roster = {
                 ranks = {},
                 members = {},
@@ -55,15 +57,13 @@ return {
     end),
 
     test.case("schema version seven adds optional per-character dropdown selections", function()
-        local original = fixtures.saved_model()
-        original.schemaVersion = 7
-        original.ui = { windowPosition = original.ui.windowPosition }
+        local original = fixtures.saved_model_v7()
 
         local state = savedData.load(original)
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 7)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_nil(state.model.ui.selectedRosterRankIndex)
         test.assert_nil(state.model.ui.selectedBankTabIndex)
         state.model.ui.selectedRosterRankIndex = 0
@@ -71,6 +71,95 @@ return {
         test.assert_true(savedData.validate(state.model))
         state.model.ui.selectedBankTabIndex = 0
         test.assert_nil(savedData.validate(state.model))
+    end),
+
+    test.case("schema version eight infers Retail identities copy-on-write", function()
+        local original = fixtures.saved_model_v8()
+        original.ui.selectedRosterRankIndex = 0
+        original.ui.selectedBankTabIndex = 2
+
+        local state = savedData.load(original)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
+        for _, datasetName in ipairs({ "roster", "bank" }) do
+            local identity = state.model[datasetName].guild
+            test.assert_equal(identity.flavor, clientFlavor.RETAIL)
+            test.assert_equal(identity.region, "US")
+            test.assert_equal(identity.name, "Example Guild")
+            test.assert_equal(identity.displayName, "Example Guild")
+            test.assert_equal(identity.key, "13:Example Guild:example-realm")
+            test.assert_equal(identity.realm, {
+                name = "Example Realm",
+                slug = "example-realm",
+            })
+            test.assert_nil(identity.clubId)
+            test.assert_nil(identity.id)
+        end
+        test.assert_equal(state.model.ui.selectedRosterRankIndex, 0)
+        test.assert_equal(state.model.ui.selectedBankTabIndex, 2)
+        test.assert_equal(original.schemaVersion, 8)
+        test.assert_not_nil(original.roster.guild.id)
+        test.assert_nil(original.roster.guild.flavor)
+        test.assert_not_nil(original.bank.guild.id)
+        test.assert_nil(original.bank.guild.flavor)
+    end),
+
+    test.case("late schema version eight failure preserves the supplied store", function()
+        local original = fixtures.saved_model_v8()
+        original.bank.guild.region = "UNKNOWN"
+        local before = fixtures.saved_model_v8()
+        before.bank.guild.region = "UNKNOWN"
+
+        local state = savedData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "guild region is unsupported")
+        test.assert_true(state.original == original)
+        test.assert_equal(original, before)
+        test.assert_nil(original.roster.guild.flavor)
+        test.assert_not_nil(original.roster.guild.id)
+    end),
+
+    test.case("current Retail and Forever identities use exact canonical shapes", function()
+        local retail = fixtures.saved_model()
+        test.assert_true(savedData.validate(retail))
+
+        local forever = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "EU",
+            name = "Example Guild",
+            clubId = "Club-001",
+        }))
+        local foreverModel = fixtures.saved_model()
+        foreverModel.roster.guild = forever
+        foreverModel.bank.guild = forever
+        test.assert_true(savedData.validate(foreverModel))
+
+        local unexpected = fixtures.saved_model()
+        unexpected.roster.guild.id = "legacy-id"
+        local valid, validationError = savedData.validate(unexpected)
+        test.assert_nil(valid)
+        test.assert_matches(validationError, "unexpected field id")
+
+        local unexpectedRealm = fixtures.saved_model()
+        unexpectedRealm.bank.guild.realm.label = "metadata"
+        valid, validationError = savedData.validate(unexpectedRealm)
+        test.assert_nil(valid)
+        test.assert_matches(validationError, "unexpected field label")
+    end),
+
+    test.case("copying canonical guild identities does not alias callers", function()
+        local original = fixtures.guild_identity()
+        local copied = assert(savedData.copyGuildIdentity(original))
+
+        test.assert_equal(copied, original)
+        test.assert_false(copied == original)
+        test.assert_false(copied.realm == original.realm)
+        copied.realm.name = "Changed Realm"
+        test.assert_equal(original.realm.name, "Example Realm")
     end),
 
     test.case("separate character loads never share nested state", function()
@@ -92,10 +181,16 @@ return {
         test.assert_true(first.enabled)
         test.assert_equal(first.migratedFrom, 0)
         test.assert_equal(first.model, second.model)
-        test.assert_equal(first.model.schemaVersion, 8)
-        test.assert_equal(first.model.roster.guild, original.roster.guildIdentity)
+        test.assert_equal(first.model.schemaVersion, 9)
+        test.assert_equal(
+            first.model.roster.guild,
+            assert(savedData.migrateLegacyGuildIdentity(original.roster.guildIdentity))
+        )
         test.assert_equal(first.model.roster.scannedAt, original.roster.scanTimestamp)
-        test.assert_equal(first.model.bank.guild, original.bank.guildIdentity)
+        test.assert_equal(
+            first.model.bank.guild,
+            assert(savedData.migrateLegacyGuildIdentity(original.bank.guildIdentity))
+        )
         test.assert_equal(first.model.ui.windowPosition, original.windowPosition)
         test.assert_equal(original.schemaVersion, 0)
         test.assert_nil(original.roster.guild)
@@ -107,7 +202,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(
             state.model.roster.members[1].displayName,
             "Aeloria-Example Realm"
@@ -130,7 +225,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(
             state.model.roster.members[1].rankTenureStartDate,
             "2024-06-01"
@@ -145,7 +240,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(state.model.roster.members[1].lastSeenDate, "2024-06-01")
         test.assert_false(state.model.roster.members[1].isMissing)
         test.assert_equal(original.schemaVersion, 3)
@@ -179,7 +274,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(state.model.roster.guild.realm.name, "Ner'zhul")
         test.assert_equal(state.model.roster.guild.realm.slug, "Ner'zhul")
         test.assert_equal(state.model.bank.guild.realm.name, "Deep-Rock")
@@ -202,7 +297,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(
             state.model.bank.slots[1].stableSinceDate,
             "2024-06-01"
@@ -238,7 +333,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 8)
+        test.assert_equal(state.model.schemaVersion, 9)
         test.assert_equal(
             state.model.bank.tabs[1].lastAccessibleAt,
             original.bank.scannedAt

@@ -17,6 +17,7 @@ function Scanner.create(dependencies)
         inProgress = false,
         elapsed = 0,
         source = nil,
+        guildIdentity = nil,
         timeoutSeconds = dependencies.timeoutSeconds
             or Scanner.DEFAULT_TIMEOUT_SECONDS,
     }
@@ -43,6 +44,7 @@ function Scanner.create(dependencies)
         end
         self.elapsed = 0
         self.source = nil
+        self.guildIdentity = nil
         dependencies.refreshStatus()
         printMessage("Guild roster scan failed: " .. tostring(message) .. ".")
         return nil, reason or "scan-failed"
@@ -82,9 +84,32 @@ function Scanner.create(dependencies)
             return nil, "scanning-disabled"
         end
 
+        if type(dependencies.getCurrentGuildIdentity) == "function" then
+            local resolved, identity, identityError = pcall(
+                dependencies.getCurrentGuildIdentity
+            )
+            if not resolved then
+                identityError = identity
+                identity = nil
+            end
+            if identity == nil then
+                if source ~= "automatic" then
+                    printMessage(
+                        "Cannot scan the guild roster because "
+                            .. tostring(identityError
+                                or "the current guild identity is unavailable")
+                            .. "."
+                    )
+                end
+                return nil, "identity-unavailable"
+            end
+            self.guildIdentity = identity
+        end
+
         if type(dependencies.beginScan) == "function" then
             local admitted = dependencies.beginScan()
             if not admitted then
+                self.guildIdentity = nil
                 return nil, "scan-in-progress"
             end
         end
@@ -149,7 +174,7 @@ function Scanner.create(dependencies)
 
         local transaction, beginError = dependencies.ownership:begin(
             "roster",
-            snapshot.guild
+            self.guildIdentity or snapshot.guild
         )
         if not transaction then
             return self:FinishFailure(beginError, "transaction-failure")
@@ -176,6 +201,7 @@ function Scanner.create(dependencies)
         self:SetProgress(false)
         self.elapsed = 0
         self.source = nil
+        self.guildIdentity = nil
         if type(dependencies.completeSuccess) == "function" then
             dependencies.completeSuccess(newsCreated == true)
         end

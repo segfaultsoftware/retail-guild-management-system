@@ -25,6 +25,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Retail partition keys while providing region-scoped, stable-club-ID Forever
   keys, separate display metadata, fail-closed validation, and shared equality.
 
+### Changed
+
+- Migrated account-wide and per-character guild identities to the shared
+  product-aware contract while preserving every existing Retail partition key,
+  isolating new Forever data by region, and rejecting stale cross-product scan
+  commits without changing recoverable saved data.
+
 ### Removed
 
 - Removed the unused macOS addon-link helper and macOS-specific development

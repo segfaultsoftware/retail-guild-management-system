@@ -8,17 +8,16 @@ local RosterMigration = {}
 local AccountData = type(RGMS) == "table"
     and RGMS.AccountData
     or require("Core.AccountData")
+local GuildIdentity = type(RGMS) == "table"
+    and RGMS.GuildIdentity
+    or require("Core.GuildIdentity")
 local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
 
 local function sameGuild(left, right)
-    if left == nil or right == nil then
-        return false
-    end
-    local leftKey = AccountData.guildKey(left)
-    local rightKey = AccountData.guildKey(right)
-    return leftKey ~= nil and rightKey ~= nil and leftKey == rightKey
+    local same = GuildIdentity.same(left, right)
+    return same == true
 end
 
 function RosterMigration.initialize(accountModel, characterModel, guildIdentity)

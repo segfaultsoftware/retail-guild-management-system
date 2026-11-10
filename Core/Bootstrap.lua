@@ -75,29 +75,39 @@ function RGMS.ResolveCurrentGuildIdentity()
         return nil
     end
     local guildName, _, _, guildRealm = GetGuildInfo("player")
-    local normalizedRealm = guildRealm
-        or (type(GetNormalizedRealmName) == "function" and GetNormalizedRealmName())
-    local displayRealm = guildRealm
-        or (type(GetRealmName) == "function" and GetRealmName())
-    if type(guildName) ~= "string" or guildName == ""
-        or type(normalizedRealm) ~= "string" or normalizedRealm == ""
-        or type(displayRealm) ~= "string" or displayRealm == "" then
-        return nil
+    if type(RGMS.ClientFlavor) ~= "table"
+        or type(RGMS.ClientFlavor.getFlavor) ~= "function"
+        or type(RGMS.GuildIdentity) ~= "table"
+        or type(RGMS.GuildIdentity.create) ~= "function" then
+        return nil, "guild identity service is unavailable"
     end
-    local clubId = type(C_Club) == "table"
-        and type(C_Club.GetGuildClubId) == "function"
-        and C_Club.GetGuildClubId()
-        or nil
+
+    local flavor = RGMS.ClientFlavor.getFlavor()
     local regionId = type(GetCurrentRegion) == "function" and GetCurrentRegion() or nil
-    return {
-        id = tostring(clubId or guildName),
+    local input = {
+        flavor = flavor,
         name = guildName,
-        realm = {
-            name = RGMS.Realm.normalize(displayRealm),
-            slug = RGMS.Realm.normalize(normalizedRealm),
-        },
-        region = REGION_NAMES[regionId] or "Unknown",
+        region = REGION_NAMES[regionId],
     }
+
+    if flavor == RGMS.ClientFlavor.RETAIL then
+        local normalizedRealm = guildRealm
+            or (type(GetNormalizedRealmName) == "function"
+                and GetNormalizedRealmName())
+        local displayRealm = guildRealm
+            or (type(GetRealmName) == "function" and GetRealmName())
+        input.realm = {
+            name = displayRealm,
+            slug = normalizedRealm,
+        }
+    elseif flavor == RGMS.ClientFlavor.FOREVER then
+        input.clubId = type(C_Club) == "table"
+            and type(C_Club.GetGuildClubId) == "function"
+            and C_Club.GetGuildClubId()
+            or nil
+    end
+
+    return RGMS.GuildIdentity.create(input)
 end
 
 function RGMS.ActivateCurrentGuild()
@@ -108,9 +118,18 @@ function RGMS.ActivateCurrentGuild()
         RGMS.DB = nil
         return nil
     end
-    local identity = RGMS.ResolveCurrentGuildIdentity()
+    local identity, identityError = RGMS.ResolveCurrentGuildIdentity()
     local accountModel = RGMS.AccountDataState.model
     local rosterInitialized = false
+    if identity == nil and identityError ~= nil then
+        RGMS.ActiveGuildIdentity = nil
+        RGMS.DB = RGMS.AccountData.view(
+            accountModel,
+            nil,
+            RGMS.SavedDataState.model.ui
+        )
+        return nil, false, identityError
+    end
     if identity ~= nil and type(RGMS.RosterMigration) == "table" then
         local initializedModel, initializedOrError = RGMS.RosterMigration.initialize(
             accountModel,

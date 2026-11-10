@@ -1,6 +1,12 @@
 local _, RGMS = ...
 
 local Bank = RGMS.Bank or {}
+local ClientFlavor = type(RGMS.ClientFlavor) == "table"
+    and RGMS.ClientFlavor
+    or require("Core.ClientFlavor")
+local GuildIdentity = type(RGMS.GuildIdentity) == "table"
+    and RGMS.GuildIdentity
+    or require("Core.GuildIdentity")
 local Realm = type(RGMS.Realm) == "table"
     and RGMS.Realm
     or require("Core.Realm")
@@ -35,15 +41,19 @@ local function captureGuildIdentity()
         return incomplete("guild name or realm is unavailable")
     end
 
-    return {
-        id = tostring(clubId),
+    local identity, identityError = GuildIdentity.create({
+        flavor = ClientFlavor.RETAIL,
+        region = REGION_NAMES[GetCurrentRegion()] or "Unknown",
         name = guildName,
         realm = {
             name = Realm.normalize(displayRealm),
             slug = Realm.normalize(normalizedRealm),
         },
-        region = REGION_NAMES[GetCurrentRegion()] or "Unknown",
-    }
+    })
+    if not identity then
+        return incomplete(identityError)
+    end
+    return identity
 end
 
 local function displayedTabName(name, tabIndex)
@@ -443,12 +453,60 @@ function Bank.CancelScan()
     return scanner:Cancel()
 end
 
+local function resolveActiveGuildIdentity()
+    local identity = RGMS.ActiveGuildIdentity
+    if type(RGMS.ResolveCurrentGuildIdentity) == "function" then
+        local resolved, current, resolveError = pcall(
+            RGMS.ResolveCurrentGuildIdentity
+        )
+        if not resolved then
+            return nil, "current guild identity could not be resolved ("
+                .. tostring(current)
+                .. ")"
+        end
+        if current == nil then
+            return nil, resolveError or "current guild identity is unavailable"
+        end
+        if identity ~= nil then
+            local sameActive, activeError = GuildIdentity.same(identity, current)
+            if sameActive ~= true then
+                return nil, activeError
+                    or "active guild identity changed before bank scan preparation"
+            end
+        end
+        identity = current
+    end
+
+    if identity == nil then
+        return nil, "active guild identity is unavailable"
+    end
+    local valid, validationError = GuildIdentity.validate(identity)
+    if not valid then
+        return nil, "active guild identity is invalid: "
+            .. tostring(validationError)
+    end
+    return identity
+end
+
 function Bank.PrepareScan(guildIdentity)
     if type(RGMS.AccountDataState) ~= "table"
         or not RGMS.AccountDataState.enabled
         or type(RGMS.SavedDataState) ~= "table"
         or not RGMS.SavedDataState.enabled then
         return nil, "saved data is unavailable"
+    end
+
+    local activeIdentity, activeError = resolveActiveGuildIdentity()
+    if not activeIdentity then
+        return nil, activeError
+    end
+    local sameGuild, identityError = GuildIdentity.same(
+        guildIdentity,
+        activeIdentity
+    )
+    if sameGuild ~= true then
+        return nil, identityError
+            or "guild identity changed before bank scan preparation"
     end
 
     local accountModel = RGMS.AccountDataState.model
@@ -463,10 +521,9 @@ function Bank.PrepareScan(guildIdentity)
     if initializedModel ~= accountModel then
         RGMSAccountDB = initializedModel
         RGMS.AccountDataState.model = initializedModel
-        RGMS.ActiveGuildIdentity = guildIdentity
         RGMS.DB = RGMS.AccountData.view(
             initializedModel,
-            guildIdentity,
+            activeIdentity,
             RGMS.SavedDataState.model.ui
         )
         if type(RGMS.Provisions) == "table"

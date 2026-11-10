@@ -1,3 +1,5 @@
+local clientFlavor = require("Core.ClientFlavor")
+local guildIdentity = require("Core.GuildIdentity")
 local test = require("Tests.lib.runner")
 local portal = require("UI.Portal")
 
@@ -90,6 +92,12 @@ local function newHarness(options)
             end,
         },
         DB = options.database,
+        ActiveGuildIdentity = options.activeGuildIdentity,
+        ResolveCurrentGuildIdentity = options.resolveCurrentGuildIdentity,
+        AccountData = options.accountData,
+        AccountDataState = options.accountDataState,
+        SavedDataState = options.savedDataState,
+        BankMigration = options.bankMigration,
         BankReport = options.bankReport,
         DateTime = options.dateTime,
         Portal = portal,
@@ -116,6 +124,7 @@ local function newHarness(options)
         eventFrame = eventFrame,
         guildBankFrame = guildBankFrame,
         bank = bank,
+        rgms = fakeRGMS,
         restore = function()
             CreateFrame = previousCreateFrame
             GuildBankFrame = previousGuildBankFrame
@@ -373,6 +382,62 @@ return {
             { action = "slots-changed" },
             { action = "update", elapsed = 0.25 },
         })
+        harness.restore()
+    end),
+
+    test.case("bank preparation rejects stale product identities without reactivation", function()
+        local retail = assert(guildIdentity.create({
+            flavor = clientFlavor.RETAIL,
+            region = "US",
+            name = "Example Guild",
+            realm = { name = "Example Realm", slug = "example-realm" },
+        }))
+        local forever = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Example Guild",
+            clubId = "Club-001",
+        }))
+        local migrationCalls = 0
+        local accountModel = { marker = "account" }
+        local characterModel = { ui = {} }
+        local committedView = { marker = "view" }
+        local currentIdentity = retail
+        local harness = newHarness({
+            database = committedView,
+            activeGuildIdentity = retail,
+            resolveCurrentGuildIdentity = function()
+                return currentIdentity
+            end,
+            accountDataState = { enabled = true, model = accountModel },
+            savedDataState = { enabled = true, model = characterModel },
+            bankMigration = {
+                initialize = function()
+                    migrationCalls = migrationCalls + 1
+                    return accountModel
+                end,
+            },
+            accountData = {
+                view = function()
+                    error("stale bank preparation must not replace the active view")
+                end,
+            },
+        })
+
+        local prepared, prepareError = harness.bank.PrepareScan(forever)
+        test.assert_nil(prepared)
+        test.assert_matches(prepareError, "changed")
+        test.assert_equal(migrationCalls, 0)
+        test.assert_true(harness.rgms.ActiveGuildIdentity == retail)
+        test.assert_true(harness.rgms.DB == committedView)
+
+        currentIdentity = forever
+        prepared, prepareError = harness.bank.PrepareScan(forever)
+        test.assert_nil(prepared)
+        test.assert_matches(prepareError, "changed")
+        test.assert_equal(migrationCalls, 0)
+        test.assert_true(harness.rgms.ActiveGuildIdentity == retail)
+        test.assert_true(harness.rgms.DB == committedView)
         harness.restore()
     end),
 

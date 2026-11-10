@@ -57,9 +57,10 @@ function Reset.create(dependencies)
         request = request or { recovery = false }
 
         if dependencies.accountData then
-            local guildIdentity = dependencies.getGuildIdentity()
+            local guildIdentity, guildIdentityError = dependencies.getGuildIdentity()
             if guildIdentity == nil and not request.recovery then
-                local resetError = "the current guild is unavailable"
+                local resetError = guildIdentityError
+                    or "the current guild is unavailable"
                 dependencies.print("Reset failed: " .. resetError .. ".")
                 return nil, resetError
             end
@@ -263,9 +264,10 @@ if type(RGMS) == "table" then
                 or RGMSAccountDB
         end,
         getGuildIdentity = function()
+            if type(RGMS.ResolveCurrentGuildIdentity) == "function" then
+                return RGMS.ResolveCurrentGuildIdentity()
+            end
             return RGMS.ActiveGuildIdentity
-                or (type(RGMS.ResolveCurrentGuildIdentity) == "function"
-                    and RGMS.ResolveCurrentGuildIdentity())
         end,
         getState = function()
             if type(RGMS.SavedDataState) == "table"

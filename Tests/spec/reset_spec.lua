@@ -1,5 +1,8 @@
+local accountData = require("Core.AccountData")
+local clientFlavor = require("Core.ClientFlavor")
 local commands = require("Core.Commands")
 local fixtures = require("Tests.fixtures")
+local guildIdentity = require("Core.GuildIdentity")
 local resetModule = require("Core.Reset")
 local savedData = require("Core.SavedData")
 local test = require("Tests.lib.runner")
@@ -45,6 +48,20 @@ local function newHarness(saved)
     })
 
     return harness
+end
+
+local function completedRoster(identity, memberName)
+    return {
+        guild = identity,
+        scannedAt = fixtures.timestamp(),
+        ranks = { fixtures.roster_rank() },
+        members = {
+            fixtures.roster_member({
+                name = memberName,
+                displayName = memberName .. "-Example Realm",
+            }),
+        },
+    }
 end
 
 return {
@@ -100,7 +117,7 @@ return {
 
         test.assert_true(confirmed, resetError)
         test.assert_equal(harness.saved, {
-            schemaVersion = 8,
+            schemaVersion = savedData.CURRENT_SCHEMA_VERSION,
             roster = {
                 ranks = {},
                 members = {},
@@ -260,5 +277,79 @@ return {
         CANCEL = previousCancel
         StaticPopup_Show = previousShow
         RGMSCharacterDB = previousSaved
+    end),
+
+    test.case("production reset resolves current product instead of stale active identity", function()
+        local previousDialogs = StaticPopupDialogs
+        local previousAccept = ACCEPT
+        local previousCancel = CANCEL
+        local previousAccount = RGMSAccountDB
+        local previousCharacter = RGMSCharacterDB
+        StaticPopupDialogs = {}
+        ACCEPT = "Accept"
+        CANCEL = "Cancel"
+
+        local retail = fixtures.guild_identity()
+        local forever = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = retail.region,
+            name = retail.name,
+            clubId = "Club-001",
+        }))
+        local account = accountData.newModel()
+        account = assert(accountData.replaceDataset(
+            account,
+            retail,
+            "roster",
+            completedRoster(retail, "RetailMember")
+        ))
+        account = assert(accountData.replaceDataset(
+            account,
+            forever,
+            "roster",
+            completedRoster(forever, "ForeverMember")
+        ))
+        local character = savedData.newModel()
+        RGMSAccountDB = account
+        RGMSCharacterDB = character
+
+        local fakeRGMS = {
+            AccountData = accountData,
+            AccountDataState = {
+                enabled = true,
+                scope = "account",
+                model = account,
+            },
+            ActiveGuildIdentity = retail,
+            IsScanLocked = function() return false end,
+            Print = function() end,
+            ResolveCurrentGuildIdentity = function() return forever end,
+            SavedData = savedData,
+            SavedDataState = {
+                enabled = true,
+                scope = "character",
+                model = character,
+            },
+        }
+        assert(loadfile("Core/Reset.lua"))("RGMS", fakeRGMS)
+
+        local confirmed, resetError = fakeRGMS.Reset:confirm({ recovery = false })
+        test.assert_true(confirmed, resetError)
+        test.assert_equal(
+            accountData.findGuild(RGMSAccountDB, retail).roster.members[1].name,
+            "RetailMember"
+        )
+        test.assert_equal(
+            accountData.findGuild(RGMSAccountDB, forever).roster.members,
+            {}
+        )
+        test.assert_equal(fakeRGMS.ActiveGuildIdentity, forever)
+        test.assert_equal(fakeRGMS.DB.roster.members, {})
+
+        StaticPopupDialogs = previousDialogs
+        ACCEPT = previousAccept
+        CANCEL = previousCancel
+        RGMSAccountDB = previousAccount
+        RGMSCharacterDB = previousCharacter
     end),
 }

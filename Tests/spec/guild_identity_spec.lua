@@ -67,12 +67,10 @@ return {
             },
         })
         local identity = create(input)
-        local establishedKey = assert(accountData.guildKey({
-            name = input.name,
-            realm = input.realm,
-        }))
+        local establishedKey = "16:Ner'zhul Society:ner'zhul"
 
         test.assert_equal(identity.key, establishedKey)
+        test.assert_equal(assert(accountData.guildKey(identity)), establishedKey)
         test.assert_equal(
             identity.key,
             "16:Ner'zhul Society:ner'zhul"
