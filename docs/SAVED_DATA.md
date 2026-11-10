@@ -14,11 +14,11 @@ partition plus the logged-in character's `ui` table. It never exposes another
 saved guild through the UI. A guildless character receives an empty transient
 view and does not create, bind, replace, or erase an account guild partition.
 
-## Account-wide schema: version 12
+## Account-wide schema: version 13
 
 ```text
 {
-  schemaVersion = 12,
+  schemaVersion = 13,
   settings = {
     minimapPos = number,
   },
@@ -30,17 +30,17 @@ view and does not create, bind, replace, or erase an account guild partition.
       bankInitialized = boolean,
       bank = BankDataset,
       mainAltGroups = {
-        [MainNameRealm] = { AltNameRealm, ... },
+        [MainIdentityKey] = { AltIdentityKey, ... },
       },
       characterNotes = {
-        [CharacterNameRealm] = NoteText,
+        [CharacterIdentityKey] = NoteText,
       },
       tags = {
         definitions = {
           [NormalizedTagName] = true,
         },
         assignments = {
-          [CharacterNameRealm] = {
+          [CharacterIdentityKey] = {
             [NormalizedTagName] = true,
           },
         },
@@ -101,8 +101,13 @@ present member over an equivalent retained-missing record and otherwise the
 newest observation. Historical `newsSets` are not reinterpreted or rewritten;
 their human-readable join, leave, and rank-change labels remain unchanged.
 Bank data, charts, provisions, groups, notes, tags, and every other guild
-partition are preserved. Conversion happens only on a detached copy, so any
-late validation failure leaves the complete supplied account store unchanged.
+partition are preserved. Version 13 converts only legacy Retail group labels
+through the explicit Retail legacy parser into the same opaque identity keys
+stored on roster members. Existing private-note and tag-assignment keys and
+values are copied exactly because they already use canonical Retail character
+identity. Empty, malformed, duplicate, or colliding group identities reject the
+whole migration. Conversion happens only on a detached copy, so any late
+validation failure leaves the complete supplied account store unchanged.
 
 A `GuildIdentity` has one of these canonical shapes (fields shown as `nil` are
 absent from the saved Lua table):
@@ -150,17 +155,24 @@ not retain absent members. `newsSets` stores immutable qualifying scan results
 newest first until acknowledgement or expiry after their 21st Pacific calendar
 day.
 
-Character-note and tag-assignment keys retain their established Retail
-Name-Realm values in version 12; migrating those features to opaque roster
-identity belongs to the subsequent Mains/Alts schema version. Saved note text
-is trimmed, whitespace-only text is removed, and editor-created notes are
-limited to 5,500 characters. Grouping, promotion, and removal update only
-`mainAltGroups`, so notes and tag assignments remain attached to their existing
-keys. Tag definitions are normalized
+Main/alt membership, character-note keys, and tag-assignment keys are opaque,
+non-empty roster character identities. Runtime paths never parse those keys or
+display labels; labels and sort inputs come from the active roster record.
+Version 13 preserves every existing Retail note and assignment key byte for
+byte while re-keying only legacy groups. Saved note text is trimmed,
+whitespace-only text is removed, and editor-created notes are limited to 5,500
+characters. Grouping, promotion, and removal update only `mainAltGroups`, so
+notes and tag assignments remain attached to their character identities. Tag
+definitions are normalized
 by trimming edge whitespace and downcasing ASCII letters while preserving
 interior whitespace and non-ASCII spelling. Every guild catalog contains `me`;
 custom definitions remain saved even when unused. Assignments are removed only
 when their character leaves the retained roster database.
+
+The live guild-note adapter converts raw roster API names through the shared
+character-identity service using the active guild's product and region. It
+stores the resulting key beside the service-provided display label; note
+visibility and the existing read-only guild-note editing policy are unchanged.
 
 ## Per-character schema: version 10
 
@@ -305,7 +317,8 @@ The schema migration remains project-owned after evaluating established shared
 libraries. [AceDB-3.0](https://github.com/WoWUIDev/Ace3) is actively maintained
 and broadly adopted for profiles, namespaces, and defaults, but it does not
 provide RGMS's strict versioned validation, opaque guild and character identity
-contracts, or copy-on-write rollback. [LibSerialize](https://github.com/rossnichols/LibSerialize)
+contracts, collision-safe group re-keying, or copy-on-write rollback.
+[LibSerialize](https://github.com/rossnichols/LibSerialize)
 is maintained, MIT-licensed, and Lua-compatible, but serializes arbitrary values
 rather than migrating WoW SavedVariables already loaded as tables. The current
 [LibSavedVars](https://github.com/silvereyes333/LibSavedVars) implementation is

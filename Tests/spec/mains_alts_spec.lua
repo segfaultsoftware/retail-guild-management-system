@@ -13,8 +13,8 @@ local function newHarness(options)
             tags = options.tags or tags.newState(),
         },
         RosterNames = {
-            identity = function(name, realm)
-                return string.lower(name .. "-" .. realm)
+            identity = function()
+                error("Mains/Alts must not reconstruct roster identities")
             end,
         },
         Roster = {
@@ -43,20 +43,28 @@ local function newHarness(options)
                     return nil, options.groupError
                 end
                 return options.groupResult or {
-                    ["Main-Area52"] = { "Alt-Area52" },
+                    ["main-area52"] = { "alt-area52" },
                 }, options.mainIdentity or "main-area52"
             end,
-            promote = function(groups, altIdentity)
-                calls.promote = { groups = groups, altIdentity = altIdentity }
+            promote = function(roster, groups, altIdentity)
+                calls.promote = {
+                    roster = roster,
+                    groups = groups,
+                    altIdentity = altIdentity,
+                }
                 if options.promoteError then
                     return nil, options.promoteError
                 end
                 return options.promoteResult or {
-                    ["Alt-Area52"] = { "Main-Area52" },
+                    ["alt-area52"] = { "main-area52" },
                 }, options.promoteMainIdentity or "alt-area52"
             end,
-            remove = function(groups, altIdentity)
-                calls.remove = { groups = groups, altIdentity = altIdentity }
+            remove = function(roster, groups, altIdentity)
+                calls.remove = {
+                    roster = roster,
+                    groups = groups,
+                    altIdentity = altIdentity,
+                }
                 if options.removeError then
                     return nil, options.removeError
                 end
@@ -192,7 +200,12 @@ return {
 
     test.case("live visible guild notes participate in row note indicators", function()
         local controller, calls = newHarness({
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
             rows = {
                 {
                     identity = "main-area52",
@@ -216,7 +229,12 @@ return {
     test.case("live visible guild notes are attached only to transient reports", function()
         local searchable = { "public", "visible officer" }
         local controller, calls, rgms = newHarness({
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
             rows = {
                 {
                     identity = "main-area52",
@@ -298,7 +316,10 @@ return {
 
     test.case("grouping publishes only the replacement groups and completes the UI state", function()
         local controller, calls, rgms = newHarness({
-            members = { { name = "Main" }, { name = "Alt" } },
+            members = {
+                { identity = "main-area52", name = "Main" },
+                { identity = "alt-area52", name = "Alt" },
+            },
             groups = {},
         })
 
@@ -314,7 +335,7 @@ return {
             "alt-area52",
         })
         test.assert_equal(calls.replace.groups, {
-            ["Main-Area52"] = { "Alt-Area52" },
+            ["main-area52"] = { "alt-area52" },
         })
         test.assert_true(calls.activated)
         test.assert_equal(calls.completedMain, "main-area52")
@@ -323,9 +344,9 @@ return {
 
     test.case("extending a group targets its existing main after publication", function()
         local controller, calls = newHarness({
-            groups = { ["Existing-Area52"] = { "OldAlt-Area52" } },
+            groups = { ["existing-area52"] = { "oldalt-area52" } },
             groupResult = {
-                ["Existing-Area52"] = { "NewAlt-Area52", "OldAlt-Area52" },
+                ["existing-area52"] = { "newalt-area52", "oldalt-area52" },
             },
             mainIdentity = "existing-area52",
         })
@@ -354,7 +375,7 @@ return {
 
     test.case("promotion publishes the swapped group and expands the new main", function()
         local controller, calls, rgms = newHarness({
-            groups = { ["Main-Area52"] = { "Alt-Area52" } },
+            groups = { ["main-area52"] = { "alt-area52" } },
         })
 
         local promoted, mainIdentity = controller.PromoteAlt("alt-area52")
@@ -362,8 +383,9 @@ return {
         test.assert_true(promoted)
         test.assert_equal(mainIdentity, "alt-area52")
         test.assert_equal(calls.promote.altIdentity, "alt-area52")
+        test.assert_true(calls.promote.roster == rgms.DB.roster)
         test.assert_equal(calls.replace.groups, {
-            ["Alt-Area52"] = { "Main-Area52" },
+            ["alt-area52"] = { "main-area52" },
         })
         test.assert_equal(calls.completedChange, "alt-area52")
         test.assert_not_nil(calls.report)
@@ -371,8 +393,8 @@ return {
     end),
 
     test.case("removal publishes dissolved groups and clears expansion", function()
-        local controller, calls = newHarness({
-            groups = { ["Main-Area52"] = { "Alt-Area52" } },
+        local controller, calls, rgms = newHarness({
+            groups = { ["main-area52"] = { "alt-area52" } },
         })
 
         local removed, mainIdentity = controller.RemoveAlt("alt-area52")
@@ -380,6 +402,7 @@ return {
         test.assert_true(removed)
         test.assert_equal(mainIdentity, "main-area52")
         test.assert_equal(calls.remove.altIdentity, "alt-area52")
+        test.assert_true(calls.remove.roster == rgms.DB.roster)
         test.assert_equal(calls.replace.groups, {})
         test.assert_equal(calls.completedChange, "main-area52")
         test.assert_false(calls.completedChangeExpands)
@@ -389,10 +412,10 @@ return {
     test.case("removal from a surviving group targets and expands its existing main", function()
         local controller, calls = newHarness({
             groups = {
-                ["Main-Area52"] = { "Removed-Area52", "Stayed-Area52" },
+                ["main-area52"] = { "removed-area52", "stayed-area52" },
             },
             removeResult = {
-                ["Main-Area52"] = { "Stayed-Area52" },
+                ["main-area52"] = { "stayed-area52" },
             },
             removeMainIdentity = "main-area52",
             removeGroupRemains = true,
@@ -444,7 +467,12 @@ return {
 
     test.case("character notes save trimmed text and remove whitespace-only values", function()
         local controller, calls, rgms = newHarness({
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
         })
 
         test.assert_true(controller.SaveCharacterNote(
@@ -463,7 +491,12 @@ return {
     test.case("character note changes reject scans unknown characters and oversized text", function()
         local scanningController, scanningCalls = newHarness({
             scanning = true,
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
         })
         local saved, saveError = scanningController.SaveCharacterNote(
             "main-area52",
@@ -474,7 +507,12 @@ return {
         test.assert_nil(scanningCalls.noteReplaces)
 
         local controller, calls = newHarness({
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
         })
         local unknown, unknownError = controller.SaveCharacterNote(
             "other-area52",
@@ -494,7 +532,13 @@ return {
     test.case("missing characters cannot be edited while their records are retained", function()
         local controller, calls = newHarness({
             members = {
-                { name = "Missing", realm = "Area52", isMissing = true },
+                {
+                    identity = "missing-area52",
+                    name = "Missing",
+                    realm = "Area52",
+                    displayName = "Missing-Area52",
+                    isMissing = true,
+                },
             },
         })
 
@@ -517,7 +561,12 @@ return {
 
     test.case("character tags normalize deduplicate toggle and refresh immediately", function()
         local controller, calls, rgms = newHarness({
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
         })
 
         local assigned, resolved = controller.CreateOrAssignTag(
@@ -554,7 +603,12 @@ return {
     test.case("character tag mutations reject scans unknown characters and long names", function()
         local scanning, scanningCalls = newHarness({
             scanning = true,
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
         })
         local changed, scanError = scanning.CreateOrAssignTag(
             "main-area52",
@@ -565,7 +619,12 @@ return {
         test.assert_nil(scanningCalls.tagReplaces)
 
         local controller, calls = newHarness({
-            members = { { name = "Main", realm = "Area52" } },
+            members = { {
+                identity = "main-area52",
+                name = "Main",
+                realm = "Area52",
+                displayName = "Main-Area52",
+            } },
         })
         local unknown, unknownError = controller.ToggleCharacterTag(
             "other-area52",
@@ -584,7 +643,12 @@ return {
 
     test.case("tag deletion publishes full cleanup and refreshes both tag consumers", function()
         local controller, calls, rgms = newHarness({
-            members = { { name = "Visible", realm = "Area52" } },
+            members = { {
+                identity = "visible-area52",
+                name = "Visible",
+                realm = "Area52",
+                displayName = "Visible-Area52",
+            } },
             tags = {
                 definitions = { me = true, raid = true },
                 assignments = {

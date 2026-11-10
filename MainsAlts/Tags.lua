@@ -4,9 +4,6 @@
 local _, RGMS = ...
 
 local Tags = {}
-local Names = type(RGMS) == "table"
-    and RGMS.RosterNames
-    or require("Roster.Names")
 
 Tags.DEFAULT_TAG = "me"
 Tags.MAX_NAME_LENGTH = 32
@@ -117,25 +114,37 @@ function Tags.buildCatalog(state, roster)
     end
 
     local visibleCharacters = {}
-    for _, member in ipairs(roster.members) do
+    for rosterIndex, member in ipairs(roster.members) do
         if type(member) ~= "table"
-            or type(member.name) ~= "string" or member.name == ""
-            or type(member.realm) ~= "string" or member.realm == "" then
+            or type(member.identity) ~= "string" or member.identity == ""
+            or type(member.displayName) ~= "string"
+            or member.displayName == "" then
             return nil, "tag catalog roster member is invalid"
         end
+        if member.sortName ~= nil
+            and (type(member.sortName) ~= "string"
+                or member.sortName == "") then
+            return nil, "tag catalog roster member sort name is invalid"
+        end
         if member.isMissing ~= true then
-            visibleCharacters[Names.identity(member.name, member.realm)] =
-                Names.displayName(member.name, member.realm)
+            if visibleCharacters[member.identity] ~= nil then
+                return nil, "tag catalog roster identities must be unique"
+            end
+            visibleCharacters[member.identity] = {
+                displayName = member.displayName,
+                sortName = member.sortName or asciiLower(member.displayName),
+                rosterIndex = rosterIndex,
+            }
         end
     end
 
     local charactersByTag = {}
     for identity, assigned in pairs(state.assignments) do
-        local displayName = visibleCharacters[identity]
-        if displayName then
+        local character = visibleCharacters[identity]
+        if character then
             for name in pairs(assigned) do
                 local characters = charactersByTag[name] or {}
-                characters[#characters + 1] = displayName
+                characters[#characters + 1] = character
                 charactersByTag[name] = characters
             end
         end
@@ -144,12 +153,24 @@ function Tags.buildCatalog(state, roster)
     local rows = {}
     for _, name in ipairs(Tags.sortedDefinitions(state)) do
         local characters = charactersByTag[name] or {}
-        table.sort(characters)
+        table.sort(characters, function(left, right)
+            if left.sortName ~= right.sortName then
+                return left.sortName < right.sortName
+            end
+            if left.displayName ~= right.displayName then
+                return left.displayName < right.displayName
+            end
+            return left.rosterIndex < right.rosterIndex
+        end)
+        local displayNames = {}
+        for index, character in ipairs(characters) do
+            displayNames[index] = character.displayName
+        end
         rows[#rows + 1] = {
             name = name,
-            characters = characters,
-            characterCount = #characters,
-            characterPreview = table.concat(characters, ", "),
+            characters = displayNames,
+            characterCount = #displayNames,
+            characterPreview = table.concat(displayNames, ", "),
             immutable = name == Tags.DEFAULT_TAG,
         }
     end
@@ -241,11 +262,11 @@ function Tags.reconcile(dataset, state)
     local available = {}
     for _, member in ipairs(dataset.members) do
         if type(member) ~= "table"
-            or type(member.name) ~= "string" or member.name == ""
-            or type(member.realm) ~= "string" or member.realm == "" then
+            or type(member.identity) ~= "string"
+            or member.identity == "" then
             return nil, "ByName roster member is invalid"
         end
-        available[Names.identity(member.name, member.realm)] = true
+        available[member.identity] = true
     end
 
     local replacement = copyState(state)

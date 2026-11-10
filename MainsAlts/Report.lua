@@ -5,43 +5,47 @@
 local _, RGMS = ...
 
 local Report = {}
-local Names = type(RGMS) == "table"
-    and RGMS.RosterNames
-    or require("Roster.Names")
 local Tags = type(RGMS) == "table"
     and RGMS.MainsAltsTags
     or require("MainsAlts.Tags")
 
+local function lower(value)
+    return string.lower(value or "")
+end
+
 local function characterComesBefore(left, right)
-    local leftName = string.lower(left.name)
-    local rightName = string.lower(right.name)
+    local leftName = lower(left.name)
+    local rightName = lower(right.name)
     if leftName ~= rightName then
         return leftName < rightName
     end
 
-    local leftRealm = string.lower(left.realm)
-    local rightRealm = string.lower(right.realm)
+    local leftRealm = lower(left.realm)
+    local rightRealm = lower(right.realm)
     if leftRealm ~= rightRealm then
         return leftRealm < rightRealm
+    end
+    local leftDisplayName = lower(left.displayName)
+    local rightDisplayName = lower(right.displayName)
+    if leftDisplayName ~= rightDisplayName then
+        return leftDisplayName < rightDisplayName
     end
     return left.displayName < right.displayName
 end
 
 local function projectCharacter(member, savedNotes, savedTags)
-    local displayName = Names.displayName(member.name, member.realm)
-    local identity = Names.identity(member.name, member.realm)
-    local note = savedNotes[identity]
+    local note = savedNotes[member.identity]
     return {
         name = member.name,
         realm = member.realm,
-        displayName = displayName,
-        identity = identity,
+        displayName = member.displayName,
+        identity = member.identity,
         classFileName = member.classFileName,
         leadershipRole = member.leadershipRole,
         isMissing = member.isMissing == true,
         note = type(note) == "string" and note or "",
         hasNote = type(note) == "string" and string.find(note, "%S") ~= nil,
-        tags = Tags.assignedTo(savedTags, identity),
+        tags = Tags.assignedTo(savedTags, member.identity),
     }
 end
 
@@ -57,6 +61,11 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
     end
     savedNotes = savedNotes or {}
     savedTags = savedTags or Tags.newState()
+    for identity in pairs(savedNotes) do
+        if type(identity) ~= "string" or identity == "" then
+            return nil, "ByName character note identity is invalid"
+        end
+    end
     local validTags, tagsError = Tags.validate(savedTags)
     if not validTags then
         return nil, tagsError
@@ -66,10 +75,14 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
     local charactersByIdentity = {}
     for _, member in ipairs(dataset.members) do
         if type(member) ~= "table"
+            or type(member.identity) ~= "string"
+            or member.identity == ""
             or type(member.name) ~= "string"
             or member.name == ""
-            or type(member.realm) ~= "string"
-            or member.realm == "" then
+            or (member.realm ~= nil
+                and (type(member.realm) ~= "string" or member.realm == ""))
+            or type(member.displayName) ~= "string"
+            or member.displayName == "" then
             return nil, "ByName roster member is invalid"
         end
 
@@ -84,17 +97,32 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
     end
 
     local groupDefinitions = {}
-    for mainDisplayName, altDisplayNames in pairs(savedGroups or {}) do
-        if type(mainDisplayName) ~= "string"
-            or type(altDisplayNames) ~= "table" then
+    for mainIdentity, altIdentities in pairs(savedGroups or {}) do
+        if type(mainIdentity) ~= "string" or mainIdentity == ""
+            or type(altIdentities) ~= "table" then
             return nil, "ByName group is invalid"
         end
-        local mainName, mainRealm = Names.splitDisplayName(mainDisplayName)
-        local main = charactersByIdentity[Names.identity(mainName, mainRealm)]
+        local altCount = 0
+        for index in pairs(altIdentities) do
+            if type(index) ~= "number" or index < 1
+                or index ~= math.floor(index) then
+                return nil, "ByName group alts must be a dense array"
+            end
+            altCount = altCount + 1
+        end
+        if altCount ~= #altIdentities then
+            return nil, "ByName group alts must be a dense array"
+        end
+        for _, altIdentity in ipairs(altIdentities) do
+            if type(altIdentity) ~= "string" or altIdentity == "" then
+                return nil, "ByName group alt is invalid"
+            end
+        end
+        local main = charactersByIdentity[mainIdentity]
         if main then
             groupDefinitions[#groupDefinitions + 1] = {
                 main = main,
-                altDisplayNames = altDisplayNames,
+                altIdentities = altIdentities,
             }
         end
     end
@@ -108,12 +136,8 @@ function Report.build(dataset, savedGroups, savedNotes, savedTags)
         if not groupedIdentities[definition.main.identity] then
             local alts = {}
             local seenAlts = {}
-            for _, altDisplayName in ipairs(definition.altDisplayNames) do
-                if type(altDisplayName) ~= "string" then
-                    return nil, "ByName group alt is invalid"
-                end
-                local altName, altRealm = Names.splitDisplayName(altDisplayName)
-                local alt = charactersByIdentity[Names.identity(altName, altRealm)]
+            for _, altIdentity in ipairs(definition.altIdentities) do
+                local alt = charactersByIdentity[altIdentity]
                 if alt
                     and alt.identity ~= definition.main.identity
                     and not groupedIdentities[alt.identity]

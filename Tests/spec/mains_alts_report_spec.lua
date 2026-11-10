@@ -28,8 +28,8 @@ return {
             },
         }
         local groups = {
-            ["Main-Area52"] = { "Zulu-Area52", "Alt-Area52" },
-            ["NotOnRoster-Area52"] = { "Alpha-Area52" },
+            ["main-area52"] = { "zulu-area52", "alt-area52" },
+            ["notonroster-area52"] = { "alpha-area52" },
         }
 
         local result = assert(report.build(dataset, groups, {
@@ -74,8 +74,8 @@ return {
             },
         }
         local groups = {
-            ["MissingMain-Area52"] = { "VisibleAlt-Area52" },
-            ["VisibleMain-Area52"] = { "MissingAlt-Area52" },
+            ["missingmain-area52"] = { "visiblealt-area52" },
+            ["visiblemain-area52"] = { "missingalt-area52" },
         }
 
         local result = assert(report.build(dataset, groups))
@@ -84,8 +84,8 @@ return {
         test.assert_equal(result.rows[1].displayName, "VisibleAlt-Area52")
         test.assert_equal(result.rows[2].displayName, "VisibleMain-Area52")
         test.assert_equal(result.rows[2].altCount, 0)
-        test.assert_equal(groups["MissingMain-Area52"], { "VisibleAlt-Area52" })
-        test.assert_equal(groups["VisibleMain-Area52"], { "MissingAlt-Area52" })
+        test.assert_equal(groups["missingmain-area52"], { "visiblealt-area52" })
+        test.assert_equal(groups["visiblemain-area52"], { "missingalt-area52" })
     end),
 
     test.case("ByName excludes stale group members without losing roster members", function()
@@ -96,7 +96,7 @@ return {
             },
         }
         local groups = {
-            ["Main-Area52"] = { "Removed-Area52" },
+            ["main-area52"] = { "removed-area52" },
         }
 
         local result = assert(report.build(dataset, groups))
@@ -112,5 +112,39 @@ return {
 
         test.assert_nil(result)
         test.assert_matches(message, "roster member is invalid")
+    end),
+
+    test.case("ByName keeps same-first-name Forever identities distinct", function()
+        local birchIdentity = "RGMS:CHARACTER:FOREVER:1:2:US:9:Ada Birch"
+        local cedarIdentity = "RGMS:CHARACTER:FOREVER:1:2:US:9:Ada Cedar"
+        local result = assert(report.build({
+            members = {
+                {
+                    identity = cedarIdentity,
+                    name = "Ada Cedar",
+                    displayName = "Ada Cedar",
+                    classFileName = "MAGE",
+                },
+                {
+                    identity = birchIdentity,
+                    name = "Ada Birch",
+                    displayName = "Ada Birch",
+                    classFileName = "DRUID",
+                },
+            },
+        }, {
+            [birchIdentity] = { cedarIdentity },
+        }, {
+            [birchIdentity] = "Birch note",
+            [cedarIdentity] = "Cedar note",
+        }))
+
+        test.assert_equal(#result.rows, 1)
+        test.assert_equal(result.rows[1].identity, birchIdentity)
+        test.assert_equal(result.rows[1].displayName, "Ada Birch")
+        test.assert_equal(result.rows[1].note, "Birch note")
+        test.assert_equal(result.rows[1].alts[1].identity, cedarIdentity)
+        test.assert_equal(result.rows[1].alts[1].displayName, "Ada Cedar")
+        test.assert_equal(result.rows[1].alts[1].note, "Cedar note")
     end),
 }

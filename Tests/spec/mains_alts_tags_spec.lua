@@ -47,7 +47,7 @@ return {
         test.assert_nil(toggled.assignments["main-area52"].raid)
 
         local reconciled = assert(tags.reconcile({
-            members = { { name = "Main", realm = "Area52" } },
+            members = { { identity = "main-area52" } },
         }, toggled))
         test.assert_nil(reconciled.assignments["gone-area52"])
         test.assert_true(reconciled.definitions.raid)
@@ -64,10 +64,14 @@ return {
             },
         }, {
             members = {
-                { name = "Zeta", realm = "Area52" },
-                { name = "Alpha", realm = "Area52" },
-                { name = "Unused", realm = "Area52" },
-                { name = "Retained", realm = "Area52", isMissing = true },
+                { identity = "zeta-area52", displayName = "Zeta-Area52" },
+                { identity = "alpha-area52", displayName = "Alpha-Area52" },
+                { identity = "unused-area52", displayName = "Unused-Area52" },
+                {
+                    identity = "retained-area52",
+                    displayName = "Retained-Area52",
+                    isMissing = true,
+                },
             },
         }))
 
@@ -112,5 +116,47 @@ return {
         local immutable, immutableError = tags.deleteDefinition(state, "me")
         test.assert_nil(immutable)
         test.assert_matches(immutableError, "immutable")
+    end),
+
+    test.case("tag catalogs keep same-first-name Forever identities distinct", function()
+        local ash = "RGMS:CHARACTER:FOREVER:1:2:US:10:Avery Ash"
+        local birch = "RGMS:CHARACTER:FOREVER:1:2:US:12:Avery Birch"
+        local catalog = assert(tags.buildCatalog({
+            definitions = { me = true, raid = true },
+            assignments = {
+                [ash] = { raid = true },
+                [birch] = { raid = true },
+            },
+        }, {
+            members = {
+                {
+                    identity = birch,
+                    displayName = "Avery Birch",
+                    sortName = "avery birch",
+                },
+                {
+                    identity = ash,
+                    displayName = "Avery Ash",
+                    sortName = "avery ash",
+                },
+            },
+        }))
+
+        test.assert_equal(catalog.rows[2].characters, {
+            "Avery Ash",
+            "Avery Birch",
+        })
+
+        local reconciled = assert(tags.reconcile({
+            members = { { identity = birch } },
+        }, {
+            definitions = { me = true, raid = true },
+            assignments = {
+                [ash] = { raid = true },
+                [birch] = { raid = true },
+            },
+        }))
+        test.assert_nil(reconciled.assignments[ash])
+        test.assert_true(reconciled.assignments[birch].raid)
     end),
 }

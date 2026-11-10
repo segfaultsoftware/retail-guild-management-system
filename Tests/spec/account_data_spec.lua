@@ -98,7 +98,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_true(state.initialized)
         test.assert_equal(state.model, {
-            schemaVersion = 12,
+            schemaVersion = 13,
             settings = {
                 minimapPos = 225,
             },
@@ -117,7 +117,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 1)
         test.assert_equal(state.model, {
-            schemaVersion = 12,
+            schemaVersion = 13,
             settings = {
                 minimapPos = 225,
             },
@@ -141,7 +141,7 @@ return {
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 2)
         test.assert_equal(state.model, {
-            schemaVersion = 12,
+            schemaVersion = 13,
             settings = { minimapPos = 42 },
             guilds = {},
         })
@@ -168,7 +168,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 3)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_equal(accountData.findGuild(state.model, identity).tags, {
             definitions = { me = true },
             assignments = {},
@@ -195,7 +195,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 4)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_nil(migratedGuild.rosterObservation)
         test.assert_equal(migratedGuild.newsSets, {})
         test.assert_nil(originalGuild.newsSets)
@@ -220,7 +220,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 5)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_equal(migratedGuild.provisions, {})
         test.assert_equal(migratedGuild.nextProvisionId, 1)
         test.assert_nil(originalGuild.provisions)
@@ -246,7 +246,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 6)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_equal(migratedGuild.provisions[1].id, 1)
         test.assert_equal(migratedGuild.provisions[2].id, 3)
         test.assert_equal(migratedGuild.provisions[3].id, 4)
@@ -275,7 +275,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 7)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_nil(migratedBank.money)
         test.assert_equal(original.schemaVersion, 7)
     end),
@@ -303,7 +303,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 8)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_equal(migratedGuild.chartHistory, {
             gold = {}, members = {},
         })
@@ -343,7 +343,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 9)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_equal(migratedHistory, {
             gold = { { date = "2024-06-01", value = 500 } },
             members = {
@@ -385,7 +385,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 10)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_equal(state.model.guilds[expectedKey].identity, identity)
         test.assert_equal(
             state.model.guilds[expectedKey].roster.guild,
@@ -459,7 +459,7 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(state.migratedFrom, 11)
-        test.assert_equal(state.model.schemaVersion, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
         test.assert_equal(migrated.roster.members[1].identity, "main-area-52")
         test.assert_equal(migrated.rosterObservation, {
             scannedAt = fixtures.timestamp(),
@@ -478,7 +478,7 @@ return {
         test.assert_nil(originalPartition.rosterObservation.members[1].displayName)
     end),
 
-    test.case("version 11 preserves historical labels and unrelated guild data", function()
+    test.case("version 11 preserves note and tag identities with unrelated guild data", function()
         local identity = guild("Night Shift", "area-52")
         local original = assert(accountData.replaceDataset(
             accountData.newModel(),
@@ -534,7 +534,9 @@ return {
 
         test.assert_true(state.enabled)
         test.assert_equal(migrated.bank, originalPartition.bank)
-        test.assert_equal(migrated.mainAltGroups, originalPartition.mainAltGroups)
+        test.assert_equal(migrated.mainAltGroups, {
+            ["main-area-52"] = { "alt-area-52" },
+        })
         test.assert_equal(migrated.characterNotes, originalPartition.characterNotes)
         test.assert_equal(migrated.tags, originalPartition.tags)
         test.assert_equal(migrated.newsSets, originalPartition.newsSets)
@@ -613,6 +615,156 @@ return {
         test.assert_nil(partition.roster.members[1].identity)
         test.assert_equal(partition.rosterObservation.members[1].name, "Unmigratable Label")
         test.assert_nil(partition.rosterObservation.members[1].displayName)
+    end),
+
+    test.case("version 12 migrates only group labels to opaque Retail identities", function()
+        local identity = guild("Night Shift", "Area-52")
+        local original = assert(accountData.replaceProvisions(
+            accountData.newModel(),
+            identity,
+            {},
+            1
+        ))
+        original.schemaVersion = 12
+        local originalPartition = accountData.findGuild(original, identity)
+        originalPartition.mainAltGroups = {
+            ["Main-Area-52"] = { "Alt-Area-52", "Other-Illidan" },
+        }
+        originalPartition.characterNotes = {
+            ["main-area-52"] = "Preserve this key and note",
+        }
+        originalPartition.tags = {
+            definitions = { me = true, raid = true },
+            assignments = {
+                ["alt-area-52"] = { raid = true },
+            },
+        }
+
+        local state = accountData.load(original)
+        local migrated = accountData.findGuild(state.model, identity)
+
+        test.assert_true(state.enabled)
+        test.assert_equal(state.migratedFrom, 12)
+        test.assert_equal(state.model.schemaVersion, 13)
+        test.assert_equal(migrated.mainAltGroups, {
+            ["main-area-52"] = { "alt-area-52", "other-illidan" },
+        })
+        test.assert_equal(migrated.characterNotes, originalPartition.characterNotes)
+        test.assert_equal(migrated.tags, originalPartition.tags)
+        test.assert_equal(original.schemaVersion, 12)
+        test.assert_equal(originalPartition.mainAltGroups, {
+            ["Main-Area-52"] = { "Alt-Area-52", "Other-Illidan" },
+        })
+    end),
+
+    test.case("version 12 rejects colliding Retail group labels atomically", function()
+        local identity = guild("Night Shift", "Area-52")
+        local original = assert(accountData.replaceProvisions(
+            accountData.newModel(),
+            identity,
+            {},
+            1
+        ))
+        original.schemaVersion = 12
+        local partition = accountData.findGuild(original, identity)
+        partition.mainAltGroups = {
+            ["Main-Area-52"] = { "First-Area-52" },
+            ["main-area-52"] = { "Second-Area-52" },
+        }
+
+        local state = accountData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "colliding")
+        test.assert_true(state.original == original)
+        test.assert_equal(original.schemaVersion, 12)
+        test.assert_equal(partition.mainAltGroups["Main-Area-52"], {
+            "First-Area-52",
+        })
+        test.assert_equal(partition.mainAltGroups["main-area-52"], {
+            "Second-Area-52",
+        })
+    end),
+
+    test.case("version 12 rejects duplicate canonical group membership atomically", function()
+        local identity = guild("Night Shift", "Area-52")
+        local original = assert(accountData.replaceProvisions(
+            accountData.newModel(),
+            identity,
+            {},
+            1
+        ))
+        original.schemaVersion = 12
+        local partition = accountData.findGuild(original, identity)
+        partition.mainAltGroups = {
+            ["First-Area-52"] = { "Shared-Area-52" },
+            ["Second-Area-52"] = { "shared-area-52" },
+        }
+
+        local state = accountData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "duplicate or colliding")
+        test.assert_true(state.original == original)
+        test.assert_equal(original.schemaVersion, 12)
+        test.assert_equal(partition.mainAltGroups["First-Area-52"], {
+            "Shared-Area-52",
+        })
+    end),
+
+    test.case("malformed version 12 group migration leaves the source recoverable", function()
+        local identity = guild("Night Shift", "Area-52")
+        local original = assert(accountData.replaceProvisions(
+            accountData.newModel(),
+            identity,
+            {},
+            1
+        ))
+        original.schemaVersion = 12
+        local partition = accountData.findGuild(original, identity)
+        partition.mainAltGroups = {
+            ["MissingRealm"] = { "Alt-Area-52" },
+        }
+
+        local state = accountData.load(original)
+
+        test.assert_false(state.enabled)
+        test.assert_equal(state.status, "corrupt")
+        test.assert_matches(state.error, "cannot be migrated")
+        test.assert_true(state.original == original)
+        test.assert_equal(original.schemaVersion, 12)
+        test.assert_equal(partition.mainAltGroups, {
+            ["MissingRealm"] = { "Alt-Area-52" },
+        })
+    end),
+
+    test.case("current feature identity keys are validated without parsing", function()
+        local identity = foreverGuild("Night Shift", "US", 4242)
+        local model = assert(accountData.replaceProvisions(
+            accountData.newModel(),
+            identity,
+            {},
+            1
+        ))
+        local partition = accountData.findGuild(model, identity)
+        local mainIdentity = "RGMS:CHARACTER:FOREVER:1:2:US:9:Ash Birch"
+        local altIdentity = "opaque alt identity with [brackets]"
+        partition.mainAltGroups = {
+            [mainIdentity] = { altIdentity },
+        }
+        partition.characterNotes = {
+            [mainIdentity] = "Private note",
+        }
+        partition.tags = {
+            definitions = { me = true, raid = true },
+            assignments = {
+                [altIdentity] = { raid = true },
+            },
+        }
+
+        test.assert_true(accountData.validate(model))
     end),
 
     test.case("bank money round trips within only its guild partition", function()
