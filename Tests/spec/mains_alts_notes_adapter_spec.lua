@@ -12,6 +12,7 @@ local GLOBALS = {
     "GetRealmName",
     "IsInGuild",
     "UnitFullName",
+    "issecretvalue",
     "GuildRosterSetPublicNote",
     "GuildRosterSetOfficerNote",
 }
@@ -90,7 +91,9 @@ return {
             local snapshot = api:captureRoster()
             local member = snapshot.members["main-area52"]
             test.assert_equal(member.publicNote, " public ")
+            test.assert_true(member.publicNoteAvailable)
             test.assert_equal(member.officerNote, " officer ")
+            test.assert_true(member.officerNoteAvailable)
             test.assert_true(member.isSelf)
             test.assert_true(snapshot.permissions.viewOfficer)
             test.assert_false(snapshot.permissions.editOfficer)
@@ -103,6 +106,58 @@ return {
                 { "officer", 1, "officer" },
             })
             test.assert_equal(protectedCalls, 0)
+        end)
+    end),
+
+    test.case("live-note adapter isolates namespaced secret fields", function()
+        withGlobals(function()
+            local secretPublic = {}
+            local secretOfficer = {}
+            local secrets = {
+                [secretPublic] = true,
+                [secretOfficer] = true,
+            }
+            issecretvalue = function(value)
+                return secrets[value] == true
+            end
+            C_GuildInfo = {
+                GetGuildRosterInfo = function(index)
+                    return ({
+                        {
+                            name = "Alpha-Area52",
+                            note = secretPublic,
+                            publicNote = "must not fall through",
+                            officerNote = "alpha officer",
+                            guid = "Player-1",
+                        },
+                        {
+                            name = "Bravo-Area52",
+                            publicNote = "bravo public",
+                            officerNote = secretOfficer,
+                            guid = "Player-2",
+                        },
+                    })[index]
+                end,
+                GuildRoster = function() end,
+            }
+            GetNumGuildMembers = function() return 2 end
+            GetCurrentRegion = function() return 1 end
+            GetNormalizedRealmName = function() return "Area52" end
+            IsInGuild = function() return true end
+            UnitFullName = function() return "Other", "Area52" end
+
+            local snapshot = assert(loadAdapter().createApi():captureRoster())
+            local alpha = snapshot.members["alpha-area52"]
+            test.assert_nil(alpha.publicNote)
+            test.assert_false(alpha.publicNoteAvailable)
+            test.assert_equal(alpha.officerNote, "alpha officer")
+            test.assert_true(alpha.officerNoteAvailable)
+
+            local bravo = snapshot.members["bravo-area52"]
+            test.assert_equal(bravo.publicNote, "bravo public")
+            test.assert_true(bravo.publicNoteAvailable)
+            test.assert_nil(bravo.officerNote)
+            test.assert_false(bravo.officerNoteAvailable)
         end)
     end),
 
@@ -153,12 +208,57 @@ return {
 
             local api = loadAdapter().createApi()
             local member = api:captureRoster().members["main-area52"]
+            test.assert_true(member.publicNoteAvailable)
+            test.assert_true(member.officerNoteAvailable)
             test.assert_true(api:writeNote(member, "public", "one"))
             test.assert_true(api:writeNote(member, "officer", "two"))
             test.assert_equal(writes, {
                 { "public", 1, "one" },
                 { "officer", 1, "two" },
             })
+        end)
+    end),
+
+    test.case("live-note adapter isolates global secret fields", function()
+        withGlobals(function()
+            local secretPublic = {}
+            local secretOfficer = {}
+            local secrets = {
+                [secretPublic] = true,
+                [secretOfficer] = true,
+            }
+            issecretvalue = function(value)
+                return secrets[value] == true
+            end
+            C_GuildInfo = { GuildRoster = function() end }
+            GetNumGuildMembers = function() return 2 end
+            GetCurrentRegion = function() return 1 end
+            GetNormalizedRealmName = function() return "Area52" end
+            IsInGuild = function() return true end
+            UnitFullName = function() return "Other", "Area52" end
+            GetGuildRosterInfo = function(index)
+                if index == 1 then
+                    return "Alpha-Area52", "Member", 3, 80, "Mage", "City",
+                        secretPublic, "alpha officer", true, 0, "MAGE", 0, 0,
+                        false, false, 0, "Player-1"
+                end
+                return "Bravo-Area52", "Member", 3, 80, "Mage", "City",
+                    "bravo public", secretOfficer, true, 0, "MAGE", 0, 0,
+                    false, false, 0, "Player-2"
+            end
+
+            local snapshot = assert(loadAdapter().createApi():captureRoster())
+            local alpha = snapshot.members["alpha-area52"]
+            test.assert_nil(alpha.publicNote)
+            test.assert_false(alpha.publicNoteAvailable)
+            test.assert_equal(alpha.officerNote, "alpha officer")
+            test.assert_true(alpha.officerNoteAvailable)
+
+            local bravo = snapshot.members["bravo-area52"]
+            test.assert_equal(bravo.publicNote, "bravo public")
+            test.assert_true(bravo.publicNoteAvailable)
+            test.assert_nil(bravo.officerNote)
+            test.assert_false(bravo.officerNoteAvailable)
         end)
     end),
 
