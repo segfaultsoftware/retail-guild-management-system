@@ -17,6 +17,7 @@ Core\ClientFlavor.lua
 Core\Realm.lua
 Roster\Names.lua
 Core\CharacterIdentity.lua
+Core\GuildIdentity.lua
 Core\DateTime.lua
 Core\SavedData.lua
 Charts\Model.lua

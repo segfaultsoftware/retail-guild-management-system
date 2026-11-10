@@ -460,6 +460,37 @@ data. Equality uses only the opaque key, while deterministic ordering uses the
 established Retail key or Forever's separate ASCII-folded sort input, followed
 by the opaque key as a tie-breaker.
 
+### Feature 1.4 guild-identity implementation choice
+
+The product-aware guild contract is also a small project-owned pure module.
+Several established and adjacent libraries were evaluated before choosing that
+implementation:
+
+- Ace3 is mature, actively maintained, widely adopted, documented, and
+  compatible with current WoW Lua. AceDB provides broad profile and storage
+  machinery, but it has no guild-club ownership abstraction or `C_Club`
+  identity logic and would add substantially more surface than this contract
+  needs.
+- LibGuild-1.0 caches legacy guild-roster data, but it has no product, region,
+  club-ID, opaque-key, or equality contract. Available embedded copies also do
+  not provide clear enough provenance and licensing for a new dependency.
+- LibRealmInfo is zlib-licensed and documented, but its archived,
+  realm/GUID-centric model conflicts with the approved Forever requirement to
+  exclude every realm-shaped value from guild ownership.
+- LibSerialize is maintained, MIT-licensed, documented, and Lua 5.1-compatible,
+  but arbitrary-table serialization would neither define the required
+  validation semantics nor preserve existing Retail partition keys.
+
+`Core/GuildIdentity.lua` therefore preserves the established Retail
+`length:guild-name:canonical-realm-slug` key byte for byte and uses a
+versioned, length-framed Forever key containing product, canonical region, and
+the authoritative guild club ID. Guild name and realm presentation remain
+separate metadata, and equality compares only validated opaque keys. Missing
+Forever club IDs fail closed; no guild-name or realm fallback exists. The live
+API's positive integer club IDs normalize to decimal strings, while non-empty
+opaque strings support the privacy-safe Feature 1.1 fixture aliases. Feature
+2.1 owns persisted-schema migration and production consumer wiring.
+
 ### Evidence limitations and follow-on work
 
 No additional probe run is required for issue #154. The base and supplemental
@@ -472,7 +503,7 @@ events were not supplied or observed. Issue #154 requires inaccessible evidence
 to be recorded; these are scope limitations, not inputs to the approved
 contracts, and must not be fabricated.
 
-Dependent work may consume all four approved contracts. Feature 1.3 still owns
-the key's encoding and synthetic normalization edge cases; Feature 1.4 must use
-the approved no-fallback club-ID contract.
+Dependent work may consume all four approved contracts. Features 1.3 and 1.4
+own their respective opaque key encodings and synthetic normalization edge
+cases; Feature 2.1 owns persisted-schema migration and production wiring.
 

@@ -21,6 +21,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   existing Retail Name-Realm keys while providing region-scoped opaque
   Forever keys, separate display and sort inputs, explicit validation, and
   optional GUID correlation metadata.
+- Added a pure product-aware guild identity contract that preserves existing
+  Retail partition keys while providing region-scoped, stable-club-ID Forever
+  keys, separate display metadata, fail-closed validation, and shared equality.
 
 ### Removed
 
