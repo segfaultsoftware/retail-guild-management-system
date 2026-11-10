@@ -17,6 +17,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a decision record for portable identity and roster-delivery contracts.
 - Added early-loaded, fail-closed Retail and Forever client-flavor detection
   with shared-Mainline and crafting-quality semantic capability queries.
+- Added a pure product-aware character identity contract that preserves
+  existing Retail Name-Realm keys while providing region-scoped opaque
+  Forever keys, separate display and sort inputs, explicit validation, and
+  optional GUID correlation metadata.
 
 ### Removed
 

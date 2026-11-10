@@ -430,6 +430,36 @@ implement from the combined evidence.
 | Human-readable member label | Converged full-name structure and same-first/different-surname disambiguation | **Approved from composite evidence.** Display the complete two-component client value without a synthesized realm or GUID. Preserve the client-provided presentation; a missing component makes the record incomplete. |
 | Roster completion and retry triggers | Initial/partial sequences, count convergence, complete member records, and event ordering on both products | **Approved.** Require guild club ID, numeric `clubInfo.memberCount`, `C_Club.GetClubMembers`, equal club/list/captured counts, and complete full-name/GUID records. Legacy roster data is diagnostic only. Re-read after `PLAYER_GUILD_UPDATE`, `GUILD_ROSTER_UPDATE`, `CLUB_MEMBERS_UPDATED`, and `INITIAL_CLUBS_LOADED`; no event alone completes a scan. Never commit during `PLAYER_LEAVING_WORLD` or `PLAYER_LOGOUT`. |
 
+### Feature 1.3 character-identity implementation choice
+
+The product-aware character contract is a small project-owned pure module.
+Established libraries were evaluated before choosing that implementation:
+
+- Ace3 is mature, maintained, widely adopted, documented, and compatible with
+  current WoW Lua. AceDB recognizes regional unique names for profile storage,
+  but Ace3 exposes no reusable roster-character identity contract and its
+  redistribution terms and framework surface would add substantially more than
+  this feature needs.
+- LibRealmInfo is zlib-licensed, documented, and historically embedded by
+  major addons, but its last release predates Forever, it is Retail-only, and
+  its realm/GUID-centric model directly conflicts with the approved contract.
+- LibSerialize is maintained, MIT-licensed, documented, and Lua 5.1-compatible,
+  but arbitrary-table serialization would not define flavor/region validation,
+  preserve the established Retail key, or keep display and sort data separate.
+
+`Core/CharacterIdentity.lua` therefore delegates Retail construction to the
+existing `Roster/Names.lua` behavior and uses a versioned, length-framed
+Forever string containing product, canonical region, and the exact complete
+name bytes. The encoding is intentionally opaque to consumers and avoids a
+new runtime dependency while keeping every requirement directly testable.
+Regions normalize to the approved uppercase codes. A Forever name must have
+exactly two non-whitespace components separated by one or more ordinary
+spaces; the check does not expose either component, and the original bytes,
+including repeated separator spaces, remain unchanged in identity and display
+data. Equality uses only the opaque key, while deterministic ordering uses the
+established Retail key or Forever's separate ASCII-folded sort input, followed
+by the opaque key as a tie-breaker.
+
 ### Evidence limitations and follow-on work
 
 No additional probe run is required for issue #154. The base and supplemental
