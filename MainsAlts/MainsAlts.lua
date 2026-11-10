@@ -47,15 +47,14 @@ local function characterExists(identity)
     if type(identity) ~= "string" or identity == ""
         or type(RGMS.DB) ~= "table"
         or type(RGMS.DB.roster) ~= "table"
-        or type(RGMS.DB.roster.members) ~= "table"
-        or type(RGMS.RosterNames) ~= "table"
-        or type(RGMS.RosterNames.identity) ~= "function" then
+        or type(RGMS.DB.roster.members) ~= "table" then
         return false
     end
 
     for _, member in ipairs(RGMS.DB.roster.members) do
-        if member.isMissing ~= true
-            and RGMS.RosterNames.identity(member.name, member.realm) == identity then
+        if type(member) == "table"
+            and member.isMissing ~= true
+            and member.identity == identity then
             return true
         end
     end
@@ -327,6 +326,7 @@ local function changeAltGroup(methodName, altIdentity)
     end
 
     local groups, mainIdentityOrError, groupRemains = RGMS.MainsAltsGroups[methodName](
+        RGMS.DB.roster,
         RGMS.DB.mainAltGroups,
         altIdentity
     )

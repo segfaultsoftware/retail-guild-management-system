@@ -4,9 +4,15 @@
 local _, RGMS = ...
 
 local AccountData = {}
+local CharacterIdentity = type(RGMS) == "table"
+    and RGMS.CharacterIdentity
+    or require("Core.CharacterIdentity")
 local GuildIdentity = type(RGMS) == "table"
     and RGMS.GuildIdentity
     or require("Core.GuildIdentity")
+local Names = type(RGMS) == "table"
+    and RGMS.RosterNames
+    or require("Roster.Names")
 local SavedData = type(RGMS) == "table"
     and RGMS.SavedData
     or require("Core.SavedData")
@@ -14,7 +20,7 @@ local ChartModel = type(RGMS) == "table"
     and RGMS.ChartModel
     or require("Charts.Model")
 
-AccountData.CURRENT_SCHEMA_VERSION = 12
+AccountData.CURRENT_SCHEMA_VERSION = 13
 AccountData.MAX_CHARACTER_NOTE_LENGTH = 5500
 AccountData.MAX_TAG_NAME_LENGTH = 32
 AccountData.DEFAULT_MINIMAP_POSITION = 225
@@ -116,7 +122,11 @@ local function validateStringMap(value, path, validateValue)
         if type(key) ~= "string" or key == "" then
             return nil, path .. " keys must be non-empty strings"
         end
-        local valid, validationError = validateValue(item, path .. "[" .. key .. "]")
+        local valid, validationError = validateValue(
+            item,
+            path .. "[" .. key .. "]",
+            key
+        )
         if not valid then
             return nil, validationError
         end
@@ -125,7 +135,12 @@ local function validateStringMap(value, path, validateValue)
 end
 
 local function validateGroups(value, path)
-    return validateStringMap(value, path, function(alts, altPath)
+    local memberships = {}
+    return validateStringMap(value, path, function(alts, altPath, mainIdentity)
+        if memberships[mainIdentity] then
+            return nil, path .. " contains duplicate character membership"
+        end
+        memberships[mainIdentity] = true
         if type(alts) ~= "table" then
             return nil, altPath .. " must be an array"
         end
@@ -143,6 +158,10 @@ local function validateGroups(value, path)
             if type(character) ~= "string" or character == "" then
                 return nil, altPath .. "[" .. index .. "] must be a non-empty string"
             end
+            if memberships[character] then
+                return nil, path .. " contains duplicate character membership"
+            end
+            memberships[character] = true
         end
         return true
     end)
@@ -406,6 +425,83 @@ local function validateTags(value, path)
         end
     end
     return true
+end
+
+local function migrateLegacyRetailGroupIdentity(label, guildIdentity, path)
+    if type(label) ~= "string" or label == "" then
+        return nil, path .. " must be a non-empty Retail display label"
+    end
+
+    local name, realm = Names.splitDisplayName(label)
+    local identity, identityError = CharacterIdentity.create({
+        flavor = guildIdentity.flavor,
+        region = guildIdentity.region,
+        name = name,
+        realm = realm,
+    })
+    if not identity then
+        return nil, path .. " cannot be migrated: " .. tostring(identityError)
+    end
+    return identity.key
+end
+
+local function migrateLegacyGroups(guild, path)
+    local groupsPath = path .. ".mainAltGroups"
+    local valid, validationError = validateGroups(guild.mainAltGroups, groupsPath)
+    if not valid then
+        return nil, validationError
+    end
+    if next(guild.mainAltGroups) == nil then
+        return {}
+    end
+
+    valid, validationError = GuildIdentity.validate(guild.identity)
+    if not valid then
+        return nil, path .. ".identity " .. tostring(validationError)
+    end
+    if guild.identity.flavor ~= "retail" then
+        return nil, groupsPath .. " cannot migrate legacy labels for a non-Retail guild"
+    end
+
+    local migrated = {}
+    local memberships = {}
+    for mainLabel, altLabels in pairs(guild.mainAltGroups) do
+        local mainIdentity, mainError = migrateLegacyRetailGroupIdentity(
+            mainLabel,
+            guild.identity,
+            groupsPath .. "[" .. mainLabel .. "]"
+        )
+        if not mainIdentity then
+            return nil, mainError
+        end
+        if migrated[mainIdentity] ~= nil then
+            return nil, groupsPath .. " contains colliding main identities"
+        end
+        if memberships[mainIdentity] then
+            return nil, groupsPath .. " contains duplicate or colliding character membership"
+        end
+        memberships[mainIdentity] = true
+
+        local migratedAlts = {}
+        for index, altLabel in ipairs(altLabels) do
+            local altIdentity, altError = migrateLegacyRetailGroupIdentity(
+                altLabel,
+                guild.identity,
+                groupsPath .. "[" .. mainLabel .. "][" .. index .. "]"
+            )
+            if not altIdentity then
+                return nil, altError
+            end
+            if memberships[altIdentity] then
+                return nil, groupsPath
+                    .. " contains duplicate or colliding character membership"
+            end
+            memberships[altIdentity] = true
+            migratedAlts[index] = altIdentity
+        end
+        migrated[mainIdentity] = migratedAlts
+    end
+    return migrated
 end
 
 function AccountData.guildKey(identity)
@@ -959,6 +1055,33 @@ function AccountData.load(saved, currentPacificDate)
         end
         migratedFrom = migratedFrom or 11
         working.schemaVersion = 12
+    end
+    if working.schemaVersion == 12 then
+        if type(working.guilds) ~= "table" then
+            return disabledState(
+                "corrupt",
+                "account data.guilds must be a table",
+                saved
+            )
+        end
+        for key, guild in pairs(working.guilds) do
+            local path = "account data.guilds[" .. tostring(key) .. "]"
+            if type(key) ~= "string" or key == "" or type(guild) ~= "table" then
+                return disabledState(
+                    "corrupt",
+                    "account data.guilds must use non-empty string keys and table values",
+                    saved
+                )
+            end
+
+            local migratedGroups, migrationError = migrateLegacyGroups(guild, path)
+            if not migratedGroups then
+                return disabledState("corrupt", migrationError, saved)
+            end
+            guild.mainAltGroups = migratedGroups
+        end
+        migratedFrom = migratedFrom or 12
+        working.schemaVersion = 13
     end
     if currentPacificDate == nil and type(GetServerTime) == "function" then
         currentPacificDate = RGMS and RGMS.DateTime

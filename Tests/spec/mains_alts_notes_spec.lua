@@ -123,6 +123,54 @@ local function load(controller)
 end
 
 return {
+    test.case("opaque same-first-name notes remain attached to exact identities", function()
+        local ash = "RGMS:CHARACTER:FOREVER:1:2:US:10:Avery Ash"
+        local birch = "RGMS:CHARACTER:FOREVER:1:2:US:12:Avery Birch"
+        local controller, calls, state = newHarness({
+            members = {
+                [ash] = {
+                    identity = ash,
+                    displayName = "Avery Ash",
+                    guid = "Player-1",
+                    index = 1,
+                    publicNote = "ash public",
+                    officerNote = "ash officer",
+                    isSelf = false,
+                },
+                [birch] = {
+                    identity = birch,
+                    displayName = "Avery Birch",
+                    guid = "Player-2",
+                    index = 2,
+                    publicNote = "birch public",
+                    officerNote = "birch officer",
+                    isSelf = true,
+                },
+            },
+        })
+
+        state.bumpRevision()
+        load(controller)
+        test.assert_equal(controller:GetSearchableNotes(ash), {
+            "ash public",
+            "ash officer",
+        })
+        test.assert_equal(controller:GetSearchableNotes(birch), {
+            "birch public",
+            "birch officer",
+        })
+
+        local model = controller:Open(ash, "Avery Ash", "ash private")
+        test.assert_equal(model.identity, ash)
+        test.assert_equal(model.displayName, "Avery Ash")
+        test.assert_true(controller:SetDraft("privateNote", "updated ash"))
+        test.assert_true(controller:Save())
+        test.assert_equal(calls.commits, {
+            { identity = ash, value = "updated ash" },
+        })
+        test.assert_true(controller:HasActiveNote(birch, "birch private"))
+    end),
+
     test.case("live notes load once per pending request and obey visibility permissions", function()
         local controller, calls, state = newHarness({
             members = {

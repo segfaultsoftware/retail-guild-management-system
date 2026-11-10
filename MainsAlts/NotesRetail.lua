@@ -3,27 +3,76 @@
 local _, RGMS = ...
 
 local Retail = {}
+local CharacterIdentity = type(RGMS) == "table"
+    and RGMS.CharacterIdentity
+    or require("Core.CharacterIdentity")
+local ClientFlavor = type(RGMS) == "table"
+    and RGMS.ClientFlavor
+    or require("Core.ClientFlavor")
+local Names = type(RGMS) == "table"
+    and RGMS.RosterNames
+    or require("Roster.Names")
 
-local function identityForRosterName(value)
+local REGION_NAMES = {
+    [1] = "US",
+    [2] = "KR",
+    [3] = "EU",
+    [4] = "TW",
+    [5] = "CN",
+}
+
+local function currentIdentityContext()
+    local activeGuild = type(RGMS) == "table"
+        and RGMS.ActiveGuildIdentity
+        or nil
+    if type(activeGuild) == "table"
+        and type(activeGuild.flavor) == "string"
+        and activeGuild.flavor ~= ""
+        and type(activeGuild.region) == "string"
+        and activeGuild.region ~= "" then
+        return activeGuild.flavor, activeGuild.region
+    end
+
+    local flavor = type(ClientFlavor) == "table"
+        and type(ClientFlavor.getFlavor) == "function"
+        and ClientFlavor.getFlavor()
+        or nil
+    local regionId = type(GetCurrentRegion) == "function"
+        and GetCurrentRegion()
+        or nil
+    return flavor, REGION_NAMES[regionId]
+end
+
+local function identityForRosterName(value, guid)
     if type(value) ~= "string" or value == "" then
         return nil, nil
     end
-    local defaultRealm = type(GetNormalizedRealmName) == "function"
-        and GetNormalizedRealmName()
-        or (type(GetRealmName) == "function" and GetRealmName() or "")
-    if type(RGMS.RosterNames) == "table"
-        and type(RGMS.RosterNames.splitDisplayName) == "function"
-        and type(RGMS.RosterNames.identity) == "function" then
-        local name, realm, displayName = RGMS.RosterNames.splitDisplayName(
-            value,
-            defaultRealm
-        )
-        return RGMS.RosterNames.identity(name, realm), displayName
+    if type(CharacterIdentity) ~= "table"
+        or type(CharacterIdentity.create) ~= "function" then
+        return nil, nil
     end
-    local name, realm = string.match(value, "^([^%-]+)%-(.+)$")
-    name = name or value
-    realm = realm or defaultRealm
-    return string.lower(name .. "-" .. realm), name .. "-" .. realm
+
+    local flavor, region = currentIdentityContext()
+    local input = {
+        flavor = flavor,
+        region = region,
+        name = value,
+    }
+    if type(guid) == "string" and guid ~= "" then
+        input.guid = guid
+    end
+    if flavor == ClientFlavor.RETAIL then
+        local defaultRealm = type(GetNormalizedRealmName) == "function"
+            and GetNormalizedRealmName()
+            or (type(GetRealmName) == "function" and GetRealmName() or "")
+        input.name, input.realm = Names.splitDisplayName(value, defaultRealm)
+    end
+
+    local identity = CharacterIdentity.create(input)
+    if not identity then
+        return nil, nil
+    end
+    return identity.key, identity.displayName
 end
 
 local function booleanApi(namespaceName, globalName)
@@ -76,13 +125,22 @@ local function playerIdentity()
     if type(name) ~= "string" or name == "" then
         return nil
     end
-    realm = realm or (type(GetNormalizedRealmName) == "function"
-        and GetNormalizedRealmName() or "")
-    if type(RGMS.RosterNames) == "table"
-        and type(RGMS.RosterNames.identity) == "function" then
-        return RGMS.RosterNames.identity(name, realm)
+
+    local flavor, region = currentIdentityContext()
+    local input = {
+        flavor = flavor,
+        region = region,
+        name = name,
+    }
+    if flavor == ClientFlavor.RETAIL then
+        input.realm = realm or (type(GetNormalizedRealmName) == "function"
+            and GetNormalizedRealmName() or "")
     end
-    return string.lower(name .. "-" .. realm)
+    local identity = type(CharacterIdentity) == "table"
+        and type(CharacterIdentity.create) == "function"
+        and CharacterIdentity.create(input)
+        or nil
+    return identity and identity.key or nil
 end
 
 function Retail.createApi()
@@ -118,7 +176,10 @@ function Retail.createApi()
             if not info then
                 return nil, "incomplete", "one or more guild notes are incomplete"
             end
-            local identity, displayName = identityForRosterName(info.name)
+            local identity, displayName = identityForRosterName(
+                info.name,
+                info.guid
+            )
             if not identity or members[identity] then
                 return nil, "incomplete", "guild member identities are incomplete"
             end

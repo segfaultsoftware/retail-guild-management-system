@@ -27,6 +27,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Migrated Mains/Alts groups, private notes, live guild-note lookups, and tag
+  assignments to opaque roster identity keys, preserving existing Retail note
+  and tag data while keeping same-first-name Forever characters distinct.
 - Migrated persisted roster members and news observations to opaque
   product-aware character identities, preserving Retail tenure and historical
   News labels while keeping same-first-name Forever members distinct.

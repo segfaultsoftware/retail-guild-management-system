@@ -1,3 +1,5 @@
+local characterIdentity = require("Core.CharacterIdentity")
+local clientFlavor = require("Core.ClientFlavor")
 local names = require("Roster.Names")
 local test = require("Tests.lib.runner")
 
@@ -5,6 +7,7 @@ local GLOBALS = {
     "C_GuildInfo",
     "GetGuildRosterInfo",
     "GetNumGuildMembers",
+    "GetCurrentRegion",
     "GetNormalizedRealmName",
     "GetRealmName",
     "IsInGuild",
@@ -27,8 +30,22 @@ local function withGlobals(callback)
     end
 end
 
-local function loadAdapter()
-    local rgms = { RosterNames = names }
+local function loadAdapter(options)
+    options = options or {}
+    local flavor = options.flavor or clientFlavor.RETAIL
+    local rgms = {
+        ActiveGuildIdentity = {
+            flavor = flavor,
+            region = options.region or "US",
+        },
+        CharacterIdentity = characterIdentity,
+        ClientFlavor = {
+            RETAIL = clientFlavor.RETAIL,
+            FOREVER = clientFlavor.FOREVER,
+            getFlavor = function() return flavor end,
+        },
+        RosterNames = names,
+    }
     local chunk = assert(loadfile("MainsAlts/NotesRetail.lua"))
     return chunk("RGMS", rgms)
 end
@@ -58,6 +75,7 @@ return {
                 GuildRoster = function() end,
             }
             GetNumGuildMembers = function() return 1 end
+            GetCurrentRegion = function() return 1 end
             GetNormalizedRealmName = function() return "Area52" end
             IsInGuild = function() return true end
             UnitFullName = function() return "Main", "Area52" end
@@ -117,6 +135,7 @@ return {
             local writes = {}
             C_GuildInfo = { GuildRoster = function() end }
             GetNumGuildMembers = function() return 1 end
+            GetCurrentRegion = function() return 1 end
             GetNormalizedRealmName = function() return "Area52" end
             IsInGuild = function() return true end
             UnitFullName = function() return "Other", "Area52" end
@@ -140,6 +159,57 @@ return {
                 { "public", 1, "one" },
                 { "officer", 1, "two" },
             })
+        end)
+    end),
+
+    test.case("live-note adapter maps same-first-name Forever members through current context", function()
+        withGlobals(function()
+            C_GuildInfo = {
+                GetGuildRosterInfo = function(index)
+                    return ({
+                        {
+                            name = "Avery Ash",
+                            note = "ash public",
+                            officerNote = "",
+                            guid = "Player-1",
+                        },
+                        {
+                            name = "Avery Birch",
+                            note = "birch public",
+                            officerNote = "",
+                            guid = "Player-2",
+                        },
+                    })[index]
+                end,
+                GuildRoster = function() end,
+            }
+            GetNumGuildMembers = function() return 2 end
+            GetCurrentRegion = function() return 3 end
+            IsInGuild = function() return true end
+            UnitFullName = function() return "Avery Birch" end
+
+            local api = loadAdapter({
+                flavor = clientFlavor.FOREVER,
+                region = "EU",
+            }).createApi()
+            local snapshot = assert(api:captureRoster())
+            local ash = assert(characterIdentity.create({
+                flavor = clientFlavor.FOREVER,
+                region = "EU",
+                name = "Avery Ash",
+            })).key
+            local birch = assert(characterIdentity.create({
+                flavor = clientFlavor.FOREVER,
+                region = "EU",
+                name = "Avery Birch",
+            })).key
+
+            test.assert_equal(snapshot.members[ash].displayName, "Avery Ash")
+            test.assert_equal(snapshot.members[ash].publicNote, "ash public")
+            test.assert_false(snapshot.members[ash].isSelf)
+            test.assert_equal(snapshot.members[birch].displayName, "Avery Birch")
+            test.assert_equal(snapshot.members[birch].publicNote, "birch public")
+            test.assert_true(snapshot.members[birch].isSelf)
         end)
     end),
 }
