@@ -1,0 +1,9 @@
+## Interface: 120105, 16001
+## Title: RGMS Runtime Identity Probe
+## Notes: Opt-in bounded evidence capture for RGMS Retail and Forever compatibility work.
+## Author: RGMS contributors
+## Version: 1.0.0
+## SavedVariables: RGMSRuntimeProbeDB, RGMSRuntimeProbeExport
+
+Core.lua
+Runtime.lua

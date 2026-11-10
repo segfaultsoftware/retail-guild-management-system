@@ -16,6 +16,8 @@ local defaultSuites = {
     "Tests.spec.reset_spec",
     "Tests.spec.dataset_ownership_spec",
     "Tests.spec.commands_spec",
+    "Tests.spec.runtime_probe_spec",
+    "Tests.spec.runtime_contract_evidence_spec",
     "Tests.spec.minimap_spec",
     "Tests.spec.libdbicon_spec",
     "Tests.spec.roster_names_spec",
