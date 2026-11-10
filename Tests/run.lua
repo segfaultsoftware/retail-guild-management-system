@@ -23,6 +23,7 @@ local defaultSuites = {
     "Tests.spec.libdbicon_spec",
     "Tests.spec.roster_names_spec",
     "Tests.spec.character_identity_spec",
+    "Tests.spec.guild_identity_spec",
     "Tests.spec.roster_news_spec",
     "Tests.spec.roster_adapter_spec",
     "Tests.spec.roster_tenure_spec",
