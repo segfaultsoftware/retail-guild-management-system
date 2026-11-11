@@ -103,6 +103,59 @@ All five values are required exactly once. The script:
 Review the diff, run the automated suite, then commit and push the prepared
 `RGMS.toc` and `CHANGELOG.md` files to `main`.
 
+## Package contract and inspection
+
+[`scripts/build-release.ps1`](../scripts/build-release.ps1) is the canonical
+package builder. It accepts one legacy or two unique numeric values in the
+single comma-delimited `Interface` field. A release-prepared dual-product
+manifest contains the tested Retail value first and the Forever value second.
+
+Runtime entries may be shared or end in supported client load directives:
+
+```text
+Core\Shared.lua
+Core\Retail.lua [AllowLoadGameType standard]
+Core\Forever.lua [AllowLoadGameType camelot]
+```
+
+`AllowLoadGameType` and `ExcludeLoadGameType` are supported only with the
+`standard` and `camelot` game types. The builder validates and removes those
+trailing directives only when resolving source paths. It packages every shared
+and conditional source exactly once while preserving the original `RGMS.toc`
+bytes and directive text in the archive for the game client to evaluate.
+Malformed directives, empty or duplicate interface values, duplicate source
+paths, missing files, repository escapes, and linked files or directories fail
+before an artifact is retained.
+
+One invocation produces one `RGMS-X.Y.Z.zip`. It never creates product-specific
+archives or generated TOCs. The existing distribution allowlist,
+contributor/secret exclusions, fixed ZIP metadata, per-entry source hashes,
+Lua test gate, no-overwrite rule, two-build byte comparison, and final SHA-256
+report remain release requirements.
+
+The maintained, public-domain BigWigs Packager supports multiple interfaces
+and native TOC directives, but RGMS retains its small
+`System.IO.Compression` builder because the general packager does not provide
+this repository's exact allowlist, source-content verification, fixed
+cross-platform ZIP metadata, or mandatory two-build equality contract.
+Replacing the builder would add tooling and preprocessing behavior without
+removing the RGMS-specific validation work.
+
+After a local build, inspect the exact archive from Git Bash, substituting its
+timestamped directory and version:
+
+```text
+archive=.release/local-YYYYMMDD-HHMMSS/RGMS-X.Y.Z.zip
+unzip -Z1 "$archive"
+sha256sum "$archive"
+```
+
+Expect one `RGMS/RGMS.toc`, every manifest-referenced shared and conditional
+runtime file exactly once, and the documented distribution files. Expect no
+generated TOC, product-specific archive, contributor file, or secret-like
+path. A repeat build in a different empty output directory must report the same
+SHA-256 for unchanged source bytes.
+
 ## Create the release
 
 Dispatch **Create Release** from `main` with one input:
@@ -130,8 +183,10 @@ The jobs run in this order:
 1. **Validate** checks the dispatch inputs, current `main` tip, manifest
    metadata, changelog, tag, and release availability without changing external
    state.
-2. **Build and test** runs the complete suite, creates the deterministic ZIP,
-   records its SHA-256, and retains it as a workflow artifact for 90 days.
+2. **Build and test** runs the complete suite, validates the dual-product
+   fixture and current manifest, creates the deterministic ZIP twice, requires
+   byte equality, records its SHA-256, and retains it as a workflow artifact
+   for 90 days.
 3. **CurseForge preflight** runs only for exact final versions. It authenticates
    with the configured secret, extracts the leading `X.Y.Z` from
    `X-RGMS-Retail-Version`, queries CurseForge's game-scoped `wow` version

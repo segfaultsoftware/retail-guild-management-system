@@ -105,8 +105,12 @@ From Git Bash, build and verify a ZIP using the version in `RGMS.toc`:
 ```
 
 The package is written to a timestamped `.release/local-*/RGMS-<version>.zip`
-directory. This is intended for local installation and testing; public release
-artifacts come from GitHub Actions.
+directory. The builder validates comma-delimited interface metadata and, when
+the shared manifest uses `standard` or `camelot` inline load directives,
+includes every shared and conditional runtime file exactly once without
+rewriting the manifest. It still produces one package rather than generated or
+product-specific TOCs and archives. This is intended for local installation
+and testing; public release artifacts come from GitHub Actions.
 
 ## Prepare and create a release
 

@@ -118,3 +118,15 @@ Tests, fixtures, examples, and generated coverage/results directories are not
 listed in `RGMS.toc`. The release builder uses an explicit runtime allowlist,
 so it excludes the entire test tree from addon packages; `.gitignore` excludes
 local result and coverage files.
+
+Release-package behavior has a separate end-to-end PowerShell suite. It copies
+the real builder into temporary fixture repositories, validates single and
+comma-delimited dual interfaces plus `standard`/`camelot` runtime directives,
+and inspects the resulting deterministic ZIPs:
+
+```text
+pwsh -NoProfile -File ./Tests/build_release_tests.ps1 -LuaCommand lua5.1
+```
+
+On Windows, pass the installed `lua.exe` path. The builder continues to invoke
+that executable through Git Bash, matching the supported Lua test path.

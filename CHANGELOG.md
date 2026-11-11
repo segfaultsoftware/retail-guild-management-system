@@ -36,6 +36,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Extended deterministic release packaging to validate comma-delimited
+  interface metadata and include shared plus Retail/Forever-conditional runtime
+  files exactly once in one unchanged-manifest archive.
 - Updated release preparation to atomically capture tested Retail and Forever
   version/build and interface metadata with deterministic Retail-first ordering.
 - Updated the bundled LibDBIcon provenance to the maintained v12.1.2 release,
