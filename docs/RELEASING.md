@@ -55,31 +55,49 @@ Before preparation, confirm that:
 - the working tree on `main` is clean;
 - user-visible changes are under `## Unreleased` in `CHANGELOG.md`;
 - the complete automated test suite passes;
-- the addon has been exercised against the intended live Retail client;
-- `/dump GetBuildInfo()` and `/dump select(4, GetBuildInfo())` provide the
-  Retail version and numeric interface value. The stored Retail text must begin
-  with `X.Y.Z`; an optional build suffix may be retained for provenance.
+- the addon has been exercised against the intended live Retail and Forever
+  clients.
+
+On each client being released, run these commands in chat:
+
+```text
+/dump GetBuildInfo()
+/dump select(4, GetBuildInfo())
+```
+
+The first command reports the client version and build. Preserve both as one
+value such as `12.1.6 (build 22222)`. The second command reports the numeric
+interface. Record the Retail and Forever results separately and use the exact
+observed values rather than copying the representative values below. Each
+stored product value must be a non-empty single line beginning with `X.Y.Z`.
 
 From Git Bash on a clean `main` branch, run:
 
 ```text
 bash ./scripts/prepare-release.sh \
   --version 1.1.0 \
-  --retail-version "12.1.5" \
-  --interface 120105
+  --retail-version "12.1.6 (build 22222)" \
+  --retail-interface 120106 \
+  --forever-version "1.60.2 (build 33333)" \
+  --forever-interface 16002
 ```
 
-All three values are required. The script:
+All five values are required exactly once. The script:
 
-- validates an exact final or any valid SemVer prerelease version;
-- updates `Version`, `Interface`, and `X-RGMS-Retail-Version` in
-  `RGMS.toc`;
-- preserves the complete supplied single-line Retail text, for example
-  `## X-RGMS-Retail-Version: 12.1.5` or
-  `## X-RGMS-Retail-Version: 12.1.5 (build 12345)`;
+- validates an exact final or any valid SemVer prerelease version, both numeric
+  interfaces, and both product version/build values;
+- updates exactly one `Version`, one comma-delimited `Interface`, one
+  `X-RGMS-Retail-Version`, and one `X-RGMS-Forever-Version` in `RGMS.toc`;
+- writes `Interface` in deterministic Retail-then-Forever order, for example
+  `## Interface: 120106, 16002`;
+- preserves the complete supplied single-line product text, including optional
+  build provenance;
 - leaves the stable `## X-Curse-Project-ID: 1741733` declaration intact;
 - leaves a fresh `## Unreleased` heading and promotes its previous content to
   `## <version>` in `CHANGELOG.md`;
+- restores both `RGMS.toc` and `CHANGELOG.md` byte-for-byte if any input or
+  required field is invalid, missing, or duplicated, or if final diff
+  validation fails;
 - never builds, commits, pushes, tags, or publishes anything.
 
 Review the diff, run the automated suite, then commit and push the prepared
