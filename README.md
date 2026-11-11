@@ -144,12 +144,12 @@ The command stores both complete tested version/build values in `RGMS.toc`,
 writes the interfaces in deterministic Retail-then-Forever order, updates the
 addon version, and promotes the `CHANGELOG.md` Unreleased section in the same
 rollback-protected operation. After committing and pushing those changes,
-dispatch **Create Release** from `main` with the version and full main-tip SHA.
-The workflow tests and retains one canonical ZIP, publishes and verifies it on
-GitHub, and automatically submits exact final releases to CurseForge.
-Prereleases remain GitHub-only. See [`docs/RELEASING.md`](docs/RELEASING.md)
-for one-time token setup, the complete procedure, retry behavior, and the
-manual fallback.
+dispatch **Create Release** from `main` with the version. The workflow pins the
+dispatch SHA, tests and retains one canonical ZIP, and publishes and verifies
+it on GitHub. Exact final releases upload that same checksum-verified ZIP once
+to CurseForge with the exact Retail and Forever targets; prereleases remain
+GitHub-only. See [`docs/RELEASING.md`](docs/RELEASING.md) for one-time token
+setup, the complete procedure, retry behavior, and the manual fallback.
 
 ## Current exclusions
 

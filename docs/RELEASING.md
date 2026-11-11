@@ -45,8 +45,9 @@ the author API's `X-Api-Token` request header.
 
 If the CurseForge token is rotated or revoked, replace the value of the same
 GitHub Actions secret. Final-release preflight fails before creating a GitHub
-tag or release when the secret is missing, invalid, or cannot resolve exactly
-one matching Retail version.
+tag or release when the secret is missing or invalid, or when the catalog does
+not resolve exactly one correctly typed Retail target and one correctly typed
+Forever target.
 
 ## Prepare a release
 
@@ -133,13 +134,19 @@ contributor/secret exclusions, fixed ZIP metadata, per-entry source hashes,
 Lua test gate, no-overwrite rule, two-build byte comparison, and final SHA-256
 report remain release requirements.
 
-The maintained, public-domain BigWigs Packager supports multiple interfaces
-and native TOC directives, but RGMS retains its small
-`System.IO.Compression` builder because the general packager does not provide
-this repository's exact allowlist, source-content verification, fixed
-cross-platform ZIP metadata, or mandatory two-build equality contract.
-Replacing the builder would add tooling and preprocessing behavior without
-removing the RGMS-specific validation work.
+The maintained, public-domain BigWigs Packager supports multiple interfaces,
+Forever, native TOC directives, and multi-target uploads. RGMS retains its small
+`System.IO.Compression` builder and direct use of the documented
+[CurseForge Authors API](https://support.curseforge.com/support/solutions/articles/9000197321)
+because the general packager does not provide this repository's exact allowlist,
+source-content verification, fixed cross-platform ZIP metadata, or mandatory
+two-build equality contract. Its version lookup can also
+substitute another catalog version and its upload path retries requests, while
+RGMS requires exact product-typed targets and manual review after an ambiguous
+upload. Other shared upload actions and API clients do not replace that strict
+pre-mutation validation and would add a dependency or another token-bearing
+runtime. Extending the existing module therefore preserves the release contract
+while using the API's native multi-ID `gameVersions` metadata.
 
 After a local build, inspect the exact archive from Git Bash, substituting its
 timestamped directory and version:
@@ -188,17 +195,21 @@ The jobs run in this order:
    byte equality, records its SHA-256, and retains it as a workflow artifact
    for 90 days.
 3. **CurseForge preflight** runs only for exact final versions. It authenticates
-   with the configured secret, extracts the leading `X.Y.Z` from
-   `X-RGMS-Retail-Version`, queries CurseForge's game-scoped `wow` version
-   catalog, and requires exactly one matching numeric game-version ID. The
-   unscoped version endpoint is not used because it can return another game's
-   catalog. No per-patch CurseForge ID is stored in the repository.
+   with the configured secret, extracts each leading `X.Y.Z` from
+   `X-RGMS-Retail-Version` and `X-RGMS-Forever-Version`, and makes one query to
+   CurseForge's game-scoped `wow` version catalog. It requires exactly one
+   positive ID for the exact Retail name with product type `517` and exactly
+   one positive ID for the exact Forever name with product type `88568`, then
+   rejects equal IDs. It never substitutes a nearest, newest, or same-major
+   version. The unscoped endpoint is not used because it can return another
+   game's catalog, and no per-patch ID is stored in the repository. Both
+   lookups finish before any tag, GitHub release, or CurseForge file is created.
 4. **Publish GitHub** rechecks the target, creates and pushes the annotated tag,
    publishes the GitHub release, downloads its attached ZIP, and verifies it
    against the build checksum.
 5. **Publish CurseForge** runs only for exact final versions. It downloads the
    public GitHub release asset, verifies the SHA-256 again, and submits those
-   exact bytes once to the documented author Upload API.
+   exact bytes in one request with the ordered Retail and Forever target IDs.
 
 The CurseForge file is submitted as:
 
@@ -207,24 +218,38 @@ The CurseForge file is submitted as:
 - release type: **Release**;
 - changelog: a `## X.Y.Z` heading followed by the matching `CHANGELOG.md`
   section as Markdown;
-- supported version: the single Retail ID resolved in preflight;
+- supported versions: the distinct Retail and Forever IDs resolved in
+  preflight, in deterministic Retail-then-Forever order;
 - release option: public automatically after CurseForge approval;
 - relationship: LibDBIcon-1.0 project `15552` as an embedded library.
 
 LibDBIcon-1.0, LibDataBroker-1.1, CallbackHandler-1.0, and LibStub remain bundled
 inside the RGMS ZIP. Users do not need to install them separately.
 
-A successful summary contains the CurseForge file ID and direct URL, filename,
-display name, full Retail version, Retail game-version ID, and the same SHA-256
-recorded for the GitHub asset. The workflow considers the upload successful only
-when CurseForge accepts it and returns a positive numeric file ID; it does not
-wait for moderation or public visibility.
+A successful summary contains the CurseForge file ID and direct URL, the one
+filename and display name, both full product versions and extracted catalog
+versions, both resolved target IDs, and the same SHA-256 recorded for the
+GitHub asset. The workflow considers the upload successful only when CurseForge
+accepts it and returns a positive numeric file ID; it does not wait for
+moderation or public visibility.
+
+Before the first dual-product publication, treat live storefront verification
+as required:
+
+1. Compare the preflight summary with the authenticated live CurseForge `wow`
+   catalog. Confirm the Retail name/ID has product type `517`, the Forever
+   name/ID has product type `88568`, and neither name was substituted.
+2. Confirm the preflight filename and SHA-256 match the canonical GitHub asset
+   recorded by the workflow.
+3. After CurseForge accepts the single upload, open its file entry and confirm
+   that it lists both the requested Retail and Forever versions for the same
+   filename. Record the file URL as release evidence.
 
 ## Failure and retry behavior
 
 If validation, building, or final-release CurseForge preflight fails, no GitHub
-tag or release is created. Correct the source, input, secret, or CurseForge
-version configuration and dispatch a new run.
+tag or release is created. Correct the source, input, secret, exact catalog
+version, product type, or duplicate target and dispatch a new run.
 
 If **Publish CurseForge** fails after **Publish GitHub** succeeds:
 
@@ -235,6 +260,11 @@ If **Publish CurseForge** fails after **Publish GitHub** succeeds:
    project's **Files** dashboard and look for the same `RGMS-X.Y.Z.zip` display
    name. The author Upload API does not document an idempotency key or a safe
    duplicate-upload check, so do not retry until you have checked.
+
+The failure summary repeats the immutable filename and checksum plus both full
+product versions, extracted catalog versions, and target IDs. Compare all of
+them with the existing GitHub release and any possibly created CurseForge file
+before choosing whether to rerun.
 
 The upload request itself is not automatically retried within a job.
 
@@ -255,13 +285,15 @@ cannot complete:
 3. In the CurseForge Authors dashboard for project `1741733`, check **Files**
    first to avoid a duplicate after an ambiguous automated failure.
 4. Upload the exact GitHub ZIP with display name `RGMS-X.Y.Z.zip`.
-5. Choose **Release**, select only the tested Retail `X.Y.Z`, and configure
-   automatic publication after approval.
+5. Choose **Release**, select exactly the tested Retail and Forever `X.Y.Z`
+   versions, and configure automatic publication after approval. Do not
+   substitute another patch or another product with the same version name.
 6. Paste the matching changelog section as Markdown.
 7. Add LibDBIcon-1.0 project `15552` as an **Embedded Library** relationship;
    do not add the other bundled libraries as required external dependencies.
 8. Submit once, then record the resulting file ID/URL and verify the filename,
-   Retail version, display name, and checksum against the workflow summary.
+   both product versions, display name, and checksum against the workflow
+   summary.
 
 Prereleases are never uploaded manually or automatically to CurseForge.
 

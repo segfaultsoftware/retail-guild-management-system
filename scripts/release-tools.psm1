@@ -1,6 +1,8 @@
 Set-StrictMode -Version Latest
 
 $script:ReleaseVersionPattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+$script:CurseForgeRetailGameVersionTypeId = 517L
+$script:CurseForgeForeverGameVersionTypeId = 88568L
 
 function Test-RgmsReleaseVersion {
     param([Parameter(Mandatory)][string]$Version)
@@ -38,13 +40,28 @@ function Get-RgmsManifestField {
     return $matches[0]
 }
 
+function Get-RgmsProductGameVersion {
+    param(
+        [Parameter(Mandatory)][string]$ProductName,
+        [Parameter(Mandatory)][string]$ProductVersion
+    )
+
+    if ($ProductVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:[ \t]|$)') {
+        throw "$ProductName version '$ProductVersion' must begin with X.Y.Z."
+    }
+    return "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+}
+
 function Get-RgmsRetailGameVersion {
     param([Parameter(Mandatory)][string]$RetailVersion)
 
-    if ($RetailVersion -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:[ \t]|$)') {
-        throw "Retail version '$RetailVersion' must begin with X.Y.Z."
-    }
-    return "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+    return Get-RgmsProductGameVersion -ProductName 'Retail' -ProductVersion $RetailVersion
+}
+
+function Get-RgmsForeverGameVersion {
+    param([Parameter(Mandatory)][string]$ForeverVersion)
+
+    return Get-RgmsProductGameVersion -ProductName 'Forever' -ProductVersion $ForeverVersion
 }
 
 function Get-RgmsChangelogSection {
@@ -65,10 +82,27 @@ function Get-RgmsChangelogSection {
     return $matches[0].Groups[1].Value.Trim()
 }
 
-function Resolve-CurseForgeRetailGameVersion {
+function Test-RgmsPositiveIntegerValue {
+    param([Parameter(Mandatory)][AllowNull()][object]$Value)
+
+    if ($null -eq $Value -or $Value -isnot [ValueType] -or $Value -is [bool]) {
+        return $false
+    }
+    try {
+        $integerValue = [long]$Value
+        $decimalValue = [decimal]$Value
+    } catch {
+        return $false
+    }
+    return $integerValue -gt 0 -and $decimalValue -eq [decimal]$integerValue
+}
+
+function Resolve-CurseForgeProductGameVersion {
     param(
         [Parameter(Mandatory)][object[]]$GameVersions,
-        [Parameter(Mandatory)][string]$RetailVersion
+        [Parameter(Mandatory)][string]$ProductName,
+        [Parameter(Mandatory)][string]$GameVersion,
+        [Parameter(Mandatory)][long]$GameVersionTypeId
     )
 
     # PowerShell 7 preserves a top-level JSON array returned directly by
@@ -78,19 +112,37 @@ function Resolve-CurseForgeRetailGameVersion {
     $normalizedGameVersions = @($GameVersions | ForEach-Object { $_ })
     $validGameVersions = @(
         $normalizedGameVersions | Where-Object {
-            $null -ne $_.id -and
-            $null -ne $_.gameVersionTypeID -and
+            (Test-RgmsPositiveIntegerValue -Value $_.id) -and
+            (Test-RgmsPositiveIntegerValue -Value $_.gameVersionTypeID) -and
             -not [string]::IsNullOrWhiteSpace([string]$_.name)
         }
     )
+    $nameMatches = @(
+        $normalizedGameVersions | Where-Object {
+            $null -ne $_.name -and ([string]$_.name) -ceq $GameVersion
+        }
+    )
+    $malformedNameMatches = @(
+        $nameMatches | Where-Object {
+            -not (Test-RgmsPositiveIntegerValue -Value $_.id) -or
+            -not (Test-RgmsPositiveIntegerValue -Value $_.gameVersionTypeID)
+        }
+    )
+    if ($malformedNameMatches.Count -gt 0) {
+        throw "CurseForge returned $($malformedNameMatches.Count) malformed game-version record(s) named '$GameVersion'."
+    }
     if ($validGameVersions.Count -eq 0) {
         throw 'CurseForge did not return a valid game-version list.'
     }
 
-    $matches = @($validGameVersions | Where-Object { ([string]$_.name) -ceq $RetailVersion })
-    if ($matches.Count -ne 1 -or $null -eq $matches[0].id) {
+    $matches = @(
+        $nameMatches | Where-Object {
+            ([long]$_.gameVersionTypeID) -eq $GameVersionTypeId
+        }
+    )
+    if ($matches.Count -ne 1) {
         $matchingTypeIds = @(
-            $matches |
+            $nameMatches |
                 ForEach-Object { [string]$_.gameVersionTypeID } |
                 Sort-Object -Unique
         )
@@ -99,10 +151,14 @@ function Resolve-CurseForgeRetailGameVersion {
         } else {
             ''
         }
-        $majorVersion = $RetailVersion.Split('.')[0]
+        $majorVersion = $GameVersion.Split('.')[0]
         $nearbyVersions = @(
             $validGameVersions |
-                Where-Object { ([string]$_.name) -like "$majorVersion.*" } |
+                Where-Object {
+                    ([string]$_.name) -like "$majorVersion.*" -and
+                    (Test-RgmsPositiveIntegerValue -Value $_.gameVersionTypeID) -and
+                    ([long]$_.gameVersionTypeID) -eq $GameVersionTypeId
+                } |
                 ForEach-Object { [string]$_.name } |
                 Sort-Object -Unique -Descending |
                 Select-Object -First 10
@@ -111,21 +167,71 @@ function Resolve-CurseForgeRetailGameVersion {
         if ($nearbyVersions.Count -gt 0) {
             $catalogDetail += " Same-major versions include: $($nearbyVersions -join ', ')."
         }
-        throw "CurseForge must return exactly one game version named '$RetailVersion'; found $($matches.Count).$typeDetail$catalogDetail"
+        throw "CurseForge must return exactly one $ProductName game version named '$GameVersion' with game-version type ID $GameVersionTypeId; found $($matches.Count).$typeDetail$catalogDetail"
     }
 
-    $gameVersionId = [long]$matches[0].id
-    if ($gameVersionId -le 0) {
-        throw "CurseForge returned an invalid game-version ID for '$RetailVersion'."
+    if (-not (Test-RgmsPositiveIntegerValue -Value $matches[0].id)) {
+        throw "CurseForge returned an invalid $ProductName game-version ID for '$GameVersion'."
     }
-    return $gameVersionId
+    return [long]$matches[0].id
+}
+
+function Resolve-CurseForgeRetailGameVersion {
+    param(
+        [Parameter(Mandatory)][object[]]$GameVersions,
+        [Parameter(Mandatory)][string]$RetailVersion
+    )
+
+    return Resolve-CurseForgeProductGameVersion `
+        -GameVersions $GameVersions `
+        -ProductName 'Retail' `
+        -GameVersion $RetailVersion `
+        -GameVersionTypeId $script:CurseForgeRetailGameVersionTypeId
+}
+
+function Resolve-CurseForgeForeverGameVersion {
+    param(
+        [Parameter(Mandatory)][object[]]$GameVersions,
+        [Parameter(Mandatory)][string]$ForeverVersion
+    )
+
+    return Resolve-CurseForgeProductGameVersion `
+        -GameVersions $GameVersions `
+        -ProductName 'Forever' `
+        -GameVersion $ForeverVersion `
+        -GameVersionTypeId $script:CurseForgeForeverGameVersionTypeId
+}
+
+function Resolve-CurseForgeGameVersionTargets {
+    param(
+        [Parameter(Mandatory)][object[]]$GameVersions,
+        [Parameter(Mandatory)][string]$RetailVersion,
+        [Parameter(Mandatory)][string]$ForeverVersion
+    )
+
+    $retailGameVersionId = Resolve-CurseForgeRetailGameVersion `
+        -GameVersions $GameVersions `
+        -RetailVersion $RetailVersion
+    $foreverGameVersionId = Resolve-CurseForgeForeverGameVersion `
+        -GameVersions $GameVersions `
+        -ForeverVersion $ForeverVersion
+    if ($retailGameVersionId -eq $foreverGameVersionId) {
+        throw "Retail and Forever CurseForge game-version IDs must be distinct; both resolved to $retailGameVersionId."
+    }
+
+    return [pscustomobject][ordered]@{
+        RetailGameVersionId = [long]$retailGameVersionId
+        ForeverGameVersionId = [long]$foreverGameVersionId
+        GameVersionIds = [long[]]@($retailGameVersionId, $foreverGameVersionId)
+    }
 }
 
 function New-CurseForgeReleaseMetadata {
     param(
         [Parameter(Mandatory)][string]$ReleaseVersion,
         [Parameter(Mandatory)][string]$Changelog,
-        [Parameter(Mandatory)][long]$GameVersionId
+        [Parameter(Mandatory)][long]$RetailGameVersionId,
+        [Parameter(Mandatory)][long]$ForeverGameVersionId
     )
 
     if ((Get-RgmsReleaseKind -Version $ReleaseVersion) -ne 'final') {
@@ -134,15 +240,18 @@ function New-CurseForgeReleaseMetadata {
     if ([string]::IsNullOrWhiteSpace($Changelog)) {
         throw 'CurseForge changelog must not be empty.'
     }
-    if ($GameVersionId -le 0) {
-        throw 'CurseForge game-version ID must be a positive integer.'
+    if ($RetailGameVersionId -le 0 -or $ForeverGameVersionId -le 0) {
+        throw 'CurseForge Retail and Forever game-version IDs must be positive integers.'
+    }
+    if ($RetailGameVersionId -eq $ForeverGameVersionId) {
+        throw 'CurseForge Retail and Forever game-version IDs must be distinct.'
     }
 
     return [ordered]@{
         changelog = "## $ReleaseVersion`n`n$Changelog"
         changelogType = 'markdown'
         displayName = "RGMS-$ReleaseVersion.zip"
-        gameVersions = @($GameVersionId)
+        gameVersions = @($RetailGameVersionId, $ForeverGameVersionId)
         releaseType = 'release'
         isMarkedForManualRelease = $false
         relations = [ordered]@{
@@ -202,8 +311,11 @@ Export-ModuleMember -Function @(
     'Get-RgmsReleaseKind',
     'Get-RgmsManifestField',
     'Get-RgmsRetailGameVersion',
+    'Get-RgmsForeverGameVersion',
     'Get-RgmsChangelogSection',
     'Resolve-CurseForgeRetailGameVersion',
+    'Resolve-CurseForgeForeverGameVersion',
+    'Resolve-CurseForgeGameVersionTargets',
     'New-CurseForgeReleaseMetadata',
     'Get-CurseForgeUploadedFileId',
     'Get-CurseForgeApiErrorMessage',
