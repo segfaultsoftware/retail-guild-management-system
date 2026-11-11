@@ -38,6 +38,24 @@ function Assert-Throws {
     throw $Message
 }
 
+function Assert-ThrowsMessage {
+    param(
+        [scriptblock]$Action,
+        [string]$Expected,
+        [string]$Message
+    )
+    try {
+        & $Action
+    } catch {
+        if ($_.Exception.Message -cne $Expected) {
+            throw "$Message Expected '$Expected', got '$($_.Exception.Message)'."
+        }
+        $script:Passed += 1
+        return
+    }
+    throw $Message
+}
+
 function Assert-RepositoryJunction {
     param([string]$Path, [string]$RepositoryPath, [string]$Message)
 
@@ -71,11 +89,29 @@ try {
     New-Item -ItemType Directory -Path $retailPath, $foreverPath, $customPath, $otherTarget -Force | Out-Null
     ${env:ProgramFiles(x86)} = $testRoot
 
-    & $scriptPath
+    $selectionError = 'Specify exactly one client switch: -Retail or -Forever.'
+    Assert-ThrowsMessage {
+        & $scriptPath
+    } $selectionError 'Linking without a client switch must fail.'
+    Assert-ThrowsMessage {
+        & $scriptPath -Retail -Forever
+    } $selectionError 'Linking with both client switches must fail.'
+    Assert-ThrowsMessage {
+        & $scriptPath -Unlink
+    } $selectionError 'Unlinking without a client switch must fail.'
+    Assert-ThrowsMessage {
+        & $scriptPath -Retail -Forever -Unlink
+    } $selectionError 'Unlinking with both client switches must fail.'
+    Assert-False (Test-Path -LiteralPath $retailLink) 'Rejected client selection must not create a Retail junction.'
+    Assert-False (Test-Path -LiteralPath $foreverLink) 'Rejected client selection must not create a Forever junction.'
+
+    & $scriptPath -Retail
     Assert-RepositoryJunction $retailLink $repositoryPath 'Default Retail linking failed.'
     Assert-False (Test-Path -LiteralPath $foreverLink) 'Default Retail linking must not create a Forever junction.'
-    & $scriptPath -Unlink
+    & $scriptPath -Retail -Unlink
     Assert-False (Test-Path -LiteralPath $retailLink) 'Default Retail unlinking failed.'
+    & $scriptPath -Retail -Unlink
+    Assert-False (Test-Path -LiteralPath $retailLink) 'Repeated Retail unlinking must remain idempotent.'
 
     & $scriptPath -Forever
     Assert-RepositoryJunction $foreverLink $repositoryPath 'Default Forever linking failed.'
@@ -84,6 +120,12 @@ try {
     Assert-False (Test-Path -LiteralPath $foreverLink) 'Forever unlinking failed.'
     & $scriptPath -Forever -Unlink
     Assert-False (Test-Path -LiteralPath $foreverLink) 'Repeated Forever unlinking must remain idempotent.'
+
+    & $scriptPath -Retail -RetailPath $customPath
+    Assert-RepositoryJunction $customLink $repositoryPath 'An explicit path must override the Retail default.'
+    Assert-False (Test-Path -LiteralPath $retailLink) 'An explicit path must not create a junction in the default Retail directory.'
+    & $scriptPath -Retail -RetailPath $customPath -Unlink
+    Assert-False (Test-Path -LiteralPath $customLink) 'Explicit-path Retail unlinking failed.'
 
     & $scriptPath -Forever -RetailPath $customPath
     Assert-RepositoryJunction $customLink $repositoryPath 'An explicit path must override the Forever default.'
