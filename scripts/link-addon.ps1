@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$RetailPath,
+    [Alias("RetailPath")]
+    [string]$ClientPath,
     [switch]$Retail,
     [switch]$Forever,
     [switch]$Unlink
@@ -15,8 +16,8 @@ if ($Retail.IsPresent -eq $Forever.IsPresent) {
 
 $clientName = if ($Forever) { "Forever" } else { "Retail" }
 $clientDirectoryName = if ($Forever) { "_forever_" } else { "_retail_" }
-if (-not $PSBoundParameters.ContainsKey("RetailPath")) {
-    $RetailPath = Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\$clientDirectoryName"
+if (-not $PSBoundParameters.ContainsKey("ClientPath")) {
+    $ClientPath = Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\$clientDirectoryName"
 }
 
 $repositoryPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -26,11 +27,11 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw "RGMS.toc was not found at the repository root: $repositoryPath"
 }
 
-if (-not (Test-Path -LiteralPath $RetailPath -PathType Container)) {
-    throw "$clientName directory not found: $RetailPath`nPass the path to your $clientDirectoryName directory with -RetailPath."
+if (-not (Test-Path -LiteralPath $ClientPath -PathType Container)) {
+    throw "$clientName directory not found: $ClientPath`nPass the path to your $clientDirectoryName directory with -ClientPath."
 }
 
-$addonsPath = Join-Path $RetailPath "Interface\AddOns"
+$addonsPath = Join-Path $ClientPath "Interface\AddOns"
 $linkPath = Join-Path $addonsPath "RGMS"
 
 if ($Unlink) {

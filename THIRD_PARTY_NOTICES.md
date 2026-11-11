@@ -66,6 +66,15 @@ retaining the capability-based Forever icon fix from v12.1.1.
 The LibDBIcon release is distributed under the Ace3 Style BSD license. LibStub
 also declares itself public domain in its source header.
 
+## Auctionator optional integration
+
+RGMS declares Auctionator as an optional external addon and uses its supported
+v1 shopping-list API when both required functions are available. Auctionator is
+not required for RGMS roster, bank, or Provisions behavior, and no Auctionator
+source, asset, or license file is bundled in the RGMS release archive. When the
+addon or compatible API is absent, RGMS leaves the integration unavailable and
+does not attempt a fallback call.
+
 ## Ace3 Style BSD license
 
 Copyright (c) 2007, Ace3 Development Team. All rights reserved.

@@ -124,15 +124,70 @@ function Write-FixtureManifest {
 
     $lines = @(
         "## Interface: $InterfaceValue",
+        '## AllowLoadGameType: standard, camelot',
         '## Title: RGMS package fixture',
         '## Notes: Deterministic package fixture.',
         '## Author: RGMS tests',
         '## Version: 1.2.3',
-        '## SavedVariablesPerCharacter: RGMSFixtureDB',
+        '## X-RGMS-Retail-Version: 12.1.5 (build 12345)',
+        '## X-RGMS-Forever-Version: 1.60.1 (build 67890)',
+        '## X-Curse-Project-ID: 1741733',
+        '## SavedVariables: RGMSAccountDB',
+        '## SavedVariablesPerCharacter: RGMSCharacterDB',
+        '## OptionalDeps: Auctionator',
         ''
     ) + @($RuntimeEntries)
     $content = [string]::Join("`r`n", $lines) + "`r`n"
     Write-Utf8File -Path (Join-Path $FixturePath 'RGMS.toc') -Content $content
+}
+
+function Set-FixtureManifestField {
+    param(
+        [string]$FixturePath,
+        [string]$Name,
+        [AllowEmptyString()]
+        [string]$Value
+    )
+
+    $manifestPath = Join-Path $FixturePath 'RGMS.toc'
+    $lines = @([System.IO.File]::ReadAllLines($manifestPath))
+    $prefix = "## ${Name}:"
+    $indexes = @(
+        for ($index = 0; $index -lt $lines.Count; $index += 1) {
+            if ($lines[$index].StartsWith($prefix, [System.StringComparison]::Ordinal)) {
+                $index
+            }
+        }
+    )
+    if ($indexes.Count -ne 1) {
+        throw "Fixture manifest must contain exactly one '$Name' field."
+    }
+    $lines[$indexes[0]] = "$prefix $Value"
+    Write-Utf8File `
+        -Path $manifestPath `
+        -Content ([string]::Join("`r`n", $lines) + "`r`n")
+}
+
+function Remove-FixtureManifestField {
+    param(
+        [string]$FixturePath,
+        [string]$Name
+    )
+
+    $manifestPath = Join-Path $FixturePath 'RGMS.toc'
+    $prefix = "## ${Name}:"
+    $lines = @([System.IO.File]::ReadAllLines($manifestPath))
+    $remaining = @(
+        $lines | Where-Object {
+            -not $_.StartsWith($prefix, [System.StringComparison]::Ordinal)
+        }
+    )
+    if ($remaining.Count -ne ($lines.Count - 1)) {
+        throw "Fixture manifest must contain exactly one '$Name' field."
+    }
+    Write-Utf8File `
+        -Path $manifestPath `
+        -Content ([string]::Join("`r`n", $remaining) + "`r`n")
 }
 
 function New-Fixture {
@@ -438,8 +493,7 @@ try {
         @(Get-ChildItem -LiteralPath $firstBuild.OutputPath -File -Force).Count `
         'The refused overwrite retained a temporary build file.'
 
-    # Whitespace is accepted in the dual list, while the current single-product
-    # manifest remains buildable during staging for issue #168.
+    # Whitespace is accepted around the required dual-interface values.
     $whitespaceFixture = New-Fixture `
         -Name 'interface-whitespace' `
         -InterfaceValue ' 120105 , 16001 '
@@ -448,18 +502,11 @@ try {
         -OutputName 'output'
     Assert-Equal 0 $whitespaceBuild.ExitCode "Whitespace interface list failed.`n$($whitespaceBuild.Output)"
 
-    $singleFixture = New-Fixture `
-        -Name 'single-interface-staging' `
-        -InterfaceValue '120105'
-    $singleBuild = Invoke-FixtureBuild `
-        -FixturePath $singleFixture `
-        -OutputName 'output'
-    Assert-Equal 0 $singleBuild.ExitCode "Single staging interface failed.`n$($singleBuild.Output)"
-
-    # Empty items, duplicate values, non-numeric values, and malformed
-    # separators fail before an artifact can be retained.
+    # Missing targets, empty items, duplicate values, non-numeric values, and
+    # malformed separators fail before an artifact can be retained.
     $invalidInterfaces = @(
         '',
+        '120105',
         ',120105',
         '120105,',
         '120105,,16001',
@@ -478,6 +525,84 @@ try {
             -FixturePath $fixture `
             -OutputName 'output' `
             -ExpectedOutput ''
+    }
+
+    # Every package carries the complete canonical dual-client metadata. A
+    # missing, renamed, reordered, or substituted declaration fails before the
+    # Lua gate or archive creation.
+    $requiredDualMetadata = @(
+        'AllowLoadGameType',
+        'X-RGMS-Retail-Version',
+        'X-RGMS-Forever-Version',
+        'X-Curse-Project-ID',
+        'SavedVariables',
+        'SavedVariablesPerCharacter',
+        'OptionalDeps'
+    )
+    foreach ($fieldName in $requiredDualMetadata) {
+        $fixture = New-Fixture -Name 'missing-dual-metadata'
+        Remove-FixtureManifestField -FixturePath $fixture -Name $fieldName
+        Assert-BuildFailsCleanly `
+            -FixturePath $fixture `
+            -OutputName 'output' `
+            -ExpectedOutput "Manifest field '$fieldName' is missing or empty."
+    }
+
+    $invalidExactMetadata = @(
+        @{
+            Name = 'AllowLoadGameType'
+            Value = 'camelot, standard'
+            Expected = "must equal 'standard, camelot'"
+        },
+        @{
+            Name = 'X-Curse-Project-ID'
+            Value = '1741734'
+            Expected = "must equal '1741733'"
+        },
+        @{
+            Name = 'SavedVariables'
+            Value = 'RGMSOtherAccountDB'
+            Expected = "must equal 'RGMSAccountDB'"
+        },
+        @{
+            Name = 'SavedVariablesPerCharacter'
+            Value = 'RGMSOtherCharacterDB'
+            Expected = "must equal 'RGMSCharacterDB'"
+        },
+        @{
+            Name = 'OptionalDeps'
+            Value = 'Auctionator, OtherAddon'
+            Expected = "must equal 'Auctionator'"
+        }
+    )
+    foreach ($metadataCase in $invalidExactMetadata) {
+        $fixture = New-Fixture -Name 'invalid-dual-metadata'
+        Set-FixtureManifestField `
+            -FixturePath $fixture `
+            -Name $metadataCase.Name `
+            -Value $metadataCase.Value
+        Assert-BuildFailsCleanly `
+            -FixturePath $fixture `
+            -OutputName 'output' `
+            -ExpectedOutput $metadataCase.Expected
+    }
+
+    $invalidProductVersions = @(
+        @{ Name = 'X-RGMS-Retail-Version'; Value = 'Retail 12.1.5' },
+        @{ Name = 'X-RGMS-Retail-Version'; Value = '12.1' },
+        @{ Name = 'X-RGMS-Forever-Version'; Value = '01.60.1' },
+        @{ Name = 'X-RGMS-Forever-Version'; Value = '1.60.1build67890' }
+    )
+    foreach ($metadataCase in $invalidProductVersions) {
+        $fixture = New-Fixture -Name 'invalid-product-version'
+        Set-FixtureManifestField `
+            -FixturePath $fixture `
+            -Name $metadataCase.Name `
+            -Value $metadataCase.Value
+        Assert-BuildFailsCleanly `
+            -FixturePath $fixture `
+            -OutputName 'output' `
+            -ExpectedOutput "Manifest field '$($metadataCase.Name)' must begin with a canonical X.Y.Z product version"
     }
 
     # Every supported inline directive is trailing, syntactically complete,

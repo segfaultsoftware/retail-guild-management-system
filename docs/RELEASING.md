@@ -55,9 +55,32 @@ Before preparation, confirm that:
 
 - the working tree on `main` is clean;
 - user-visible changes are under `## Unreleased` in `CHANGELOG.md`;
-- the complete automated test suite passes;
-- the addon has been exercised against the intended live Retail and Forever
-  clients.
+- the complete automated and release-tool test matrix passes;
+- the exact package has completed
+  [`MVP_SCENARIO_CHECKLIST.md`](MVP_SCENARIO_CHECKLIST.md) in the intended live
+  Retail and Forever clients with no failed, waived, or unowned item. Every
+  failure blocks release until the owning feature is fixed and the affected
+  section plus the full completion gate pass again.
+
+Run the dependency-free Lua and release-preparation suites from Git Bash on
+Windows:
+
+```text
+lua.exe Tests/run.lua
+bash ./Tests/prepare_release_tests.sh
+```
+
+Run the Windows install-helper, workflow, and package-builder suites from
+PowerShell 7:
+
+```text
+pwsh.exe -NoProfile -File .\Tests\link_addon_tests.ps1
+pwsh.exe -NoProfile -File .\Tests\release_workflow_tests.ps1
+pwsh.exe -NoProfile -File .\Tests\build_release_tests.ps1 -LuaCommand 'C:\Program Files (x86)\Lua\5.1\lua.exe'
+```
+
+All five commands must exit `0`. Record their exact passing counts with the
+acceptance evidence for the package under test.
 
 On each client being released, run these commands in chat:
 
@@ -107,9 +130,10 @@ Review the diff, run the automated suite, then commit and push the prepared
 ## Package contract and inspection
 
 [`scripts/build-release.ps1`](../scripts/build-release.ps1) is the canonical
-package builder. It accepts one legacy or two unique numeric values in the
-single comma-delimited `Interface` field. A release-prepared dual-product
-manifest contains the tested Retail value first and the Forever value second.
+package builder. It requires exactly two unique numeric values in the single
+comma-delimited `Interface` field: the tested Retail value first and the tested
+Forever value second. A single-interface or duplicate-interface manifest is
+not releaseable.
 
 Runtime entries may be shared or end in supported client load directives:
 
@@ -133,6 +157,15 @@ archives or generated TOCs. The existing distribution allowlist,
 contributor/secret exclusions, fixed ZIP metadata, per-entry source hashes,
 Lua test gate, no-overwrite rule, two-build byte comparison, and final SHA-256
 report remain release requirements.
+
+Before retaining an archive, the builder also requires the unchanged source
+manifest to declare `standard, camelot`, both `X-RGMS-*` version/build fields,
+CurseForge project `1741733`, `RGMSAccountDB`, `RGMSCharacterDB`, and optional
+Auctionator integration. The archive allowlist contains the manifest and every
+shared or conditional runtime file exactly once; `README.md`, `CHANGELOG.md`,
+`LICENSE`, `THIRD_PARTY_NOTICES.md`, the RGMS image/font/icon assets, and
+`licenses/Inter-OFL.txt` plus `licenses/Lucide-ISC.txt` are the only
+distribution-only files.
 
 The maintained, public-domain BigWigs Packager supports multiple interfaces,
 Forever, native TOC directives, and multi-target uploads. RGMS retains its small
@@ -158,10 +191,13 @@ sha256sum "$archive"
 ```
 
 Expect one `RGMS/RGMS.toc`, every manifest-referenced shared and conditional
-runtime file exactly once, and the documented distribution files. Expect no
-generated TOC, product-specific archive, contributor file, or secret-like
-path. A repeat build in a different empty output directory must report the same
-SHA-256 for unchanged source bytes.
+runtime file exactly once, and the allowlisted distribution files. Inspect the
+embedded TOC and confirm its two interfaces, `standard, camelot`, both stored
+product versions, CurseForge project ID, SavedVariables declarations, and
+`OptionalDeps: Auctionator` match the source byte for byte. Expect no generated
+TOC, product-specific archive, contributor file, or secret-like path. A repeat
+build in a different empty output directory must report the same SHA-256 for
+unchanged source bytes.
 
 ## Create the release
 

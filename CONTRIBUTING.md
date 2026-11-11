@@ -23,11 +23,11 @@ Lua load order.
 
 | Area | Runtime code | Primary tests and documentation |
 | --- | --- | --- |
-| Startup and addon namespace | `Core/Bootstrap.lua`, `RGMS.toc` | `Tests/spec/mvp_integration_spec.lua`, `docs/DEVELOPMENT.md` |
+| Client detection, startup, and addon namespace | `Core/ClientFlavor.lua`, `Core/Bootstrap.lua`, `RGMS.toc` | `Tests/spec/client_flavor_spec.lua`, `Tests/spec/manifest_contract_spec.lua`, `Tests/spec/mvp_integration_spec.lua`, `docs/DEVELOPMENT.md` |
 | Slash commands | `Core/Commands.lua` | `Tests/spec/commands_spec.lua` |
 | Saved-data schema, validation, and migrations | `Core/SavedData.lua` | `Tests/spec/saved_data_spec.lua`, `Tests/spec/fixtures_spec.lua`, `docs/SAVED_DATA.md` |
 | Reset and recovery | `Core/Reset.lua` | `Tests/spec/reset_spec.lua`, `docs/SAVED_DATA.md` |
-| Guild identity and transactional ownership | `Core/Realm.lua`, `Core/DatasetOwnership.lua` | `Tests/spec/dataset_ownership_spec.lua`, `Tests/spec/roster_names_spec.lua` |
+| Character/guild identity and transactional ownership | `Core/Realm.lua`, `Roster/Names.lua`, `Core/CharacterIdentity.lua`, `Core/GuildIdentity.lua`, `Core/DatasetOwnership.lua` | `Tests/spec/character_identity_spec.lua`, `Tests/spec/guild_identity_spec.lua`, `Tests/spec/dataset_ownership_spec.lua`, `Tests/spec/roster_names_spec.lua` |
 | Pacific dates and timestamps | `Core/DateTime.lua` | `Tests/spec/date_time_spec.lua`, `Tests/date_fixtures.lua` |
 | Shared roster adapter and event wiring | `Roster/Roster.lua` | `Tests/spec/roster_adapter_spec.lua`, `Tests/spec/roster_spec.lua` |
 | Roster scan coordinator | `Roster/Scanner.lua` | `Tests/spec/roster_scanner_spec.lua` |
@@ -39,7 +39,8 @@ Lua load order.
 | Root window, navigation, positioning, and scan overlay | `UI/Window.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
 | Shared UI widgets and styling | `UI/Widgets.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
 | Roster ByName, ByTenure, and tag popovers | `UI/Roster/ByName.lua`, `UI/Roster/ByTenure.lua`, `UI/Roster/TagPopovers.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
-| Tags, bank, and provisions views | `UI/Tags.lua`, `UI/Bank.lua`, `UI/Provisions.lua`, `UI/ProvisionDrag.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
+| Tags and bank views | `UI/Tags.lua`, `UI/Bank.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
+| Provisions model, Auctionator integration, controller, and view | `Provisions/Model.lua`, `Provisions/Auctionator.lua`, `Provisions/Provisions.lua`, `UI/Provisions.lua`, `UI/ProvisionDrag.lua` | `Tests/spec/provisions_model_spec.lua`, `Tests/spec/auctionator_spec.lua`, `Tests/spec/provisions_spec.lua`, `Tests/spec/ui_spec.lua` |
 | Notes, News, tooltips, and toasts | `UI/Notes.lua`, `UI/News.lua`, `UI/Tooltip.lua`, `UI/Toast.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua` |
 | Pure window geometry | `UI/Layout.lua` | `Tests/spec/ui_layout_spec.lua` |
 | Minimap button and placement | `Core/Minimap.lua` | `Tests/spec/minimap_spec.lua` |
@@ -72,6 +73,13 @@ smallest explicit test stub in an adapter test. UI-only frame APIs belong in
 the component identified in `docs/PORTAL_UI.md`; the `UI/UI.lua` facade retains
 only cross-feature coordination. Pure placement calculations remain in
 `UI/Layout.lua`.
+
+`Core/ClientFlavor.lua` owns the production reads of WoW's project globals and
+loads before every identity, persistence, adapter, and UI consumer. Feature
+modules query its product and semantic capabilities instead of comparing raw
+project IDs or version strings. Client-parsed manifest conditions use WoW's
+`camelot` game-type token; internal product values and user-facing documentation
+use Forever.
 
 ### Transactions and pure state
 
@@ -166,11 +174,12 @@ fixture patterns, assertions, and suite registration.
 ## Manual regression testing
 
 Automated tests cannot reproduce Retail or Forever event timing, guild
-permissions, SavedVariables flushing, or the default guild-bank UI. The project
-owner runs live-client regression testing between tickets and may use
-[`docs/MVP_SCENARIO_CHECKLIST.md`](docs/MVP_SCENARIO_CHECKLIST.md) as the test
-reference for the staged Retail and Forever core beta. Use the shorter smoke
-procedure in
+permissions, SavedVariables flushing, or the default guild-bank UI. The completed
+[`docs/MVP_SCENARIO_CHECKLIST.md`](docs/MVP_SCENARIO_CHECKLIST.md) is the durable
+Retail and Forever release-acceptance record. Treat every failed required item
+as a blocker, route the correction to its owning feature, and repeat the
+affected section plus the complete automated and package checks. Use the
+shorter smoke procedure in
 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#runtime-and-manifest-assumptions)
 for shared-manifest checks. Record observations from the exact checkout or
 package under test, never from memory, and remove private account and character
@@ -179,12 +188,15 @@ corresponding GitHub issue or release rather than in the repository.
 
 ## Dependencies, assets, and attribution
 
-RGMS bundles LibDBIcon-1.0 and its minimal runtime dependencies: LibStub,
-CallbackHandler-1.0, and LibDataBroker-1.1. Their versions, source, license, and
-included files are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-RGMS otherwise bundles no third-party code, fonts, icons, textures, audio, or
-other assets. WoW client APIs are platform APIs, not bundled project
-dependencies. The test runner and fixtures are project-owned source.
+RGMS bundles LibDBIcon-1.0 and its minimal runtime dependencies (LibStub,
+CallbackHandler-1.0, and LibDataBroker-1.1), Inter font files, and raster icons
+derived from Lucide. Their versions, sources, licenses, and included files are
+recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). Auctionator is an
+optional external addon declared through `OptionalDeps`; RGMS bundles none of
+its code or assets and calls only its supported v1 shopping-list API when both
+required functions are available. WoW client APIs are platform APIs, not
+bundled project dependencies. The test runner and fixtures are project-owned
+source.
 
 Before adding a dependency or asset:
 

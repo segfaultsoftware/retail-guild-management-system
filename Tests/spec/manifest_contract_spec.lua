@@ -148,10 +148,20 @@ end
 
 local function productVersion(name)
     local value = singleMetadata(name)
-    test.assert_matches(
+    local major, minor, patch, suffix = string.match(
         value,
-        "^%d+%.%d+%.%d+",
-        name .. " must begin with X.Y.Z"
+        "^(%d+)%.(%d+)%.(%d+)(.*)$"
+    )
+    test.assert_not_nil(major, name .. " must begin with X.Y.Z")
+    for _, component in ipairs({ major, minor, patch }) do
+        test.assert_true(
+            component == "0" or string.sub(component, 1, 1) ~= "0",
+            name .. " must use canonical numeric version components"
+        )
+    end
+    test.assert_true(
+        suffix == "" or string.match(suffix, "^%s+%S") ~= nil,
+        name .. " build text must be separated from X.Y.Z by whitespace"
     )
     return value
 end
@@ -182,6 +192,8 @@ return {
             singleMetadata("SavedVariablesPerCharacter"),
             "RGMSCharacterDB"
         )
+        test.assert_equal(singleMetadata("X-Curse-Project-ID"), "1741733")
+        test.assert_equal(singleMetadata("OptionalDeps"), "Auctionator")
     end),
 
     test.case("runtime entries are unique shared files with valid directives", function()

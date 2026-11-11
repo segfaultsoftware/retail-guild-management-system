@@ -1,10 +1,10 @@
 # Lua tests
 
 RGMS uses a small dependency-free runner in `Tests/lib/runner.lua`. It targets
-the Lua 5.1 language features available to addons in WoW Retail while running
-entirely outside the game client. The runner is kept in the repository so a
-clean checkout needs only a Lua interpreter and never needs a package download
-or network connection to run tests.
+the Lua 5.1 language features shared by the supported WoW Retail and Forever
+clients while running entirely outside the game client. The runner is kept in
+the repository so a clean checkout needs only a Lua interpreter and never needs
+a package download or network connection to run tests.
 
 Install Lua 5.1 (or a newer Lua version for a quick compatibility check), then
 run the complete suite from the repository root with one command:
@@ -77,7 +77,7 @@ both the scenario and the exact transition that failed.
 
 Live-client behavior that cannot be reproduced faithfully outside Retail or
 Forever is covered by
-[the staged core-beta checklist](../docs/MVP_SCENARIO_CHECKLIST.md).
+[the dual-client release-acceptance checklist](../docs/MVP_SCENARIO_CHECKLIST.md).
 
 ## Runtime contract evidence
 
@@ -121,9 +121,10 @@ so it excludes the entire test tree from addon packages; `.gitignore` excludes
 local result and coverage files.
 
 Release-package behavior has a separate end-to-end PowerShell suite. It copies
-the real builder into temporary fixture repositories, validates single and
-comma-delimited dual interfaces plus `standard`/`camelot` runtime directives,
-and inspects the resulting deterministic ZIPs:
+the real builder into temporary fixture repositories, requires the complete
+dual-product metadata contract and exactly two comma-delimited interfaces,
+validates `standard`/`camelot` runtime directives, and inspects the resulting
+deterministic ZIPs:
 
 ```text
 pwsh -NoProfile -File ./Tests/build_release_tests.ps1 -LuaCommand lua5.1
@@ -131,3 +132,31 @@ pwsh -NoProfile -File ./Tests/build_release_tests.ps1 -LuaCommand lua5.1
 
 On Windows, pass the installed `lua.exe` path. The builder continues to invoke
 that executable through Git Bash, matching the supported Lua test path.
+
+Release preparation has a transactional shell suite. Run it from Git Bash at
+the repository root so it exercises the documented Bash entry point and verifies
+that failures restore the manifest and changelog byte-for-byte:
+
+```text
+bash ./Tests/prepare_release_tests.sh
+```
+
+Release-workflow helpers, exact Retail/Forever target resolution, upload
+metadata, and workflow declarations have a separate PowerShell 7 suite:
+
+```text
+pwsh -NoProfile -File ./Tests/release_workflow_tests.ps1
+```
+
+The Windows development-link helper has its own PowerShell suite covering the
+required Retail/Forever target selection, default and custom client paths,
+safe junction creation, and fail-closed unlink behavior:
+
+```text
+pwsh -NoProfile -File ./Tests/link_addon_tests.ps1
+```
+
+Before a release-acceptance package is staged, run the complete Lua suite and
+all four install/release-tool suites, then build and inspect the local archive
+using the commands in
+[`docs/MVP_SCENARIO_CHECKLIST.md`](../docs/MVP_SCENARIO_CHECKLIST.md).

@@ -16,14 +16,17 @@ preparing a distributable package should use the complete
 - The current live World of Warcraft Retail or Forever client, installed
   through the Battle.net desktop app. Install both for dual-client validation.
 - Git.
-- Windows PowerShell 5.1 or PowerShell 7.
+- Git Bash and Lua 5.1 for the automated suite on Windows.
+- Windows PowerShell 5.1 for addon linking; PowerShell 7 for release-tool and
+  package-builder tests.
 - A text editor. Visual Studio Code is convenient but not required.
 
-There are no packages to download and no build step. WoW embeds its own Lua
-runtime, so a separately installed Lua interpreter is neither needed nor an
-exact substitute for testing inside the client. Addon code should use the Lua
-features and WoW APIs shared by the supported clients; it cannot use the normal
-operating-system, filesystem, or networking libraries.
+There is no package manager or runtime build step before loading the checkout
+in WoW. WoW embeds its own Lua runtime, so a separately installed interpreter is
+not required merely to load the addon and is not an exact substitute for live
+testing. The repository's automated suite does require Lua 5.1. Addon code
+should use the Lua features and WoW APIs shared by the supported clients; it
+cannot use the normal operating-system, filesystem, or networking libraries.
 
 The repository root is the addon root. `RGMS.toc` is the manifest, and the Lua
 files named in that manifest are loaded in order. Runtime source is grouped by
@@ -100,15 +103,17 @@ default Forever installation, run:
 powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever
 ```
 
-For a custom installation, pass its client directory with `-RetailPath`:
+For a custom installation, pass its product directory with `-ClientPath`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Retail -RetailPath "D:\Games\World of Warcraft\_retail_"
-powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever -RetailPath "D:\Games\World of Warcraft\_forever_"
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Retail -ClientPath "D:\Games\World of Warcraft\_retail_"
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever -ClientPath "D:\Games\World of Warcraft\_forever_"
 ```
 
-An explicit `-RetailPath` is authoritative, including when `-Forever` is also
-present, so pass the actual `_forever_` directory for a custom Forever install.
+An explicit `-ClientPath` is authoritative, so pass the actual `_retail_` or
+`_forever_` product directory selected by the required product switch. The old
+`-RetailPath` spelling remains an alias for compatibility with existing local
+commands, but new instructions use the product-neutral name.
 
 The script creates an `RGMS` directory junction. Creating a junction normally
 does not require Administrator privileges. It refuses to replace an existing
@@ -203,6 +208,39 @@ Both saved values are versioned and validated before RGMS exposes them to scans
 or reports. See [SAVED_DATA.md](SAVED_DATA.md) for their exact schemas,
 supported migrations, disabled states, and recovery steps.
 
+## 6. Run automated and package checks
+
+From Git Bash at the repository root on Windows, run the complete Lua suite and
+the transactional release-preparation tests:
+
+```text
+lua.exe Tests/run.lua
+bash ./Tests/prepare_release_tests.sh
+```
+
+From PowerShell 7, run the Windows install-helper, deterministic
+package-builder, and release-workflow helper tests:
+
+```text
+pwsh.exe -NoProfile -File .\Tests\link_addon_tests.ps1
+pwsh.exe -NoProfile -File .\Tests\build_release_tests.ps1 -LuaCommand 'C:\Program Files (x86)\Lua\5.1\lua.exe'
+pwsh.exe -NoProfile -File .\Tests\release_workflow_tests.ps1
+```
+
+Each command must exit with status `0`. The Lua suite prints its exact total,
+passed, and failed count; the shell and PowerShell suites print their own
+passing assertion or scenario counts. To build the deterministic local archive
+after those checks, return to Git Bash and run:
+
+```text
+./scripts/build-local-release.sh
+```
+
+The builder runs the Lua gate again, creates the ZIP twice, requires byte-for-
+byte equality, inspects the archive against its explicit allowlist, and reports
+the final SHA-256. The complete live-client procedure is in
+[`MVP_SCENARIO_CHECKLIST.md`](MVP_SCENARIO_CHECKLIST.md).
+
 ## Runtime and manifest assumptions
 
 - The targets are the current supported Retail and Forever clients.
@@ -213,8 +251,13 @@ supported migrations, disabled states, and recovery steps.
 - `AllowLoadGameType` restricts the addon to `standard` and `camelot`. Use
   `camelot`, never `forever`, in client-parsed load directives.
 - Runtime files are shared and unconditional unless their implementation
-  genuinely differs by product. Client detection loads before identity,
-  persistence, adapters, and UI consumers.
+  genuinely differs by product. `Core/ClientFlavor.lua` loads before every
+  product-sensitive identity, persistence, adapter, and UI consumer and accepts
+  only valid, distinct WoW project globals identifying Mainline or Camelot.
+  Missing, invalid, or unknown values produce an unsupported profile, so
+  identity and capability-dependent behavior fails closed. Consumers use the
+  resulting Retail/Forever and crafting-quality queries instead of reading raw
+  project IDs or comparing client versions.
 - The manifest's `Title`, `Notes`, `Author`, and `Version` fields provide the
   addon-list and project metadata. Keep the development version placeholder
   until a release process supplies a real release version.
