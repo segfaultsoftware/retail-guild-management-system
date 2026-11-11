@@ -110,19 +110,31 @@ artifacts come from GitHub Actions.
 
 ## Prepare and create a release
 
-On a clean `main` branch, use the Git Bash preparation entry point with values
-from the tested Retail client:
+On each tested client, Retail and Forever, collect the version/build and numeric
+interface values in chat:
+
+```text
+/dump GetBuildInfo()
+/dump select(4, GetBuildInfo())
+```
+
+Then, on a clean `main` branch, pass the exact observed values to the Git Bash
+preparation entry point. Replace the representative values below with the
+values from the clients being released:
 
 ```text
 bash ./scripts/prepare-release.sh \
   --version 1.1.0 \
-  --retail-version "12.1.5" \
-  --interface 120100
+  --retail-version "12.1.6 (build 22222)" \
+  --retail-interface 120106 \
+  --forever-version "1.60.2 (build 33333)" \
+  --forever-interface 16002
 ```
 
-The command stores the complete tested Retail version in `RGMS.toc`, updates
-the addon version and interface, and promotes the `CHANGELOG.md` Unreleased
-section to the target version. After committing and pushing those changes,
+The command stores both complete tested version/build values in `RGMS.toc`,
+writes the interfaces in deterministic Retail-then-Forever order, updates the
+addon version, and promotes the `CHANGELOG.md` Unreleased section in the same
+rollback-protected operation. After committing and pushing those changes,
 dispatch **Create Release** from `main` with the version and full main-tip SHA.
 The workflow tests and retains one canonical ZIP, publishes and verifies it on
 GitHub, and automatically submits exact final releases to CurseForge.
