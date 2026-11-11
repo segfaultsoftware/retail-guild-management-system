@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$RetailPath = (Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\_retail_"),
+    [string]$RetailPath,
+    [switch]$Retail,
     [switch]$Forever,
     [switch]$Unlink
 )
@@ -8,12 +9,15 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-if ($Forever -and -not $PSBoundParameters.ContainsKey("RetailPath")) {
-    $RetailPath = Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\_forever_"
+if ($Retail.IsPresent -eq $Forever.IsPresent) {
+    throw "Specify exactly one client switch: -Retail or -Forever."
 }
 
 $clientName = if ($Forever) { "Forever" } else { "Retail" }
 $clientDirectoryName = if ($Forever) { "_forever_" } else { "_retail_" }
+if (-not $PSBoundParameters.ContainsKey("RetailPath")) {
+    $RetailPath = Join-Path ${env:ProgramFiles(x86)} "World of Warcraft\$clientDirectoryName"
+}
 
 $repositoryPath = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $manifestPath = Join-Path $repositoryPath "RGMS.toc"

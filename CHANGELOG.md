@@ -36,6 +36,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Required an explicit Retail or Forever target for Windows development link
+  and unlink commands, preventing accidental operations on the wrong client.
 - Activated one shared manifest for validated Retail and Forever interfaces,
   supported game types, product build metadata, and early client detection.
 - Extended deterministic release packaging to validate comma-delimited

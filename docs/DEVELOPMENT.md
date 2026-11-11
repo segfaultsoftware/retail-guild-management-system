@@ -87,14 +87,14 @@ An extra nested directory such as
 
 ### Windows: create a directory junction
 
-From the repository root, run:
+From the repository root, choose exactly one supported client. For Retail, run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Retail
 ```
 
-The command uses the default Retail installation path shown above. To link the
-default Forever installation instead, add `-Forever`:
+The command uses the default Retail installation path shown above. For the
+default Forever installation, run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever
@@ -103,7 +103,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever
 For a custom installation, pass its client directory with `-RetailPath`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -RetailPath "D:\Games\World of Warcraft\_retail_"
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Retail -RetailPath "D:\Games\World of Warcraft\_retail_"
 powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever -RetailPath "D:\Games\World of Warcraft\_forever_"
 ```
 
@@ -117,14 +117,16 @@ file or directory.
 To remove the junction before testing an installed package, run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Unlink
+powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Retail -Unlink
 powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever -Unlink
 ```
 
-Pass the same target options when unlinking from a custom location. Unlinking is
-safe to repeat: the script succeeds when the junction is already absent. It
-refuses to remove a regular file or directory, or a junction that does not
-point to the current checkout.
+Exactly one of `-Retail` or `-Forever` is required for both link and unlink
+operations; omitting both or passing both fails before touching either client.
+Pass the same product and path options when unlinking from a custom location.
+Unlinking is safe to repeat: the script succeeds when the junction is already
+absent. It refuses to remove a regular file or directory, or a junction that
+does not point to the current checkout.
 
 ### Copy instead of link
 

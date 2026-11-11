@@ -65,17 +65,18 @@ Bank scans are started from the default guild-bank window and the Bank
    validating shared-client support.
 2. Clone this repository.
 3. Link the checkout into the client's `Interface/AddOns` directory:
-   - Windows: `powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1`
-   - Windows Forever development: add `-Forever` to the command.
+   - Windows Retail: `powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Retail`
+   - Windows Forever: `powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever`
    - To safely remove a Windows junction later, rerun the same command with
-     `-Unlink` (and `-Forever` for Forever).
+     `-Unlink` while retaining its required product switch.
 4. Enable **Retail Guild Management System (RGMS)** at character selection and
    log in.
 5. Confirm that the RGMS development load message appears, then run
    `/rgms help`.
 
-The `-Forever` option selects `_forever_` as the development-link destination;
-both links use the same checkout and shared manifest.
+Exactly one product switch is required for linking and unlinking: `-Retail`
+selects `_retail_`, and `-Forever` selects `_forever_`. Both links use the same
+checkout and shared manifest.
 
 The complete setup, edit/reload/debug loop, SavedVariables locations, manifest
 notes, and troubleshooting steps are in
