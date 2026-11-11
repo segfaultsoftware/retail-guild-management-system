@@ -38,6 +38,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Required an explicit Retail or Forever target for Windows development link
   and unlink commands, preventing accidental operations on the wrong client.
+- Expanded the staged core-beta procedure into one artifact-pinned Retail and
+  Forever validation matrix covering migrations, identities, roster-linked
+  features, notes, guild bank, shared UI, minimap, and deferred parity.
 - Activated one shared manifest for validated Retail and Forever interfaces,
   supported game types, product build metadata, and early client detection.
 - Extended deterministic release packaging to validate comma-delimited

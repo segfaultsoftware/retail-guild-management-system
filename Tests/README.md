@@ -75,8 +75,9 @@ scanner, dataset-ownership, reducer, persistence, reset, and command layers.
 Each case wraps its state changes in named transitions, so a failure reports
 both the scenario and the exact transition that failed.
 
-Live-client behavior that cannot be reproduced faithfully outside Retail is
-covered by [the MVP release-candidate checklist](../docs/MVP_SCENARIO_CHECKLIST.md).
+Live-client behavior that cannot be reproduced faithfully outside Retail or
+Forever is covered by
+[the staged core-beta checklist](../docs/MVP_SCENARIO_CHECKLIST.md).
 
 ## Runtime contract evidence
 

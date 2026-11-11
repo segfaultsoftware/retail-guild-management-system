@@ -97,8 +97,9 @@ suite with Lua 5.1 for every push and pull request. See
 
 The project owner also performs live-client regression testing in both
 supported products between tickets. The
-[`MVP scenario checklist`](docs/MVP_SCENARIO_CHECKLIST.md) remains available as
-a Retail regression reference; it is not a separate release gate.
+[`staged core-beta checklist`](docs/MVP_SCENARIO_CHECKLIST.md) is the durable
+Retail and Forever validation procedure. Its completed evidence gates a staged
+dual-client beta but is not an automatic input to the release workflow.
 
 ## Build a local test package
 

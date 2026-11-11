@@ -1,3 +1,4 @@
+local accountData = require("Core.AccountData")
 local bankScannerModule = require("Bank.Scanner")
 local bankState = require("Bank.State")
 local characterIdentity = require("Core.CharacterIdentity")
@@ -234,7 +235,6 @@ local function newSession(options)
 
     function session:closeRgms()
         self.ui.windowShown = false
-        self.bankScanner:Cancel()
     end
 
     function session:closeBank()
@@ -551,7 +551,7 @@ return {
         end)
     end),
 
-    test.case("MVP-E2E-06 both bank cancellation paths preserve committed state", function()
+    test.case("MVP-E2E-06 hiding RGMS preserves the bank scan and bank close cancels safely", function()
         local session = newSession({ bankOpen = true })
         local initialCatalog = mvp.bank_catalog(nil, false)
         test.assert_true(session:scanBank(initialCatalog, {
@@ -559,8 +559,10 @@ return {
         }, mvp.dates.day1Morning))
         local committed = session.current
         local twoAccessible = mvp.bank_catalog(nil, true)
+        local hiddenCompletion
 
-        transition("closing RGMS cancels after a partial tab", function()
+        transition("hiding RGMS lets a partial scan finish", function()
+            session.ui.windowShown = true
             test.assert_true(session:startBankScan(twoAccessible, {
                 [1] = { mvp.bank_slot(1, 1, 1001, 99) },
                 [2] = { mvp.bank_slot(2, 1, 3003, 1) },
@@ -568,8 +570,16 @@ return {
             test.assert_true(session.bankScanner:OnSlotsChanged())
             test.assert_true(session.bankScanner:IsInProgress())
             session:closeRgms()
-            test.assert_false(session.bankScanner:IsInProgress())
+            test.assert_false(session.ui.windowShown)
+            test.assert_true(session.bankOpen)
+            test.assert_true(session.bankScanner:IsInProgress())
             test.assert_equal(session.current, committed)
+            test.assert_true(session:finishBankScan())
+            test.assert_false(session.bankScanner:IsInProgress())
+            test.assert_equal(#session.current.bank.slots, 2)
+            test.assert_equal(session.current.bank.slots[1].itemId, 1001)
+            test.assert_equal(session.current.bank.slots[2].itemId, 3003)
+            hiddenCompletion = session.current
         end)
 
         transition("closing guild bank cancels immediately", function()
@@ -578,7 +588,7 @@ return {
             }, mvp.dates.day3))
             session:closeBank()
             test.assert_false(session.bankScanner:IsInProgress())
-            test.assert_equal(session.current, committed)
+            test.assert_equal(session.current, hiddenCompletion)
         end)
     end),
 
@@ -637,7 +647,7 @@ return {
         end)
     end),
 
-    test.case("MVP-E2E-08 reset recovery character isolation and window position", function()
+    test.case("MVP-E2E-08 reset recovery partition scope and window position", function()
         local position = fixtures.window_position({ x = 333, y = -222 })
         local model = savedData.newModel()
         model.ui.windowPosition = position
@@ -702,6 +712,193 @@ return {
                 recovery.messages[#recovery.messages],
                 "Saved data reset completed; scans and reports are enabled."
             )
+        end)
+
+        transition("account recovery replaces only the account store", function()
+            local activeGuild = mvp.guild_a()
+            local corruptAccount = {
+                schemaVersion = "invalid",
+                untouched = "original",
+            }
+            local disabled = accountData.load(corruptAccount)
+            disabled.scope = "account"
+
+            local validCharacter = fixtures.saved_model()
+            validCharacter.ui.windowPosition = position
+            validCharacter.ui.selectedRosterRankIndex = 2
+            validCharacter.ui.selectedBankTabIndex = 3
+            local validCharacterState = savedData.load(validCharacter)
+            test.assert_true(validCharacterState.enabled)
+            validCharacter = validCharacterState.model
+
+            local current = {
+                account = corruptAccount,
+                character = validCharacter,
+                commits = 0,
+            }
+            local committedGuild
+            local controller = resetModule.create({
+                accountData = accountData,
+                savedData = savedData,
+                getGuildIdentity = function()
+                    return activeGuild
+                end,
+                getAccountData = function()
+                    return current.account
+                end,
+                getSavedData = function()
+                    return current.character
+                end,
+                commitAccount = function(accountModel, characterModel, identity)
+                    current.account = accountModel
+                    current.character = characterModel
+                    committedGuild = identity
+                    current.commits = current.commits + 1
+                end,
+                showConfirmation = function()
+                end,
+                print = function()
+                end,
+            })
+
+            local declined = controller:requestRecovery(disabled)
+            controller:cancel(declined)
+            test.assert_true(current.account == corruptAccount)
+            test.assert_true(current.character == validCharacter)
+            test.assert_equal(current.commits, 0)
+            test.assert_equal(current.character.ui.selectedRosterRankIndex, 2)
+            test.assert_equal(current.character.ui.selectedBankTabIndex, 3)
+
+            local accepted = controller:requestRecovery(disabled)
+            test.assert_true(controller:confirm(accepted))
+
+            local guildCount = 0
+            for _ in pairs(current.account.guilds) do
+                guildCount = guildCount + 1
+            end
+            local activeAfter = accountData.findGuild(current.account, activeGuild)
+            test.assert_equal(current.commits, 1)
+            test.assert_equal(committedGuild, activeGuild)
+            test.assert_equal(guildCount, 1)
+            test.assert_true(activeAfter.rosterInitialized)
+            test.assert_true(activeAfter.bankInitialized)
+            test.assert_equal(activeAfter.roster.members, {})
+            test.assert_equal(activeAfter.bank.slots, {})
+            test.assert_equal(
+                current.character.roster.members[1].displayName,
+                "Aeloria-Example Realm"
+            )
+            test.assert_equal(current.character.bank.slots[1].itemId, 191384)
+            test.assert_equal(current.character.ui.windowPosition, position)
+            test.assert_nil(current.character.ui.selectedRosterRankIndex)
+            test.assert_nil(current.character.ui.selectedBankTabIndex)
+            test.assert_equal(corruptAccount.untouched, "original")
+            test.assert_true(accountData.load(current.account).enabled)
+            test.assert_true(savedData.load(current.character).enabled)
+        end)
+
+        transition("character recovery resets only the active account guild", function()
+            local activeGuild = mvp.guild_a()
+            local unrelatedGuild = assert(guildIdentity.create({
+                flavor = clientFlavor.FOREVER,
+                region = "EU",
+                name = "Recovery Fixture Guild",
+                clubId = "Recovery-001",
+            }))
+
+            local account = accountData.newModel()
+            account = assert(accountData.replaceCharacterNote(
+                account,
+                activeGuild,
+                "active-member",
+                "remove me"
+            ))
+            account = assert(accountData.replaceCharacterNote(
+                account,
+                unrelatedGuild,
+                "unrelated-member",
+                "preserve me"
+            ))
+            local unrelatedBefore = accountData.findGuild(account, unrelatedGuild)
+
+            local corrupt = {
+                schemaVersion = "invalid",
+                ui = { windowPosition = position },
+                untouched = "original",
+            }
+            local disabled = savedData.load(corrupt)
+            disabled.scope = "character"
+
+            local current = {
+                account = account,
+                character = corrupt,
+                commits = 0,
+            }
+            local committedGuild
+            local controller = resetModule.create({
+                accountData = accountData,
+                savedData = savedData,
+                getGuildIdentity = function()
+                    return activeGuild
+                end,
+                getAccountData = function()
+                    return current.account
+                end,
+                getSavedData = function()
+                    return current.character
+                end,
+                commitAccount = function(accountModel, characterModel, identity)
+                    current.account = accountModel
+                    current.character = characterModel
+                    committedGuild = identity
+                    current.commits = current.commits + 1
+                end,
+                showConfirmation = function()
+                end,
+                print = function()
+                end,
+            })
+
+            local declined = controller:requestRecovery(disabled)
+            controller:cancel(declined)
+            test.assert_true(current.account == account)
+            test.assert_true(current.character == corrupt)
+            test.assert_equal(current.commits, 0)
+
+            local accepted = controller:requestRecovery(disabled)
+            test.assert_true(controller:confirm(accepted))
+
+            test.assert_equal(current.commits, 1)
+            test.assert_equal(committedGuild, activeGuild)
+            test.assert_equal(
+                accountData.findGuild(current.account, activeGuild).characterNotes,
+                {}
+            )
+            test.assert_equal(
+                accountData.findGuild(current.account, unrelatedGuild),
+                unrelatedBefore
+            )
+            test.assert_equal(
+                accountData.findGuild(
+                    current.account,
+                    unrelatedGuild
+                ).characterNotes["unrelated-member"],
+                "preserve me"
+            )
+            test.assert_equal(
+                accountData.findGuild(account, activeGuild).characterNotes["active-member"],
+                "remove me"
+            )
+            test.assert_equal(
+                accountData.findGuild(
+                    account,
+                    unrelatedGuild
+                ).characterNotes["unrelated-member"],
+                "preserve me"
+            )
+            test.assert_equal(current.character, mvp.empty_model(position))
+            test.assert_true(accountData.load(current.account).enabled)
+            test.assert_true(savedData.load(current.character).enabled)
         end)
     end),
 
