@@ -24,6 +24,9 @@ jobs:
         run: |
           pwsh -NoProfile -File ./Tests/release_workflow_tests.ps1
           bash ./Tests/prepare_release_tests.sh
+      - name: Test dual-product package builder
+        shell: pwsh
+        run: ./Tests/build_release_tests.ps1 -LuaCommand lua5.1
       - name: Build and validate a reproducible package
         shell: pwsh
         run: |

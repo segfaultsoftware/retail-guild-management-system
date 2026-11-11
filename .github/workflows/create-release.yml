@@ -112,6 +112,7 @@ jobs:
       - name: Test release automation
         run: |
           pwsh -NoProfile -File ./Tests/release_workflow_tests.ps1
+          pwsh -NoProfile -File ./Tests/build_release_tests.ps1 -LuaCommand lua5.1
           bash ./Tests/prepare_release_tests.sh
 
       - name: Build canonical release package

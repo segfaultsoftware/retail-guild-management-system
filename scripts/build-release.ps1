@@ -67,6 +67,132 @@ function Assert-RegularFile {
     }
 }
 
+function Assert-NoLinkedPathComponents {
+    param(
+        [string]$RepositoryPath,
+        [string]$RelativePath,
+        [string]$Description
+    )
+
+    $systemRelativePath = $RelativePath.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    $segments = @($systemRelativePath.Split(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringSplitOptions]::RemoveEmptyEntries
+    ))
+    $currentPath = $RepositoryPath
+    for ($index = 0; $index -lt $segments.Count - 1; $index += 1) {
+        $currentPath = Join-Path $currentPath $segments[$index]
+        if (-not (Test-Path -LiteralPath $currentPath)) {
+            break
+        }
+
+        $item = Get-Item -LiteralPath $currentPath -Force
+        if (
+            -not [string]::IsNullOrWhiteSpace($item.LinkType) -or
+            ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+        ) {
+            throw "$Description must not traverse a linked directory: $currentPath"
+        }
+    }
+}
+
+function Get-ManifestRuntimePath {
+    param([string]$Entry)
+
+    $directiveStart = [regex]::Match($Entry, '\s+\[')
+    if (-not $directiveStart.Success) {
+        if ($Entry.Contains('[') -or $Entry.Contains(']')) {
+            throw "Manifest runtime entry has a malformed inline directive: $Entry"
+        }
+        return $Entry
+    }
+
+    $sourcePath = $Entry.Substring(0, $directiveStart.Index).TrimEnd()
+    $directiveText = $Entry.Substring($directiveStart.Index).Trim()
+    if ([string]::IsNullOrWhiteSpace($sourcePath)) {
+        throw "Manifest runtime entry has no source path before its inline directives: $Entry"
+    }
+
+    $directivePattern = [regex]'\G\s*\[(?<Name>AllowLoadGameType|ExcludeLoadGameType)\s+(?<Values>[a-z]+(?:\s*,\s*[a-z]+)*)\]'
+    $directiveNames = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+    $allowedGameTypes = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+    $excludedGameTypes = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+    $offset = 0
+    while ($offset -lt $directiveText.Length) {
+        $directive = $directivePattern.Match($directiveText, $offset)
+        if (-not $directive.Success -or $directive.Index -ne $offset) {
+            throw "Manifest runtime entry has a malformed or unsupported inline directive: $Entry"
+        }
+
+        $directiveName = $directive.Groups['Name'].Value
+        if (-not $directiveNames.Add($directiveName)) {
+            throw "Manifest runtime entry declares '$directiveName' more than once: $Entry"
+        }
+
+        $directiveGameTypes = $excludedGameTypes
+        if ($directiveName -ceq 'AllowLoadGameType') {
+            $directiveGameTypes = $allowedGameTypes
+        }
+        foreach ($gameTypeValue in $directive.Groups['Values'].Value -split ',') {
+            $gameType = $gameTypeValue.Trim()
+            if ($gameType -cne 'standard' -and $gameType -cne 'camelot') {
+                throw "Manifest runtime entry uses unsupported game type '$gameType': $Entry"
+            }
+            if (-not $directiveGameTypes.Add($gameType)) {
+                throw "Manifest runtime entry repeats game type '$gameType' in '$directiveName': $Entry"
+            }
+        }
+
+        $offset += $directive.Length
+    }
+
+    foreach ($gameType in $allowedGameTypes) {
+        if ($excludedGameTypes.Contains($gameType)) {
+            throw "Manifest runtime entry both allows and excludes game type '$gameType': $Entry"
+        }
+    }
+
+    return $sourcePath
+}
+
+function Get-ManifestInterfaces {
+    param([string]$Value)
+
+    $interfaces = [System.Collections.Generic.List[string]]::new()
+    $interfaceSet = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+    foreach ($rawInterface in $Value -split ',') {
+        $interface = $rawInterface.Trim()
+        if ([string]::IsNullOrWhiteSpace($interface)) {
+            throw "Manifest Interface contains an empty value; found '$Value'."
+        }
+        if ($interface -cnotmatch '^[0-9]+$') {
+            throw "Manifest Interface values must be numeric and comma-delimited; found '$Value'."
+        }
+
+        $canonicalInterface = $interface.TrimStart('0')
+        if ($canonicalInterface.Length -eq 0) {
+            $canonicalInterface = '0'
+        }
+        if (-not $interfaceSet.Add($canonicalInterface)) {
+            throw "Manifest Interface value '$interface' is declared more than once."
+        }
+        $interfaces.Add($interface)
+    }
+
+    if ($interfaces.Count -eq 0 -or $interfaces.Count -gt 2) {
+        throw "Manifest Interface must contain one legacy or two dual-product numeric values; found '$Value'."
+    }
+    return $interfaces.ToArray()
+}
+
 function Get-ManifestInformation {
     param(
         [string]$ManifestPath,
@@ -74,9 +200,7 @@ function Get-ManifestInformation {
         [string]$RepositoryPath
     )
 
-    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
-        throw "Manifest not found: $ManifestPath"
-    }
+    Assert-RegularFile -Path $ManifestPath -Description "Manifest"
 
     $metadata = @{}
     $runtimeFiles = [System.Collections.Generic.List[string]]::new()
@@ -100,19 +224,27 @@ function Get-ManifestInformation {
             continue
         }
 
-        $portablePath = $trimmedLine.Replace('\', '/')
+        $sourcePath = Get-ManifestRuntimePath -Entry $trimmedLine
+        $portablePath = $sourcePath.Replace('\', '/')
+        $pathSegments = @($portablePath -split '/')
         if (
+            $sourcePath.Contains('[') -or
+            $sourcePath.Contains(']') -or
             $portablePath.StartsWith("/") -or
             $portablePath -match '^[A-Za-z]:' -or
-            $portablePath -match '(^|/)\.\.(/|$)'
+            $portablePath.Contains(':') -or
+            $pathSegments.Count -eq 0 -or
+            @($pathSegments | Where-Object {
+                $_.Length -eq 0 -or $_ -ceq '.' -or $_ -ceq '..'
+            }).Count -ne 0
         ) {
-            throw "Manifest runtime path is not repository-relative: $trimmedLine"
+            throw "Manifest runtime path is not a normalized repository-relative path: $sourcePath"
         }
         if (-not $portablePath.EndsWith(".lua", [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Manifest runtime entry is not a Lua file: $trimmedLine"
+            throw "Manifest runtime entry is not a Lua file: $sourcePath"
         }
         if (-not $runtimeFileSet.Add($portablePath)) {
-            throw "Manifest runtime file is listed more than once: $trimmedLine"
+            throw "Manifest runtime file is listed more than once: $sourcePath"
         }
 
         $systemRelativePath = $portablePath.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
@@ -122,9 +254,13 @@ function Get-ManifestInformation {
             [System.IO.Path]::AltDirectorySeparatorChar
         ) + [System.IO.Path]::DirectorySeparatorChar
         if (-not $runtimePath.StartsWith($repositoryPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Manifest runtime path leaves the repository: $trimmedLine"
+            throw "Manifest runtime path leaves the repository: $sourcePath"
         }
-        Assert-RegularFile -Path $runtimePath -Description "Manifest runtime file '$trimmedLine'"
+        Assert-RegularFile -Path $runtimePath -Description "Manifest runtime file '$sourcePath'"
+        Assert-NoLinkedPathComponents `
+            -RepositoryPath $RepositoryPath `
+            -RelativePath $portablePath `
+            -Description "Manifest runtime file '$sourcePath'"
 
         $runtimeFiles.Add($portablePath)
     }
@@ -134,9 +270,7 @@ function Get-ManifestInformation {
             throw "Manifest field '$fieldName' is missing or empty."
         }
     }
-    if ($metadata["Interface"] -cnotmatch '^[0-9]+$') {
-        throw "Manifest Interface must be numeric; found '$($metadata["Interface"])'."
-    }
+    $interfaces = @(Get-ManifestInterfaces -Value $metadata["Interface"])
     if ($metadata["Version"] -cne $ExpectedVersion) {
         throw "Manifest version '$($metadata["Version"])' does not match requested release '$ExpectedVersion'."
     }
@@ -146,6 +280,7 @@ function Get-ManifestInformation {
 
     [pscustomobject]@{
         Metadata = $metadata
+        Interfaces = $interfaces
         RuntimeFiles = $runtimeFiles.ToArray()
     }
 }
@@ -169,6 +304,10 @@ function New-ExpectedFileHashes {
         $systemRelativePath = $relativePath.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
         $sourcePath = Join-Path $RepositoryPath $systemRelativePath
         Assert-RegularFile -Path $sourcePath -Description "Required distribution file '$relativePath'"
+        Assert-NoLinkedPathComponents `
+            -RepositoryPath $RepositoryPath `
+            -RelativePath $relativePath `
+            -Description "Required distribution file '$relativePath'"
         $hashes.Add("RGMS/$relativePath", (Get-Sha256 -Path $sourcePath))
     }
     $hashes
