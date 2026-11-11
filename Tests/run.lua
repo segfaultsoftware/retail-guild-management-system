@@ -6,6 +6,7 @@ local test = require("Tests.lib.runner")
 local defaultSuites = {
     "Tests.spec.runner_spec",
     "Tests.spec.fixtures_spec",
+    "Tests.spec.manifest_contract_spec",
     "Tests.spec.client_flavor_spec",
     "Tests.spec.date_time_spec",
     "Tests.spec.charts_model_spec",

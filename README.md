@@ -1,10 +1,11 @@
 # Retail Guild Management System
 
-RGMS is a World of Warcraft Retail addon for guild officers who need a local,
-read-only view of guild-roster and guild-bank observations. The current MVP
-runs entirely inside the game client and stores its latest complete observations
-in account-wide, per-guild SavedVariables. Window placement and deprecated
-migration sources remain per character. It does not send data anywhere.
+RGMS is a World of Warcraft addon for guild officers on Retail and Blizzard's
+official Forever client who need a local, read-only view of guild-roster and
+guild-bank observations. The current MVP runs entirely inside the game client
+and stores its latest complete observations in account-wide, per-guild
+SavedVariables. Window placement and deprecated migration sources remain per
+character. It does not send data anywhere.
 
 ## What the MVP does
 
@@ -22,15 +23,15 @@ migration sources remain per character. It does not send data anywhere.
   default guild-bank window opens or Bank **Refresh** is selected.
 - Shows bank contents by tab and tracks how long an item ID and stack count have
   remained in the same slot.
-- Tracks unlimited per-guild Provisions targets by localized item name and
-  Midnight crafting quality, with progress calculated from the latest complete
-  guild-bank snapshot, including retained inaccessible-tab contents, and lets
-  users drag rows into one persistent account-wide order per guild.
+- Tracks unlimited per-guild Provisions targets by localized item name and,
+  on Retail, Midnight crafting quality. Progress comes from the latest complete
+  guild-bank snapshot, including retained inaccessible-tab contents, and users
+  can drag rows into one persistent account-wide order per guild.
 - Commits roster and bank scans transactionally. A partial, failed, timed-out,
   or canceled scan leaves the previous successful observation unchanged.
 - Shares each guild's roster, bank observations, and Provisions between
-  characters on the account while isolating identically named guilds on
-  different realms.
+  characters on the account while isolating product-, region-, and
+  realm-specific guild identities.
 - Validates account-wide guild storage and versioned per-character migration
   sources. Corrupt or newer, incompatible data is preserved until the user
   accepts `/rgms reset`.
@@ -38,9 +39,11 @@ migration sources remain per character. It does not send data anywhere.
 - Adds a draggable minimap button using the RGMS logo. Left-clicking it toggles
   the Roster window, and its position is shared account-wide.
 
-RGMS is **Retail only**. The supported interface is declared in
-[`RGMS.toc`](RGMS.toc) and is updated during release preparation only after the
-addon has been tested on that live Retail client build.
+RGMS supports current live **Retail** and **Forever** from the same
+[`RGMS.toc`](RGMS.toc), source load graph, and release artifact. The manifest's
+Retail and Forever interfaces and version/build metadata are set from values
+captured immediately before that exact artifact is built and tested in both
+clients.
 
 ## Commands
 
@@ -58,12 +61,12 @@ Bank scans are started from the default guild-bank window and the Bank
 
 ## Install for development
 
-1. Install the current live World of Warcraft Retail client. For Forever
-   compatibility work, also install the Forever client.
+1. Install the current live Retail or Forever client. Install both when
+   validating shared-client support.
 2. Clone this repository.
 3. Link the checkout into the client's `Interface/AddOns` directory:
    - Windows: `powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1`
-   - Windows Forever compatibility development: add `-Forever` to the command.
+   - Windows Forever development: add `-Forever` to the command.
    - To safely remove a Windows junction later, rerun the same command with
      `-Unlink` (and `-Forever` for Forever).
 4. Enable **Retail Guild Management System (RGMS)** at character selection and
@@ -71,9 +74,8 @@ Bank scans are started from the default guild-bank window and the Bank
 5. Confirm that the RGMS development load message appears, then run
    `/rgms help`.
 
-The `-Forever` option selects the development link destination only; client
-support still depends on the manifest and runtime code in the checked-out
-branch.
+The `-Forever` option selects `_forever_` as the development-link destination;
+both links use the same checkout and shared manifest.
 
 The complete setup, edit/reload/debug loop, SavedVariables locations, manifest
 notes, and troubleshooting steps are in
@@ -81,20 +83,21 @@ notes, and troubleshooting steps are in
 
 ## Test
 
-With Lua installed, run the complete dependency-free suite from the repository
-root:
+On Windows, run the complete dependency-free suite from Git Bash at the
+repository root:
 
 ```text
-lua Tests/run.lua
+lua.exe Tests/run.lua
 ```
 
 A passing run exits with status `0` and reports zero failures. CI runs the same
 suite with Lua 5.1 for every push and pull request. See
 [`Tests/README.md`](Tests/README.md) for fixture and test conventions.
 
-The project owner also performs live-client regression testing between tickets.
-The [`MVP scenario checklist`](docs/MVP_SCENARIO_CHECKLIST.md) remains available
-as a testing reference; it is not a separate release gate.
+The project owner also performs live-client regression testing in both
+supported products between tickets. The
+[`MVP scenario checklist`](docs/MVP_SCENARIO_CHECKLIST.md) remains available as
+a Retail regression reference; it is not a separate release gate.
 
 ## Build a local test package
 
@@ -148,9 +151,9 @@ manual fallback.
 
 ## Current exclusions
 
-The MVP has no Classic support, localization, settings panel,
-cross-character data sharing, multi-client synchronization, hosted service,
-website integration, or data export. The addon does not upload observations or
+The MVP does not support Classic products other than Forever, localization, a
+settings panel, multi-client synchronization, a hosted service, website
+integration, or data export. The addon does not upload observations or
 integrate with an external RGMS application. These are exclusions, not hidden
 or partially supported features.
 
