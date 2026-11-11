@@ -1,9 +1,10 @@
-# Developing RGMS for World of Warcraft Retail
+# Developing RGMS for World of Warcraft Retail and Forever
 
 This guide takes a first-time World of Warcraft addon contributor from a clean
-checkout to a visible in-game proof that RGMS loaded. It applies only to the
-current live **Retail** client. Classic, Classic Era, PTR, and Beta clients use
-different directories and interface versions and are out of scope.
+checkout to a visible in-game proof that RGMS loaded. It applies to current
+live **Retail** and Blizzard's official **Forever** client. Classic products
+other than Forever, PTR, and Beta clients use different product contracts and
+are out of scope.
 
 For subsystem ownership, architecture boundaries, coding conventions, and test
 organization, continue with [`CONTRIBUTING.md`](../CONTRIBUTING.md). Maintainers
@@ -12,8 +13,8 @@ preparing a distributable package should use the complete
 
 ## What you need
 
-- The current live World of Warcraft Retail client, installed through the
-  Battle.net desktop app.
+- The current live World of Warcraft Retail or Forever client, installed
+  through the Battle.net desktop app. Install both for dual-client validation.
 - Git.
 - Windows PowerShell 5.1 or PowerShell 7.
 - A text editor. Visual Studio Code is convenient but not required.
@@ -21,8 +22,8 @@ preparing a distributable package should use the complete
 There are no packages to download and no build step. WoW embeds its own Lua
 runtime, so a separately installed Lua interpreter is neither needed nor an
 exact substitute for testing inside the client. Addon code should use the Lua
-features and WoW APIs supplied by the current Retail client; it cannot use the
-normal operating-system, filesystem, or networking libraries.
+features and WoW APIs shared by the supported clients; it cannot use the normal
+operating-system, filesystem, or networking libraries.
 
 The repository root is the addon root. `RGMS.toc` is the manifest, and the Lua
 files named in that manifest are loaded in order. Runtime source is grouped by
@@ -51,8 +52,7 @@ choose the option that reveals the installation in Explorer. The directory
 needed by this guide is the one literally named `_retail_` or `_forever_`.
 
 Close the WoW client before creating the addon link or copying the checkout.
-The Forever commands below select a development link destination; they do not
-by themselves make a checkout compatible with the Forever client.
+Retail and Forever both load the same `RGMS.toc` and runtime source.
 
 ## 2. Clone the repository
 
@@ -136,7 +136,8 @@ the changed files again before using `/reload`; linking avoids this extra step.
 
 ## 4. Enable and load RGMS
 
-1. Start the live Retail client and reach the character-selection screen.
+1. Start the supported client you are testing and reach the
+   character-selection screen.
 2. Select **AddOns**.
 3. Find **Retail Guild Management System (RGMS)** and check its box for the
    character you will use. The name comes from the `Title` field in `RGMS.toc`.
@@ -145,6 +146,8 @@ the changed files again before using `/reload`; linking avoids this extra step.
    commands.` in the default chat frame.
 6. Enter `/rgms help`. A second RGMS-owned message confirms that the slash
    command path is operational.
+7. Confirm the RGMS minimap button is present, then enter `/rgms` and confirm
+   the branded main window opens and closes.
 
 Enable built-in Lua error dialogs while developing:
 
@@ -168,21 +171,24 @@ To turn the built-in error dialogs off again:
 ## 5. Inspect SavedVariables
 
 `RGMS.toc` declares account-wide `RGMSAccountDB` with `SavedVariables` and
-per-character `RGMSCharacterDB` with `SavedVariablesPerCharacter`. Retail writes
-the account-wide file at:
+per-character `RGMSCharacterDB` with `SavedVariablesPerCharacter`. The selected
+client writes the account-wide file under its own product directory:
 
 ```text
 C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\<ACCOUNT>\SavedVariables\RGMS.lua
+C:\Program Files (x86)\World of Warcraft\_forever_\WTF\Account\<ACCOUNT>\SavedVariables\RGMS.lua
 ```
 
 The per-character file remains at:
 
 ```text
 C:\Program Files (x86)\World of Warcraft\_retail_\WTF\Account\<ACCOUNT>\<REALM>\<CHARACTER>\SavedVariables\RGMS.lua
+C:\Program Files (x86)\World of Warcraft\_forever_\WTF\Account\<ACCOUNT>\<REALM>\<CHARACTER>\SavedVariables\RGMS.lua
 ```
 
 `<ACCOUNT>`, `<REALM>`, and `<CHARACTER>` are directory names selected by the
-client. Custom WoW installations have the same path relative to `_retail_`.
+client. Custom WoW installations have the same paths relative to `_retail_` or
+`_forever_`.
 
 Use `/reload` or log out to make the client flush current values. Then fully
 close WoW before opening or copying `RGMS.lua`. Inspecting the file as plain
@@ -197,15 +203,22 @@ supported migrations, disabled states, and recovery steps.
 
 ## Runtime and manifest assumptions
 
-- The target is the current live Retail client only.
-- `RGMS.toc` currently declares Retail interface `120100`. The number is a
-  compatibility marker, not a Lua language version. Retail can change it with
-  a game patch.
+- The targets are the current supported Retail and Forever clients.
+- `RGMS.toc` declares the tested Retail interface first and Forever interface
+  second in one comma-delimited `Interface` field. Interface numbers are
+  compatibility markers, not Lua language versions, and can change with a
+  client patch.
+- `AllowLoadGameType` restricts the addon to `standard` and `camelot`. Use
+  `camelot`, never `forever`, in client-parsed load directives.
+- Runtime files are shared and unconditional unless their implementation
+  genuinely differs by product. Client detection loads before identity,
+  persistence, adapters, and UI consumers.
 - The manifest's `Title`, `Notes`, `Author`, and `Version` fields provide the
   addon-list and project metadata. Keep the development version placeholder
   until a release process supplies a real release version.
-- WoW supplies a sandboxed, modified Lua runtime and the Retail FrameXML/API
-  globals. Test behavior in WoW even if an editor or external linter is used.
+- WoW supplies a sandboxed, modified Lua runtime and each supported client's
+  FrameXML/API globals. Test behavior in both clients even if an editor or
+  external linter is used.
 - Files are plain UTF-8 text. Keep the manifest's file list and load order in
   sync when adding modules.
 - Each Lua file receives the same private `RGMS` addon table from WoW. Share
@@ -213,39 +226,51 @@ supported migrations, disabled states, and recovery steps.
   `RGMSCharacterDB` and WoW's slash-command registration globals are the
   deliberate exceptions.
 - The automated tests use the project's dependency-free Lua runner and target
-  Lua 5.1-compatible syntax. With a Lua interpreter installed, run them outside
-  WoW with `lua Tests/run.lua`; no package-manager or network step is required.
+  Lua 5.1-compatible syntax. On Windows, run them from Git Bash with
+  `lua.exe Tests/run.lua`; no package-manager or network step is required.
 - Test files are omitted from `RGMS.toc`, and the repository-owned release
   builder's explicit allowlist excludes development files from addon archives.
 
-The client can report its current interface number in chat:
+Immediately before live verification, collect and record the complete
+version/build and interface from each supported client:
 
 ```text
+/dump GetBuildInfo()
 /dump select(4, GetBuildInfo())
 ```
 
-If it differs from the `Interface` value in `RGMS.toc`, update the manifest as
-part of validating RGMS against that Retail patch.
+The Retail result must match the first `Interface` value and
+`X-RGMS-Retail-Version`; the Forever result must match the second value and
+`X-RGMS-Forever-Version`. If either differs, update the manifest only after
+validating RGMS against that exact client build.
+
+For a dual-client smoke check, link or install the same checkout or package in
+both product directories. In each client, confirm the AddOns list shows RGMS
+without an out-of-date or wrong-product warning, login produces the development
+load message without a Lua error, both saved-variable files initialize,
+`/rgms help` responds, the minimap button toggles the main window, and `/rgms`
+opens the branded window.
 
 ## Troubleshooting
 
 ### RGMS is not listed
 
-- Confirm you launched live Retail and used the `_retail_` directory, not a
-  `_classic_`, `_ptr_`, or `_beta_` directory.
+- Confirm you launched a supported product and used its `_retail_` or
+  `_forever_` directory, not another Classic, PTR, or Beta directory.
 - Confirm the exact path is `Interface/AddOns/RGMS/RGMS.toc`; remove any extra
   nesting.
 - Confirm the file is really named `RGMS.toc`, not `RGMS.toc.txt`.
 - If using a link, confirm its target still points to this checkout.
 - Restart the client after creating or moving the addon directory.
 
-### RGMS is marked out of date
+### RGMS is marked out of date or for the wrong product
 
-Run `/dump select(4, GetBuildInfo())` on the live Retail client and compare the
-result with the first line of `RGMS.toc`. Update that `Interface` value after
-testing RGMS on the new patch. As a short-lived diagnostic, the character
-screen's AddOns panel can enable **Load out of date AddOns**, but updating and
-testing the manifest is the correct project fix.
+Run `/dump GetBuildInfo()` and `/dump select(4, GetBuildInfo())` on the affected
+client. Compare Retail with the first manifest interface and Forever with the
+second, and confirm `AllowLoadGameType` contains `standard, camelot`. Update
+metadata only after testing RGMS on the new patch. As a short-lived diagnostic,
+the AddOns panel can enable **Load out of date AddOns**, but updating and testing
+the shared manifest is the correct project fix.
 
 ### A Lua error appears at startup
 
@@ -254,8 +279,8 @@ testing the manifest is the correct project fix.
 2. Confirm the checkout is current and `/reload` once.
 3. Temporarily disable every addon except RGMS to rule out an interaction.
 4. Open the named source line in this checkout. Startup errors often mean a
-   file in `RGMS.toc` was renamed, the manifest load order is wrong, or a Retail
-   API changed.
-5. Include the Retail version from `GetBuildInfo()` and reproduction steps when
-   opening an issue. Do not share account or character identifiers from the
-   `WTF` directory.
+   file in `RGMS.toc` was renamed, the manifest load order is wrong, or a
+   supported-client API changed.
+5. Include the product and complete `GetBuildInfo()` result with reproduction
+   steps when opening an issue. Do not share account or character identifiers
+   from the `WTF` directory.

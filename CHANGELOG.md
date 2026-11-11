@@ -36,6 +36,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Activated one shared manifest for validated Retail and Forever interfaces,
+  supported game types, product build metadata, and early client detection.
 - Extended deterministic release packaging to validate comma-delimited
   interface metadata and include shared plus Retail/Forever-conditional runtime
   files exactly once in one unchanged-manifest archive.

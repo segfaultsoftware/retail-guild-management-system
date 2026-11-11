@@ -1,16 +1,17 @@
 # Contributing to RGMS
 
 This guide explains where RGMS behavior lives and how to change it without
-crossing the project's architecture boundaries. It applies to the live World
-of Warcraft **Retail** client only.
+crossing the project's architecture boundaries. It applies to current live
+World of Warcraft **Retail** and Blizzard's official **Forever** client.
 
 ## Start here
 
 1. Follow [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) to link the checkout into
-   Retail and enable Lua error dialogs.
+   Retail or Forever and enable Lua error dialogs.
 2. Install Lua 5.1, or use a newer Lua only as an additional compatibility
    check.
-3. Run `lua Tests/run.lua` from the repository root before changing code.
+3. On Windows, run `lua.exe Tests/run.lua` from Git Bash at the repository root
+   before changing code.
 4. Read [`docs/SAVED_DATA.md`](docs/SAVED_DATA.md) before changing any persisted
    field, scan commit, reset, or migration behavior.
 
@@ -28,10 +29,10 @@ Lua load order.
 | Reset and recovery | `Core/Reset.lua` | `Tests/spec/reset_spec.lua`, `docs/SAVED_DATA.md` |
 | Guild identity and transactional ownership | `Core/Realm.lua`, `Core/DatasetOwnership.lua` | `Tests/spec/dataset_ownership_spec.lua`, `Tests/spec/roster_names_spec.lua` |
 | Pacific dates and timestamps | `Core/DateTime.lua` | `Tests/spec/date_time_spec.lua`, `Tests/date_fixtures.lua` |
-| Roster Retail adapter and event wiring | `Roster/Roster.lua` | `Tests/spec/roster_adapter_spec.lua`, `Tests/spec/roster_spec.lua` |
+| Shared roster adapter and event wiring | `Roster/Roster.lua` | `Tests/spec/roster_adapter_spec.lua`, `Tests/spec/roster_spec.lua` |
 | Roster scan coordinator | `Roster/Scanner.lua` | `Tests/spec/roster_scanner_spec.lua` |
 | Roster identity, tenure, missing-member rules, and report model | `Roster/Names.lua`, `Roster/Tenure.lua`, `Roster/Report.lua` | `Tests/spec/roster_names_spec.lua`, `Tests/spec/roster_tenure_spec.lua`, `Tests/spec/roster_report_spec.lua` |
-| Bank Retail adapter and event wiring | `Bank/Bank.lua` | `Tests/spec/bank_adapter_spec.lua`, `Tests/spec/bank_spec.lua` |
+| Shared bank adapter and event wiring | `Bank/Bank.lua` | `Tests/spec/bank_adapter_spec.lua`, `Tests/spec/bank_spec.lua` |
 | Bank scan coordinator | `Bank/Scanner.lua` | `Tests/spec/bank_scanner_spec.lua` |
 | Bank slot stability and report model | `Bank/State.lua`, `Bank/Report.lua` | `Tests/spec/bank_state_spec.lua`, `Tests/spec/bank_report_spec.lua` |
 | UI facade and cross-feature coordination | `UI/UI.lua` | `Tests/spec/ui_modules_spec.lua`, `Tests/spec/ui_spec.lua`, `docs/PORTAL_UI.md` |
@@ -58,12 +59,12 @@ When adding or moving a runtime file, update `RGMS.toc` so dependencies load
 before consumers. Test files, development scripts, and documentation must not
 be added to the manifest.
 
-### Retail API adapters
+### Client API adapters
 
 Calls to roster globals and `C_Club`/`C_GuildInfo` belong in
 `Roster/Roster.lua`. Calls to guild-bank globals belong in `Bank/Bank.lua`.
 Those two modules translate potentially partial client state into complete
-plain-Lua snapshots and wire Retail events to the scan coordinators.
+plain-Lua snapshots and wire supported-client events to the scan coordinators.
 
 Do not move WoW globals into reducers, report builders, or scanners. A new WoW
 API dependency should be wrapped by the relevant adapter and represented by the
@@ -103,14 +104,15 @@ remain user-confirmed and preserve only the explicitly valid UI subtree.
 
 ## Coding conventions
 
-- Use Lua 5.1-compatible syntax and the runtime APIs available in live Retail.
+- Use Lua 5.1-compatible syntax and runtime APIs available in both supported
+  clients.
 - Prefer `local` values and small module tables. Share runtime state only
   through the private `RGMS` namespace.
 - Keep operating-system, filesystem, network, and normal Lua package-library
   calls out of addon runtime code; WoW does not expose them.
 - Pass dates, clocks, adapters, and side effects into pure modules so tests stay
   deterministic.
-- Treat a Retail collection as incomplete until every required identity,
+- Treat a client collection as incomplete until every required identity,
   member, rank, tab, or slot field is available. Do not commit best-effort
   fragments.
 - Store UTC timestamps and derive user-facing Pacific dates through
@@ -124,16 +126,17 @@ remain user-confirmed and preserve only the explicitly valid UI subtree.
 
 ## Edit, reload, and debug
 
-With the checkout linked into `_retail_/Interface/AddOns/RGMS`:
+With the checkout linked into `_retail_/Interface/AddOns/RGMS` or
+`_forever_/Interface/AddOns/RGMS`:
 
 1. Enable error dialogs with `/console scriptErrors 1`, then `/reload`.
 2. Edit a Lua or manifest file in the checkout and save it.
 3. Enter `/reload` to reload every addon file. Restart or return to character
    selection after adding or moving the addon directory itself.
 4. Reproduce with only RGMS enabled when investigating an interaction.
-5. Capture the first Lua error, including file, line, Retail build from
+5. Capture the first Lua error, including file, line, product, build from
    `/dump GetBuildInfo()`, and exact reproduction steps.
-6. Use `/reload` or log out to flush SavedVariables, then fully close Retail
+6. Use `/reload` or log out to flush SavedVariables, then fully close the client
    before inspecting `RGMS.lua`. Do not share account or character identifiers.
 
 The exact installation and SavedVariables paths are in
@@ -162,14 +165,16 @@ fixture patterns, assertions, and suite registration.
 
 ## Manual regression testing
 
-Automated tests cannot reproduce Retail event timing, guild permissions,
-SavedVariables flushing, or the default guild-bank UI. The project owner runs
-live-client regression testing between tickets and may use
+Automated tests cannot reproduce Retail or Forever event timing, guild
+permissions, SavedVariables flushing, or the default guild-bank UI. The project
+owner runs live-client regression testing between tickets and may use
 [`docs/MVP_SCENARIO_CHECKLIST.md`](docs/MVP_SCENARIO_CHECKLIST.md) as the test
-reference. Record observations from the exact checkout or package under test,
-never from memory, and remove private account and character identifiers from
-any shared evidence. Large images or videos belong on the corresponding GitHub
-issue or release rather than in the repository.
+reference for Retail. Use the dual-client smoke procedure in
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#runtime-and-manifest-assumptions)
+for shared-manifest checks. Record observations from the exact checkout or
+package under test, never from memory, and remove private account and character
+identifiers from any shared evidence. Large images or videos belong on the
+corresponding GitHub issue or release rather than in the repository.
 
 ## Dependencies, assets, and attribution
 
@@ -177,7 +182,7 @@ RGMS bundles LibDBIcon-1.0 and its minimal runtime dependencies: LibStub,
 CallbackHandler-1.0, and LibDataBroker-1.1. Their versions, source, license, and
 included files are recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 RGMS otherwise bundles no third-party code, fonts, icons, textures, audio, or
-other assets. WoW Retail APIs are platform APIs, not bundled project
+other assets. WoW client APIs are platform APIs, not bundled project
 dependencies. The test runner and fixtures are project-owned source.
 
 Before adding a dependency or asset:
@@ -200,7 +205,7 @@ Do not create or move release tags manually. The **Create Release** workflow
 builds the verified package, creates the matching `v<version>` tag, and
 publishes the GitHub release; exact `X.Y.Z` finals then submit the same verified
 ZIP to CurseForge, while all SemVer prereleases remain GitHub-only. The version
-and stored Retail build must match `RGMS.toc` and the promoted changelog
-section. Maintainers should use the complete
+and stored Retail and Forever builds must match `RGMS.toc` and the promoted
+changelog section. Maintainers should use the complete
 [`docs/RELEASING.md`](docs/RELEASING.md) runbook, including its repository
 secret setup and failed-job retry procedure.

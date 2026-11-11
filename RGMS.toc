@@ -1,9 +1,11 @@
-## Interface: 120105
+## Interface: 120105, 16001
+## AllowLoadGameType: standard, camelot
 ## Title: Retail Guild Management System (RGMS)
 ## Notes: Guild roster and bank data for the RGMS application.
 ## Author: RGMS contributors
 ## Version: 1.2.0
-## X-RGMS-Retail-Version: 12.1.5
+## X-RGMS-Retail-Version: 12.1.5 (build 70783)
+## X-RGMS-Forever-Version: 1.60.1 (build 70888)
 ## X-Curse-Project-ID: 1741733
 ## SavedVariables: RGMSAccountDB
 ## SavedVariablesPerCharacter: RGMSCharacterDB
