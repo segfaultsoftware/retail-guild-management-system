@@ -464,7 +464,13 @@ local function newRegion(parent)
     return region
 end
 
-local function newHarness(savedPosition, screenWidth, screenHeight, auctionatorAvailable)
+local function newHarness(
+    savedPosition,
+    screenWidth,
+    screenHeight,
+    auctionatorAvailable,
+    craftingQualitySupported
+)
     local mainFrame
     local fonts = {}
     local refreshRequests = 0
@@ -605,6 +611,11 @@ local function newHarness(savedPosition, screenWidth, screenHeight, auctionatorA
         UILayout = layout,
         ChartModel = chartModel,
         MainsAltsSearch = mainsAltsSearch,
+        ClientFlavor = {
+            supportsCraftingQuality = function()
+                return craftingQualitySupported ~= false
+            end,
+        },
         Roster = {
             RequestManualScan = function()
                 refreshRequests = refreshRequests + 1
@@ -3096,6 +3107,68 @@ return {
         test.assert_true(button:IsEnabled())
         harness.ui.SetDataState(false, "corrupt")
         test.assert_false(button:IsEnabled())
+    end),
+
+    test.case("Forever Provisions hides and removes crafting-quality choices from layout", function()
+        local harness = newHarness(nil, nil, nil, true, false)
+        harness.ui.Initialize()
+        local view = harness.frame().views.provisions
+
+        test.assert_false(view.provisionQualityLabel:IsShown())
+        test.assert_false(view.provisionR1:IsShown())
+        test.assert_false(view.provisionR2:IsShown())
+        test.assert_false(view.provisionEither:IsShown())
+        test.assert_false(view.provisionR1:IsEnabled())
+        test.assert_false(view.provisionR2:IsEnabled())
+        test.assert_false(view.provisionEither:IsEnabled())
+        test.assert_equal(view.provisionTargetLabel.y, -99)
+        test.assert_not_nil(view.auctionatorShoppingListButton)
+
+        harness.ui.SetProvisionsEditor({
+            selectedId = 1,
+            draft = {
+                name = "Feast",
+                silver = true,
+                gold = false,
+                targetText = "10",
+            },
+            valid = true,
+            changed = false,
+        })
+        test.assert_true(view.provisionEither:GetChecked())
+        view.provisionNameInput:SetText("Updated Feast")
+        local draft = harness.provisionActions[#harness.provisionActions].draft
+        test.assert_true(draft.silver)
+        test.assert_true(draft.gold)
+
+        view.provisionScrollFrame.left = 100
+        view.provisionScrollFrame.bottom = 100
+        view.provisionScrollFrame:SetSize(300, 150)
+        harness.ui.SetProvisionsReport({
+            rows = {
+                {
+                    id = 1,
+                    name = "Feast",
+                    quality = "gold",
+                    progress = 0,
+                    progressText = "0 / 10",
+                    icon = 765432,
+                },
+            },
+        }, 1)
+        test.assert_false(view.provisionRows[1].badge:IsShown())
+
+        harness.setCursor(150, 216, true)
+        view.provisionRows[1].frame.scripts.OnMouseDown(
+            view.provisionRows[1].frame,
+            "LeftButton"
+        )
+        harness.setCursor(160, 216, true)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
+        test.assert_true(view.provisionDragPreview.frame:IsShown())
+        test.assert_false(view.provisionDragPreview.badge:IsShown())
+        harness.setCursor(160, 216, false)
+        view.provisionDragWatcher.scripts.OnUpdate(nil, 0.1)
     end),
 
     test.case("Provision row drag threshold preserves clicks and changed outside drops reorder once", function()

@@ -51,14 +51,21 @@ function Integration.CreateShoppingList(terms, auctionator)
         searchStrings[index] = searchString
     end
 
-    local created, creationError = pcall(
+    local invoked, creationResult, creationError = pcall(
         api.CreateShoppingList,
         Integration.CALLER_ID,
         Integration.LIST_NAME,
         searchStrings
     )
-    if not created then
-        return nil, creationError
+    if not invoked then
+        return nil, creationResult
+    end
+    -- The supported v1 API is intentionally void-returning. Preserve that
+    -- contract while failing closed if a compatible-looking implementation
+    -- explicitly rejects the request.
+    if creationResult == false
+        or (creationResult == nil and creationError ~= nil) then
+        return nil, creationError or "Auctionator rejected shopping-list creation"
     end
     return true
 end

@@ -36,6 +36,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Made Forever Provisions quality-neutral across editing, persisted guild
+  stores, bank totals, row presentation, and Auctionator shopping lists while
+  preserving Retail crafting-quality behavior.
 - Required an explicit Retail or Forever target for Windows development link
   and unlink commands, preventing accidental operations on the wrong client.
 - Expanded the staged core-beta procedure into one artifact-pinned Retail and

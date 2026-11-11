@@ -70,6 +70,38 @@ return {
         end
     end),
 
+    test.case("draft normalization follows the crafting-quality capability", function()
+        local forever = assert(model.normalizeDraft({
+            name = "  Arcane Crystal  ",
+            targetText = "25",
+        }, false))
+        test.assert_equal(forever, {
+            name = "Arcane Crystal",
+            quality = "either",
+            target = 25,
+        })
+        test.assert_equal(model.toDraft({
+            name = "Arcane Crystal",
+            quality = "gold",
+            target = 25,
+        }, false), {
+            name = "Arcane Crystal",
+            silver = false,
+            gold = false,
+            targetText = "25",
+        })
+
+        test.assert_nil(model.normalizeDraft({
+            name = "Arcane Crystal",
+            targetText = "25",
+        }, true))
+        test.assert_equal(assert(model.normalizeDraft({
+            name = "Arcane Crystal",
+            silver = true,
+            targetText = "25",
+        }, true)).quality, "silver")
+    end),
+
     test.case("duplicate provisions keep stable independent creation IDs", function()
         local draft = assert(model.normalizeDraft({
             name = "Cauldron",
@@ -133,7 +165,7 @@ return {
             slot(1, 1, "Herb", 4, 1),
             slot(1, 2, "HERB", 7, 2),
             slot(2, 1, "Herb", 3, nil),
-        }))
+        }), nil, true)
         test.assert_equal(report.rows[1].current, 4)
         test.assert_equal(report.rows[2].current, 7)
         test.assert_equal(report.rows[3].current, 11)
@@ -142,6 +174,25 @@ return {
         test.assert_equal(report.rows[1].icon, 236873)
         test.assert_equal(report.rows[2].icon, 236873)
         test.assert_equal(report.rows[3].icon, 236873)
+    end),
+
+    test.case("Forever reports count every accessible quality as either", function()
+        local report = model.buildReport({
+            provision(1, "herb", "silver", 20),
+            provision(2, "HERB", "gold", 20),
+        }, bank({
+            slot(1, 1, "Herb", 4, 1),
+            slot(1, 2, "HERB", 7, 2),
+            slot(1, 3, "Herb", 3, nil),
+            slot(2, 1, "Herb", 99, 1),
+        }), nil, false)
+
+        test.assert_equal(report.rows[1].quality, "either")
+        test.assert_equal(report.rows[2].quality, "either")
+        test.assert_equal(report.rows[1].current, 14)
+        test.assert_equal(report.rows[2].current, 14)
+        test.assert_equal(report.rows[1].progressText, "14 / 20")
+        test.assert_equal(report.rows[2].progressText, "14 / 20")
     end),
 
     test.case("trailing crafting-quality icon markup is excluded from name matching", function()
@@ -219,7 +270,7 @@ return {
             slot(1, 3, "Silverleaf", 3, 1),
             slot(1, 4, "Silverleaf", 2, 2),
             slot(1, 5, "Satisfied", 4, nil),
-        }))
+        }), nil, true)
 
         test.assert_equal(terms, {
             {
@@ -244,6 +295,37 @@ return {
                 searchString = "Silverleaf",
                 isExact = true,
                 quantity = 5,
+            },
+        })
+    end),
+
+    test.case("Forever Auctionator shortages are ordered exact and untiered", function()
+        local terms = model.buildAuctionatorTerms({
+            provision(1, "Argentleaf", "silver", 20),
+            provision(2, "Argentleaf", "gold", 15),
+            provision(3, "Peacebloom", "either", 10),
+        }, bank({
+            slot(1, 1, "Argentleaf", 4, 1),
+            slot(1, 2, "Argentleaf", 3, 2),
+            slot(2, 1, "Argentleaf", 99, nil),
+            slot(1, 3, "Peacebloom", 2, nil),
+        }), nil, false)
+
+        test.assert_equal(terms, {
+            {
+                searchString = "Argentleaf",
+                isExact = true,
+                quantity = 13,
+            },
+            {
+                searchString = "Argentleaf",
+                isExact = true,
+                quantity = 8,
+            },
+            {
+                searchString = "Peacebloom",
+                isExact = true,
+                quantity = 8,
             },
         })
     end),

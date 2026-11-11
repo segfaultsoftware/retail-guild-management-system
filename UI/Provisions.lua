@@ -1,6 +1,9 @@
 local _, RGMS = ...
 
 local Runtime = assert(RGMS.UIRuntime, "UI/Widgets.lua must load first")
+local ClientFlavor = type(RGMS.ClientFlavor) == "table"
+    and RGMS.ClientFlavor
+    or require("Core.ClientFlavor")
 
 Runtime.Register("Provisions", function()
 ProvisionUI = {
@@ -50,7 +53,20 @@ ProvisionUI = {
 -- but it requires a ScrollBox/data-provider rewrite. Provisions intentionally
 -- stays on RGMS's fixed-row ScrollFrame, so its small drag adapter remains local.
 
+function ProvisionUI.supportsCraftingQuality()
+    return type(ClientFlavor.supportsCraftingQuality) == "function"
+        and ClientFlavor.supportsCraftingQuality() == true
+end
+
 function ProvisionUI.draft(view)
+    if view.supportsCraftingQuality ~= true then
+        return {
+            name = view.provisionNameInput:GetText(),
+            silver = true,
+            gold = true,
+            targetText = view.provisionTargetInput:GetText(),
+        }
+    end
     local r1 = view.provisionR1:GetChecked()
     local r2 = view.provisionR2:GetChecked()
     local either = view.provisionEither:GetChecked()
@@ -93,9 +109,10 @@ function ProvisionUI.updateControlState(view)
     end
     setEditBoxEnabled(view.provisionNameInput, available)
     setEditBoxEnabled(view.provisionTargetInput, available)
-    view.provisionR1:SetEnabled(available)
-    view.provisionR2:SetEnabled(available)
-    view.provisionEither:SetEnabled(available)
+    local qualityAvailable = available and view.supportsCraftingQuality == true
+    view.provisionR1:SetEnabled(qualityAvailable)
+    view.provisionR2:SetEnabled(qualityAvailable)
+    view.provisionEither:SetEnabled(qualityAvailable)
     if type(view.provisionEditor.SetAlpha) == "function" then
         view.provisionEditor:SetAlpha(available and 1 or 0.5)
     end
@@ -292,6 +309,7 @@ function ProvisionUI.createRowVisual(parent)
         deleteButton = deleteButton,
         deleteIcon = deleteIcon,
         selectionBorder = selectionBorder,
+        supportsCraftingQuality = ProvisionUI.supportsCraftingQuality(),
     }
 end
 
@@ -301,7 +319,8 @@ function ProvisionUI.renderRow(line, row)
     line.progressText:SetText(row.progressText)
     line.fill:SetWidth(math.max(1, (ProvisionUI.PROGRESS_WIDTH - 2) * row.progress))
     line.fill:SetShown(row.progress > 0)
-    if row.quality == "silver" or row.quality == "gold" then
+    if line.supportsCraftingQuality == true
+        and (row.quality == "silver" or row.quality == "gold") then
         if type(line.badge.SetAtlas) == "function" then
             line.badge:SetAtlas(
                 row.quality == "silver"
@@ -376,6 +395,7 @@ function ProvisionUI.createView(view)
     flatBackdrop(editor, PALETTE.surface, PALETTE.border)
     editor.provisionView = view
     view.provisionEditor = editor
+    view.supportsCraftingQuality = ProvisionUI.supportsCraftingQuality()
     view.provisionNameInput, view.provisionNameLabel = ProvisionUI.createInput(
         editor,
         "Item Name",
@@ -387,6 +407,7 @@ function ProvisionUI.createView(view)
     qualityLabel:SetText("Quality")
     setFont(qualityLabel, FONT_SEMIBOLD, 11)
     setTextColor(qualityLabel, PALETTE.text)
+    qualityLabel:SetShown(view.supportsCraftingQuality)
     view.provisionQualityLabel = qualityLabel
     view.provisionR1 = ProvisionUI.createQualityRadio(
         editor,
@@ -407,10 +428,13 @@ function ProvisionUI.createView(view)
         nil,
         "Either"
     )
+    view.provisionR1:SetShown(view.supportsCraftingQuality)
+    view.provisionR2:SetShown(view.supportsCraftingQuality)
+    view.provisionEither:SetShown(view.supportsCraftingQuality)
     view.provisionTargetInput, view.provisionTargetLabel = ProvisionUI.createInput(
         editor,
         "Target Inventory Count",
-        -169,
+        view.supportsCraftingQuality and -169 or -99,
         5
     )
 
@@ -687,7 +711,9 @@ function UI.SetProvisionsEditor(state)
     view.settingProvisionEditor = true
     view.provisionNameInput:SetText(draft.name or "")
     local qualitySelection
-    if draft.silver == true and draft.gold == true then
+    if view.supportsCraftingQuality ~= true then
+        qualitySelection = "either"
+    elseif draft.silver == true and draft.gold == true then
         qualitySelection = "either"
     elseif draft.silver == true then
         qualitySelection = "r1"
