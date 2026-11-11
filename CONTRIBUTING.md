@@ -169,7 +169,8 @@ Automated tests cannot reproduce Retail or Forever event timing, guild
 permissions, SavedVariables flushing, or the default guild-bank UI. The project
 owner runs live-client regression testing between tickets and may use
 [`docs/MVP_SCENARIO_CHECKLIST.md`](docs/MVP_SCENARIO_CHECKLIST.md) as the test
-reference for Retail. Use the dual-client smoke procedure in
+reference for the staged Retail and Forever core beta. Use the shorter smoke
+procedure in
 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#runtime-and-manifest-assumptions)
 for shared-manifest checks. Record observations from the exact checkout or
 package under test, never from memory, and remove private account and character
