@@ -49,6 +49,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Extended deterministic release packaging to validate comma-delimited
   interface metadata and include shared plus Retail/Forever-conditional runtime
   files exactly once in one unchanged-manifest archive.
+- Extended final-release CurseForge preflight and publication to resolve exact
+  product-typed Retail and Forever targets before mutation, then upload the one
+  checksum-verified archive once with both targets.
 - Updated release preparation to atomically capture tested Retail and Forever
   version/build and interface metadata with deterministic Retail-first ordering.
 - Updated the bundled LibDBIcon provenance to the maintained v12.1.2 release,

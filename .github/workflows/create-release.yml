@@ -152,11 +152,16 @@ jobs:
 
   curseforge_preflight:
     name: CurseForge preflight
-    needs: validate
+    needs:
+      - validate
+      - build_and_test
     if: needs.validate.outputs.is_final == 'true'
     runs-on: ubuntu-latest
     outputs:
-      game_version_id: ${{ steps.preflight.outputs.game_version_id }}
+      forever_game_version_id: ${{ steps.preflight.outputs.forever_game_version_id }}
+      forever_game_version: ${{ steps.preflight.outputs.forever_game_version }}
+      forever_version: ${{ steps.preflight.outputs.forever_version }}
+      retail_game_version_id: ${{ steps.preflight.outputs.retail_game_version_id }}
       retail_game_version: ${{ steps.preflight.outputs.retail_game_version }}
       retail_version: ${{ steps.preflight.outputs.retail_version }}
     steps:
@@ -164,11 +169,13 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.commit }}
 
-      - name: Resolve Retail game-version ID
+      - name: Resolve Retail and Forever game-version IDs
         id: preflight
         shell: pwsh
         env:
+          ARTIFACT_NAME: ${{ needs.validate.outputs.artifact_name }}
           CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+          EXPECTED_CHECKSUM: ${{ needs.build_and_test.outputs.checksum }}
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module ./scripts/release-tools.psm1 -Force
@@ -177,6 +184,8 @@ jobs:
           }
           $retailVersion = Get-RgmsManifestField RGMS.toc 'X-RGMS-Retail-Version'
           $retailGameVersion = Get-RgmsRetailGameVersion $retailVersion
+          $foreverVersion = Get-RgmsManifestField RGMS.toc 'X-RGMS-Forever-Version'
+          $foreverGameVersion = Get-RgmsForeverGameVersion $foreverVersion
           $curseProjectId = Get-RgmsManifestField RGMS.toc 'X-Curse-Project-ID'
           if ($curseProjectId -cne '1741733') {
             throw "RGMS.toc X-Curse-Project-ID must be 1741733; found '$curseProjectId'."
@@ -187,10 +196,16 @@ jobs:
             -Uri 'https://wow.curseforge.com/api/game/wow/versions' `
             -Headers $headers
           $gameVersions = @($gameVersionResponse)
-          $gameVersionId = Resolve-CurseForgeRetailGameVersion `
+          $targets = Resolve-CurseForgeGameVersionTargets `
             -GameVersions $gameVersions `
-            -RetailVersion $retailGameVersion
-          "game_version_id=$gameVersionId" >> $env:GITHUB_OUTPUT
+            -RetailVersion $retailGameVersion `
+            -ForeverVersion $foreverGameVersion
+          $retailGameVersionId = $targets.RetailGameVersionId
+          $foreverGameVersionId = $targets.ForeverGameVersionId
+          "forever_game_version_id=$foreverGameVersionId" >> $env:GITHUB_OUTPUT
+          "forever_game_version=$foreverGameVersion" >> $env:GITHUB_OUTPUT
+          "forever_version=$foreverVersion" >> $env:GITHUB_OUTPUT
+          "retail_game_version_id=$retailGameVersionId" >> $env:GITHUB_OUTPUT
           "retail_game_version=$retailGameVersion" >> $env:GITHUB_OUTPUT
           "retail_version=$retailVersion" >> $env:GITHUB_OUTPUT
 
@@ -199,9 +214,12 @@ jobs:
 
           - Project ID: ``1741733``
           - Retail version: ``$retailVersion``
-          - Retail game version: ``$retailGameVersion``
-          - CurseForge game-version ID: ``$gameVersionId``
-          - Credentials: validated by authenticated game-version lookup
+          - Retail catalog version / target ID (product type 517): ``$retailGameVersion`` / ``$retailGameVersionId``
+          - Forever version: ``$foreverVersion``
+          - Forever catalog version / target ID (product type 88568): ``$foreverGameVersion`` / ``$foreverGameVersionId``
+          - Canonical filename: ``$($env:ARTIFACT_NAME)``
+          - Shared SHA-256: ``$($env:EXPECTED_CHECKSUM)``
+          - Credentials: validated by one authenticated game-version catalog lookup
           "@ >> $env:GITHUB_STEP_SUMMARY
 
   publish_github:
@@ -401,7 +419,10 @@ jobs:
           EXPECTED_CHECKSUM: ${{ needs.build_and_test.outputs.checksum }}
           RETAIL_VERSION: ${{ needs.curseforge_preflight.outputs.retail_version }}
           RETAIL_GAME_VERSION: ${{ needs.curseforge_preflight.outputs.retail_game_version }}
-          GAME_VERSION_ID: ${{ needs.curseforge_preflight.outputs.game_version_id }}
+          RETAIL_GAME_VERSION_ID: ${{ needs.curseforge_preflight.outputs.retail_game_version_id }}
+          FOREVER_VERSION: ${{ needs.curseforge_preflight.outputs.forever_version }}
+          FOREVER_GAME_VERSION: ${{ needs.curseforge_preflight.outputs.forever_game_version }}
+          FOREVER_GAME_VERSION_ID: ${{ needs.curseforge_preflight.outputs.forever_game_version_id }}
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module ./scripts/release-tools.psm1 -Force
@@ -412,7 +433,8 @@ jobs:
             $metadata = New-CurseForgeReleaseMetadata `
               -ReleaseVersion $env:RELEASE_VERSION `
               -Changelog $changelog `
-              -GameVersionId ([long]$env:GAME_VERSION_ID)
+              -RetailGameVersionId ([long]$env:RETAIL_GAME_VERSION_ID) `
+              -ForeverGameVersionId ([long]$env:FOREVER_GAME_VERSION_ID)
             $metadataJson = $metadata | ConvertTo-Json -Depth 8 -Compress
             $headers = @{ 'X-Api-Token' = $env:CURSEFORGE_API_TOKEN }
             $form = @{
@@ -445,16 +467,32 @@ jobs:
           - Uploaded filename: ``$($env:ARTIFACT_NAME)``
           - Display name: ``$displayName``
           - Retail version: ``$($env:RETAIL_VERSION)``
-          - Retail game-version ID: ``$($env:GAME_VERSION_ID)``
-          - SHA-256: ``$($env:EXPECTED_CHECKSUM)``
+          - Retail catalog version / target ID: ``$($env:RETAIL_GAME_VERSION)`` / ``$($env:RETAIL_GAME_VERSION_ID)``
+          - Forever version: ``$($env:FOREVER_VERSION)``
+          - Forever catalog version / target ID: ``$($env:FOREVER_GAME_VERSION)`` / ``$($env:FOREVER_GAME_VERSION_ID)``
+          - Shared SHA-256: ``$($env:EXPECTED_CHECKSUM)``
           "@ >> $env:GITHUB_STEP_SUMMARY
 
       - name: Explain CurseForge retry after failure
         if: failure()
         shell: pwsh
+        env:
+          ARTIFACT_NAME: ${{ needs.validate.outputs.artifact_name }}
+          EXPECTED_CHECKSUM: ${{ needs.build_and_test.outputs.checksum }}
+          RETAIL_VERSION: ${{ needs.curseforge_preflight.outputs.retail_version }}
+          RETAIL_GAME_VERSION: ${{ needs.curseforge_preflight.outputs.retail_game_version }}
+          RETAIL_GAME_VERSION_ID: ${{ needs.curseforge_preflight.outputs.retail_game_version_id }}
+          FOREVER_VERSION: ${{ needs.curseforge_preflight.outputs.forever_version }}
+          FOREVER_GAME_VERSION: ${{ needs.curseforge_preflight.outputs.forever_game_version }}
+          FOREVER_GAME_VERSION_ID: ${{ needs.curseforge_preflight.outputs.forever_game_version_id }}
         run: |
-          @'
+          @"
           ## CurseForge publication failed
 
-          The verified GitHub tag, release, and ZIP remain intact. Use **Re-run failed jobs** to retry only the CurseForge job. If the upload request timed out or its outcome is unclear, first check the CurseForge **Files** dashboard for the same `RGMS-X.Y.Z.zip` display name. The author Upload API does not document an idempotency key or a safe duplicate-upload check.
-          '@ >> $env:GITHUB_STEP_SUMMARY
+          The verified GitHub tag, release, and ZIP remain intact. Use **Re-run failed jobs** to retry only the CurseForge job. If the upload request timed out or its outcome is unclear, first check the CurseForge **Files** dashboard for the same ``RGMS-X.Y.Z.zip`` display name. The author Upload API does not document an idempotency key or a safe duplicate-upload check.
+
+          - One canonical filename: ``$($env:ARTIFACT_NAME)``
+          - Shared SHA-256: ``$($env:EXPECTED_CHECKSUM)``
+          - Retail version / catalog version / target ID: ``$($env:RETAIL_VERSION)`` / ``$($env:RETAIL_GAME_VERSION)`` / ``$($env:RETAIL_GAME_VERSION_ID)``
+          - Forever version / catalog version / target ID: ``$($env:FOREVER_VERSION)`` / ``$($env:FOREVER_GAME_VERSION)`` / ``$($env:FOREVER_GAME_VERSION_ID)``
+          "@ >> $env:GITHUB_STEP_SUMMARY
