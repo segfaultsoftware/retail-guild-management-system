@@ -121,17 +121,22 @@ try {
     & $scriptPath -Forever -Unlink
     Assert-False (Test-Path -LiteralPath $foreverLink) 'Repeated Forever unlinking must remain idempotent.'
 
-    & $scriptPath -Retail -RetailPath $customPath
+    & $scriptPath -Retail -ClientPath $customPath
     Assert-RepositoryJunction $customLink $repositoryPath 'An explicit path must override the Retail default.'
     Assert-False (Test-Path -LiteralPath $retailLink) 'An explicit path must not create a junction in the default Retail directory.'
-    & $scriptPath -Retail -RetailPath $customPath -Unlink
+    & $scriptPath -Retail -ClientPath $customPath -Unlink
     Assert-False (Test-Path -LiteralPath $customLink) 'Explicit-path Retail unlinking failed.'
 
-    & $scriptPath -Forever -RetailPath $customPath
+    & $scriptPath -Forever -ClientPath $customPath
     Assert-RepositoryJunction $customLink $repositoryPath 'An explicit path must override the Forever default.'
     Assert-False (Test-Path -LiteralPath $foreverLink) 'An explicit path must not create a junction in the default Forever directory.'
-    & $scriptPath -Forever -RetailPath $customPath -Unlink
+    & $scriptPath -Forever -ClientPath $customPath -Unlink
     Assert-False (Test-Path -LiteralPath $customLink) 'Explicit-path Forever unlinking failed.'
+
+    & $scriptPath -Forever -RetailPath $customPath
+    Assert-RepositoryJunction $customLink $repositoryPath 'The legacy RetailPath alias must remain compatible.'
+    & $scriptPath -Forever -RetailPath $customPath -Unlink
+    Assert-False (Test-Path -LiteralPath $customLink) 'Legacy-path alias unlinking failed.'
 
     New-Item -ItemType Directory -Path $foreverLink -Force | Out-Null
     Assert-Throws {

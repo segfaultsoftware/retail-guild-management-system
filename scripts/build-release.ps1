@@ -12,14 +12,28 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $semanticVersionPattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'
+$productVersionPattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:[ \t]+\S(?:.*\S)?)?$'
 $requiredManifestFields = @(
     "Interface",
+    "AllowLoadGameType",
     "Title",
     "Notes",
     "Author",
     "Version",
-    "SavedVariablesPerCharacter"
+    "X-RGMS-Retail-Version",
+    "X-RGMS-Forever-Version",
+    "X-Curse-Project-ID",
+    "SavedVariables",
+    "SavedVariablesPerCharacter",
+    "OptionalDeps"
 )
+$requiredManifestValues = [ordered]@{
+    "AllowLoadGameType" = "standard, camelot"
+    "X-Curse-Project-ID" = "1741733"
+    "SavedVariables" = "RGMSAccountDB"
+    "SavedVariablesPerCharacter" = "RGMSCharacterDB"
+    "OptionalDeps" = "Auctionator"
+}
 $distributionFiles = @(
     "README.md",
     "CHANGELOG.md",
@@ -187,8 +201,8 @@ function Get-ManifestInterfaces {
         $interfaces.Add($interface)
     }
 
-    if ($interfaces.Count -eq 0 -or $interfaces.Count -gt 2) {
-        throw "Manifest Interface must contain one legacy or two dual-product numeric values; found '$Value'."
+    if ($interfaces.Count -ne 2) {
+        throw "Manifest Interface must contain exactly two unique numeric values in Retail-then-Forever order; found '$Value'."
     }
     return $interfaces.ToArray()
 }
@@ -271,6 +285,19 @@ function Get-ManifestInformation {
         }
     }
     $interfaces = @(Get-ManifestInterfaces -Value $metadata["Interface"])
+    foreach ($requiredValue in $requiredManifestValues.GetEnumerator()) {
+        if ($metadata[$requiredValue.Key] -cne $requiredValue.Value) {
+            throw "Manifest field '$($requiredValue.Key)' must equal '$($requiredValue.Value)'; found '$($metadata[$requiredValue.Key])'."
+        }
+    }
+    foreach ($productVersionField in @(
+        "X-RGMS-Retail-Version",
+        "X-RGMS-Forever-Version"
+    )) {
+        if ($metadata[$productVersionField] -cnotmatch $productVersionPattern) {
+            throw "Manifest field '$productVersionField' must begin with a canonical X.Y.Z product version followed only by optional build text; found '$($metadata[$productVersionField])'."
+        }
+    }
     if ($metadata["Version"] -cne $ExpectedVersion) {
         throw "Manifest version '$($metadata["Version"])' does not match requested release '$ExpectedVersion'."
     }

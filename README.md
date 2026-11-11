@@ -7,6 +7,11 @@ and stores its latest complete observations in account-wide, per-guild
 SavedVariables. Window placement and deprecated migration sources remain per
 character. It does not send data anywhere.
 
+The established **Retail Guild Management System (RGMS)** title and long-form
+branding are retained. Despite that name, the same addon supports both current
+live Retail and Forever; RGMS does not maintain a separately named Forever
+edition.
+
 ## What the MVP does
 
 - Scans the guild roster once after login and on demand, then groups members by
@@ -15,6 +20,14 @@ character. It does not send data anywhere.
   main/alt groups, search characters, filter tags, and keep account-wide,
   per-guild notes. **By rank** switches the same tab to rank-and-tenure cohorts;
   both presentations share the roster scan and exclude retained missing records.
+- Preserves Forever's complete two-part character names as indivisible display
+  and identity inputs, so members with the same first component remain distinct
+  through sorting, tenure, Mains/Alts, tags, notes, and News.
+- Reads public and permission-visible officer guild notes into a transient live
+  cache. Public and officer values retain their own last-good observation when
+  a later client value is restricted or secret, and officer values remain
+  hidden while the character lacks permission. Secret values are never saved,
+  printed, searched, or transformed.
 - Tracks how long a member has remained at the same numeric rank and retains a
   recently missing member with a warning for up to 21 Pacific calendar days.
 - Preserves joins, departures, and numeric rank changes as independently
@@ -24,9 +37,15 @@ character. It does not send data anywhere.
 - Shows bank contents by tab and tracks how long an item ID and stack count have
   remained in the same slot.
 - Tracks unlimited per-guild Provisions targets by localized item name and,
-  on Retail, Midnight crafting quality. Progress comes from the latest complete
-  guild-bank snapshot, including retained inaccessible-tab contents, and users
-  can drag rows into one persistent account-wide order per guild.
+  on Retail, Midnight crafting quality. Forever uses one quality-neutral target
+  per row and counts every accessible same-name item without a tier. Progress
+  comes from the latest complete guild-bank snapshot, including retained
+  inaccessible-tab contents for icons but not current quantities, and users can
+  drag rows into one persistent account-wide order per guild.
+- Optionally creates an ordered **RGMS Provisions** shopping list through
+  Auctionator's supported v1 API. The integration preserves duplicate shortage
+  rows, uses Retail quality tiers, omits tiers on Forever, and fails closed when
+  Auctionator or either required API function is unavailable.
 - Commits roster and bank scans transactionally. A partial, failed, timed-out,
   or canceled scan leaves the previous successful observation unchanged.
 - Shares each guild's roster, bank observations, and Provisions between
@@ -43,7 +62,11 @@ RGMS supports current live **Retail** and **Forever** from the same
 [`RGMS.toc`](RGMS.toc), source load graph, and release artifact. The manifest's
 Retail and Forever interfaces and version/build metadata are set from values
 captured immediately before that exact artifact is built and tested in both
-clients.
+clients. Early runtime detection accepts only WoW's `WOW_PROJECT_MAINLINE` and
+`WOW_PROJECT_CAMELOT` IDs; missing, invalid, or other product IDs fail closed.
+Feature code consumes semantic capabilities from that detection layer, so
+crafting quality is enabled only on Retail rather than inferred from a version
+string.
 
 ## Commands
 
@@ -96,10 +119,12 @@ suite with Lua 5.1 for every push and pull request. See
 [`Tests/README.md`](Tests/README.md) for fixture and test conventions.
 
 The project owner also performs live-client regression testing in both
-supported products between tickets. The
-[`staged core-beta checklist`](docs/MVP_SCENARIO_CHECKLIST.md) is the durable
-Retail and Forever validation procedure. Its completed evidence gates a staged
-dual-client beta but is not an automatic input to the release workflow.
+supported products. The
+[`dual-client release-acceptance checklist`](docs/MVP_SCENARIO_CHECKLIST.md) is
+the durable Retail and Forever validation procedure. Every required item must
+pass against the recorded package before release; failures are blockers that
+return to their owning feature and require the affected and full checks to be
+repeated.
 
 ## Build a local test package
 

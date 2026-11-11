@@ -141,6 +141,15 @@ they cannot collide with Retail or with the same club ID in another region.
 Callers treat both key forms as opaque and compare validated identities through
 the shared guild-identity service.
 
+Roster character identities follow the same product-aware boundary. Retail
+continues to use the established canonical `Name-Realm` key byte-for-byte.
+Forever uses a separate versioned namespace containing product, region, and the
+complete case-preserving two-part name. The two name components remain one
+indivisible value: the second component is never treated as a realm, and two
+members sharing the first component cannot collide. Display and sort values are
+stored beside the opaque key, and an optional GUID remains correlation metadata
+rather than a portable identity.
+
 Roster and bank initialization flags are independent. `false` means no
 account-wide decision has been made for that dataset. `true` with empty
 collections and no scan timestamp is an intentional empty state, including a
@@ -169,10 +178,25 @@ interior whitespace and non-ASCII spelling. Every guild catalog contains `me`;
 custom definitions remain saved even when unused. Assignments are removed only
 when their character leaves the retained roster database.
 
+Provision quality is product-sensitive even though the persisted shape accepts
+all three historical values. Retail preserves `silver`, `gold`, and `either`
+and matches them against native Midnight crafting quality. Forever has no
+crafting-quality capability: its editor and report are quality-neutral, its bank
+slots omit quality, and every active-guild provision is canonicalized to
+`either` before use. That normalization replaces only the validated provision
+list through the normal copy-and-replace account-data path; a failure leaves the
+supplied account store and unrelated guild fields unchanged.
+
 The live guild-note adapter converts raw roster API names through the shared
 character-identity service using the active guild's product and region. It
 stores the resulting key beside the service-provided display label; note
 visibility and the existing read-only guild-note editing policy are unchanged.
+Public and officer guild notes live only in this transient session cache, not in
+either SavedVariables store. Restricted or secret observations retain each
+field's independent last-good usable value without persisting, printing,
+searching, or transforming the secret value; retained officer data remains
+hidden whenever the character lacks permission. The `characterNotes` table
+above contains only RGMS's persistent private notes.
 
 ## Per-character schema: version 10
 

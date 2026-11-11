@@ -1,31 +1,36 @@
-# Staged Retail and Forever core-beta checklist
+# Retail and Forever release-acceptance checklist
 
-Use this document to validate one RGMS beta package in the supported World of
-Warcraft Retail and Forever clients. It is deliberately self-contained: a
-tester should not need a GitHub issue or another checklist to identify the
-package, setup, action, expected result, evidence, or rerun requirement.
+Use this document to validate one RGMS release-candidate package in the
+supported World of Warcraft Retail and Forever clients. It is deliberately
+self-contained: a tester should not need a GitHub issue or another checklist
+to identify the package, setup, action, expected result, evidence, or rerun
+requirement.
 
 Do not mark an item complete from memory or from a different checkout. Record
 the observed result for the exact archive and client build under test. Keep raw
 account, character, guild, and path identifiers out of shared evidence.
 
-## Core gate and deferred parity
+## Blocking release gate
 
-The **core beta gate** covers all of the following:
+The release gate covers all of the following:
 
 - installation and loading from one shared package;
 - Retail preservation, product/region isolation, identity, and migrations;
 - roster collection, Mains/Alts, tags, private notes, tenure, and News;
 - public and officer guild-note visibility, permissions, and secret values;
 - guild-bank balances, access states, retained data, and scan transactions;
+- Retail quality-aware and Forever quality-neutral Provisions behavior;
+- Auctionator absence, compatibility detection, supported-v1 list creation,
+  and fail-closed error behavior;
 - the shared window, menus, scrolling, tooltips, minimap button, and combat
-  smoke checks.
+  smoke checks;
+- preparation, install-link, package, and release-workflow tooling for both
+  products.
 
-Complete Forever Provisions and Auctionator parity belongs to Feature 5.1 and
-is **deferred**. A missing Forever-specific quality or integration behavior is
-not a core-beta failure. A load error, secret-value error, data loss, identity
-collision, protected-action error, or failure in shared bank/UI infrastructure
-is still a core blocker even if it is first noticed through a deferred view.
+Every unchecked or failed required item is a release blocker. This includes a
+load error, secret-value error, data loss, identity collision, protected-action
+error, package or metadata drift, and any Retail- or Forever-specific failure
+in Provisions, Auctionator, bank, roster, notes, UI, or minimap behavior.
 
 ## Immutable test record
 
@@ -74,29 +79,50 @@ the UI smoke matrix with the same profiles in Retail and both Forever presets.
 
 ## Automated and package preflight
 
-Run the Lua suite and local package build from Git Bash on Windows:
+Run the Lua suite, release-preparation tests, and local package build from Git
+Bash on Windows:
 
 ```text
 lua.exe Tests/run.lua
+bash ./Tests/prepare_release_tests.sh
 ./scripts/build-local-release.sh
 ```
 
-Run the release-workflow tests from PowerShell 7. They invoke the Lua suite
-through Git Bash internally, while allowing the builder to resolve the standard
-Git for Windows installation:
+Run the install-helper and both release-tool PowerShell suites from PowerShell
+7. The build-release suite invokes the Lua gate through Git Bash internally
+and resolves the standard Git for Windows installation:
 
 ```text
+pwsh.exe -NoProfile -File .\Tests\link_addon_tests.ps1
 pwsh.exe -NoProfile -File .\Tests\build_release_tests.ps1 -LuaCommand 'C:\Program Files (x86)\Lua\5.1\lua.exe'
+pwsh.exe -NoProfile -File .\Tests\release_workflow_tests.ps1
 ```
 
 Expected results:
 
 - [ ] The Lua suite exits `0`; record the exact total, passed, and failed count.
-- [ ] Release-workflow tests exit `0` and validate the dual-interface package
-  fixtures.
+- [ ] `prepare_release_tests.sh` exits `0`; record its exact passing count and
+  confirm successful dual-product metadata updates plus byte-for-byte rollback
+  on every rejected preparation.
+- [ ] `link_addon_tests.ps1` exits `0`; record its exact passing count and
+  confirm explicit Retail/Forever target selection, override paths, and safe
+  link/unlink refusal for ordinary directories and foreign junctions.
+- [ ] `build_release_tests.ps1` exits `0`; record its exact passing count and
+  confirm the dual-interface/product-metadata fixtures, conditional files,
+  distribution allowlist, Lua gate, and deterministic ZIP contract.
+- [ ] `release_workflow_tests.ps1` exits `0`; record its exact passing count and
+  confirm one canonical asset, exact Retail/Forever target resolution, and one
+  fail-closed CurseForge upload path.
 - [ ] The local builder reruns the Lua gate, creates the archive twice, verifies
   byte equality, and prints one final SHA-256.
 - [ ] The package was built from the clean full commit recorded above.
+
+- Lua suite result: ______________________________________________________
+- Prepare-release test result: ___________________________________________
+- Link-addon test result: ________________________________________________
+- Build-release test result: _____________________________________________
+- Release-workflow test result: __________________________________________
+- Local deterministic build result: ______________________________________
 
 Inspect the exact archive reported by the builder:
 
@@ -109,6 +135,13 @@ sha256sum "$archive"
 - [ ] The ZIP contains one `RGMS/RGMS.toc`, all manifest-referenced shared and
   conditional runtime files exactly once, and no generated or product-specific
   TOC.
+- [ ] The embedded TOC is byte-identical to the source and retains the recorded
+  Retail-then-Forever interfaces, `standard, camelot`, both `X-RGMS-*`
+  version/build values, CurseForge project `1741733`, `RGMSAccountDB`,
+  `RGMSCharacterDB`, and `OptionalDeps: Auctionator`.
+- [ ] The ZIP contains `README.md`, `CHANGELOG.md`, `LICENSE`,
+  `THIRD_PARTY_NOTICES.md`, `licenses/Inter-OFL.txt`, and
+  `licenses/Lucide-ISC.txt` plus every allowlisted runtime asset.
 - [ ] The ZIP contains no tests, contributor-only files, repository metadata,
   local evidence, or secret-like path.
 - [ ] The recorded SHA-256 matches the builder's value.
@@ -117,15 +150,16 @@ sha256sum "$archive"
 
 The full suite owns deterministic coverage for flavor detection, manifest/load
 order, product and region identities, copy-on-write migrations, partial roster
-delivery, Mains/Alts, secret notes, bank failures/timeouts, shared UI, and
-LibDBIcon. The `MVP-E2E-*` cases provide cross-layer transitions. Live testing
-below validates behavior that cannot be faithfully emulated outside the game.
+delivery, Mains/Alts, secret notes, bank failures/timeouts, Provisions,
+Auctionator, shared UI, and LibDBIcon. The `MVP-E2E-*` cases provide cross-layer
+transitions. Live testing below validates behavior that cannot be faithfully
+emulated outside the game.
 
 ### Deterministic MVP fixture clock
 
 `Tests/mvp_fixtures.lua` pairs each Pacific date with a fixed UTC timestamp.
 Use the automated result as the evidence for calendar boundaries that cannot be
-recreated during a short live beta run.
+recreated during a short live release-acceptance run.
 
 | Transition | Pacific date | Persisted UTC timestamp |
 | --- | --- | --- |
@@ -191,10 +225,10 @@ Before installing:
   ```
 
   Before testing, save named, read-only copies for `original-user` and
-  `retail-pre-beta`, plus an absence marker for the `fresh` baseline. Create
-  `post-migration` only after the successful Scenario 2 migration. `fresh`
-  means both RGMS saved values are absent, not that unrelated addon data is
-  deleted.
+  `retail-pre-dual-client`, plus an absence marker for the `fresh` baseline.
+  Create `post-migration` only after the successful Scenario 2 migration.
+  `fresh` means both RGMS saved values are absent, not that unrelated addon
+  data is deleted.
 - [ ] Fully close both clients before inspecting, replacing, or restoring a
   SavedVariables file.
 - [ ] Whenever a step directs a baseline restore, restore the account and
@@ -202,7 +236,7 @@ Before installing:
   replaces one store to test independent failure.
 - [ ] Restore the successful `post-migration` baseline after
   migration/recovery testing. After Scenario 3 restores its `pre-isolation`
-  QA baselines, run Scenarios 4–10 cumulatively unless a step explicitly
+  QA baselines, run Scenarios 4–11 cumulatively unless a step explicitly
   directs another restore; roster/News and bank-retention checks depend on
   observations from the preceding scenario.
 - [ ] If the checkout is linked, remove only its verified junction with:
@@ -221,7 +255,8 @@ Before installing:
 - [ ] Enable Lua errors with `/console scriptErrors 1` in each client.
 - [ ] Enable only RGMS while collecting failure evidence. Optionally repeat the
   interaction smoke checks with a recorded normal-addon set after the RGMS-only
-  core pass; optional interaction testing does not replace the core pass.
+  release pass; optional interaction testing does not replace the required
+  release pass.
 
 For every SavedVariables observation, `/reload` or log out to flush state and
 then fully close the client before reading the file. `RGMSAccountDB` is
@@ -263,13 +298,14 @@ Run this scenario in R, F1, and F2.
 
 ## Scenario 2 — Retail migrations, failure, and independent recovery
 
-Use disposable copies of representative pre-beta Retail data. Never corrupt
-the only backup. The expected migration path is account schema `10` to `13` and
-per-character schema `8` to `10`.
+Use disposable copies of representative pre-dual-client Retail data. Never
+corrupt the only backup. The expected migration path is account schema `10` to
+`13` and per-character schema `8` to `10`.
 
 ### Successful migration
 
-- [ ] Install valid pre-beta Retail `RGMSAccountDB` and `RGMSCharacterDB` copies
+- [ ] Install valid pre-dual-client Retail `RGMSAccountDB` and
+  `RGMSCharacterDB` copies
   with populated roster, bank, groups, tags, private notes, News, charts,
   Provisions, minimap position, and character UI position.
 - [ ] Record the source hashes, start Retail, and allow RGMS to load.
@@ -357,7 +393,7 @@ Failure/rollback and recovery evidence: __________________________________
     even though the surrounding account file gains F-R2, and it is never
     exposed as the active guild.
   - After collecting evidence, fully close Forever and restore each product and
-    region path's `pre-isolation` baseline so Scenarios 4–10 retain their QA
+    region path's `pre-isolation` baseline so Scenarios 4–11 retain their QA
     feature state. Reserve `original-user` for final cleanup.
 - [ ] Change from guild A to guild B and complete only a bank scan.
   - Bank displays guild B while roster still shows guild A's last complete
@@ -602,23 +638,162 @@ Expected results:
 
 Account/character and command evidence: __________________________________
 
+## Scenario 11 — Provisions and Auctionator dual-product acceptance
+
+Run the Provisions CRUD, bank-count, and persistence paths in R, F1, and F2.
+Use disposable QA partitions and the same staged RGMS ZIP as every other
+scenario. Record the installed Auctionator version and API surface for each
+integration run. Any disposable Auctionator QA stub must be a separate addon,
+must never modify the RGMS directory or archive, and must be hashed, recorded,
+and removed during cleanup.
+
+### Provisions CRUD, order, and persistence
+
+- [ ] Start from a successful bank snapshot with at least two accessible item
+  stacks, one inaccessible tab retaining an older matching stack, and no saved
+  Provisions. Record the accessible and retained-inaccessible counts separately.
+- [ ] Create three Provisions in a known order, including two entries with the
+  same item name but different targets. Edit one target, drag one entry to a
+  different position, and delete a fourth temporary entry.
+  - Each saved entry keeps its stable ID; duplicate names remain separate.
+  - Create, edit, delete, and reorder publish only complete account-store
+    replacements. No partial order or draft becomes saved.
+  - The visible order exactly matches the saved order after closing/reopening
+    RGMS, `/reload`, logout/login, and a cold restart.
+- [ ] Start a roster or bank scan and attempt create, edit, delete, reorder,
+  and Auctionator list creation.
+  - Every mutation is disabled or rejected while the global scan lock is
+    active; saved Provisions, selection, order, and the unsaved draft remain
+    unchanged.
+- [ ] Change to another guild, product, or region partition and return.
+  - Each partition displays only its own Provisions, order, and next ID.
+  - Retail, another Forever region, and another guild remain field-for-field
+    unchanged when the active Forever partition is updated.
+
+| Run | Create/edit/delete | Duplicate/order | Scan lock | Reload/login/cold restart | Partition isolation | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| R | ___ | ___ | ___ | ___ | ___ | __________ |
+| F1 | ___ | ___ | ___ | ___ | ___ | __________ |
+| F2 | ___ | ___ | ___ | ___ | ___ | __________ |
+
+### Retail quality tiers and Forever quality-neutral storage
+
+- [ ] In Retail, create otherwise-identical silver, gold, and either-quality
+  entries and compare them with a successful bank snapshot containing both
+  crafting qualities.
+  - Silver and gold rows count only their matching accessible-quality stacks.
+  - Either counts every accessible matching stack.
+  - Retained rows from inaccessible tabs can supply an icon but never increase
+    the current count or reduce the shortage.
+- [ ] In Forever, verify the quality label, controls, row badges, and drag
+  preview badges are absent. Create and edit the same entries.
+  - Every new or edited entry is saved as `quality = "either"`.
+  - Every accessible matching stack counts regardless of any quality-like API
+    value, while retained inaccessible stacks do not count.
+- [ ] On a disposable Forever account copy, seed silver and gold Provisions in
+  the active partition plus unchanged comparison data in another guild, a
+  Retail partition, and another Forever region. Save before-state extracts.
+  - Activating Provisions replaces all active-partition qualities with
+    `"either"` in one account-store publication and preserves IDs, names,
+    targets, order, and next ID.
+  - The comparison partitions remain unchanged; retain the active partition's
+    before-state extract as recovery and copy-on-write evidence.
+  - A second activation is a no-op, and reload preserves the normalized store.
+- [ ] Attach the passing deterministic cases for normalization rejection and
+  persistence failure. They must demonstrate that the prior complete account
+  store stays published and Provisions use is blocked rather than exposing a
+  partially normalized active partition.
+
+Retail quality evidence: _________________________________________________
+
+Forever neutralization and isolation evidence: ___________________________
+
+### Exact bank counts and Auctionator shortages
+
+Before list creation, record every saved row in its authoritative order. The
+two duplicate-name rows must remain separate. For each row, calculate
+`expected shortage = max(0, target - accessible current count)`; never include
+retained inaccessible-tab contents. Retail silver/gold rows use API tier `1`
+or `2`; Retail either and every Forever row omit the tier. Satisfied rows are
+omitted, while unsatisfied rows retain saved order and exact duplicate entries.
+
+| Run | Saved row/ID and order | Name | Saved quality | Target | Accessible current | Retained inaccessible | Expected tier/omitted | Expected shortage | Observed API term/evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| R | __________ | __________ | __________ | _____ | _____ | _____ | __________ | _____ | __________ |
+| R | __________ | __________ | __________ | _____ | _____ | _____ | __________ | _____ | __________ |
+| R | __________ | __________ | __________ | _____ | _____ | _____ | __________ | _____ | __________ |
+| F1 | __________ | __________ | `either` | _____ | _____ | _____ | omitted | _____ | __________ |
+| F1 | __________ | __________ | `either` | _____ | _____ | _____ | omitted | _____ | __________ |
+| F1 | __________ | __________ | `either` | _____ | _____ | _____ | omitted | _____ | __________ |
+| F2 | __________ | __________ | `either` | _____ | _____ | _____ | omitted | _____ | __________ |
+| F2 | __________ | __________ | `either` | _____ | _____ | _____ | omitted | _____ | __________ |
+| F2 | __________ | __________ | `either` | _____ | _____ | _____ | omitted | _____ | __________ |
+
+### Auctionator absent, unsupported, supported, and failing
+
+- [ ] With Auctionator absent, start each product and open Provisions.
+  - The Auctionator button is absent, all ordinary Provisions operations remain
+    usable, and no Lua error, false success, or missing-dependency message is
+    produced.
+- [ ] With a recorded disposable unsupported/incomplete Auctionator QA stub,
+  expose `Auctionator.API.v1` with exactly one of
+  `ConvertToSearchString` or `CreateShoppingList`, then repeat with neither.
+  - RGMS treats every incomplete shape as unavailable, keeps the button absent,
+    and never calls the partial API.
+- [ ] With a supported current Auctionator installation, verify both v1 methods
+  are present before starting RGMS.
+  - The button appears in Retail and Forever but remains disabled until a
+    successful bank snapshot, at least one saved Provision, and at least one
+    shortage all exist.
+  - Clicking it creates or replaces exactly one list named `RGMS Provisions`.
+    The list contains the exact ordered, duplicate-preserving shortage terms
+    recorded above, with exact quantities and only the applicable Retail tier.
+  - A success toast appears only after Auctionator accepts list creation.
+- [ ] Use a recorded disposable full-shape QA stub to capture each term passed
+  to `ConvertToSearchString`, then exercise a conversion exception, a
+  non-string conversion result, a creation exception, and an explicit
+  `false, message` or `nil, message` creation rejection.
+  - Conversion failure prevents list creation. Every failure is reported once,
+    produces no success toast, leaves the saved Provisions and bank snapshot
+    unchanged, and never reports the external operation as successful.
+  - No Lua, secret-value, taint, or protected-action error escapes RGMS.
+- [ ] Disable/remove the QA stub, restore the supported addon or absent-addon
+  baseline as appropriate, reload, and repeat one successful Retail and one
+  successful Forever list creation to prove the failure fixtures left no
+  persistent integration state.
+
+| Run | Absent | Unsupported/incomplete | Supported v1 | Exact terms | Fail-closed/no false success | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| R | ___ | ___ | ___ | ___ | ___ | __________ |
+| F1 | ___ | ___ | ___ | ___ | ___ | __________ |
+| F2 | ___ | ___ | ___ | ___ | ___ | __________ |
+
+Provisions/Auctionator evidence: _________________________________________
+
 ## Defect routing and reruns
 
-Record every discovered defect before deciding whether the beta passes.
+Record every discovered defect before deciding whether the release candidate
+passes. A failed or unexecuted required item remains a release blocker until
+its owning implementation is fixed and the required reruns pass.
 
-| Defect/issue | Product, preset, build | Checklist section | Core or deferred | Owning feature | Disposition | Rerun evidence/result |
+| Defect/issue | Product, preset, build | Checklist section | Owning feature | Blocking disposition | Rerun evidence/result |
 | --- | --- | --- | --- | --- | --- | --- |
-| __________ | __________ | __________ | __________ | __________ | __________ | __________ |
-| __________ | __________ | __________ | __________ | __________ | __________ | __________ |
-| __________ | __________ | __________ | __________ | __________ | __________ | __________ |
+| __________ | __________ | __________ | __________ | __________ | __________ |
+| __________ | __________ | __________ | __________ | __________ | __________ |
+| __________ | __________ | __________ | __________ | __________ | __________ |
 
-- [ ] Each defect is routed to its owning feature rather than fixed as unrelated
-  #169 scope.
-- [ ] Every affected checklist section is rerun after a fix.
-- [ ] The complete Lua suite and package validation are rerun after any source,
-  manifest, library, or build-tool fix.
-- [ ] A deferred Feature 5.1 gap is labeled deferred and does not conceal a
-  shared core failure.
+- [ ] Each defect is routed to its owning implementation or release-tool area;
+  this acceptance ticket does not conceal or waive an owning-feature failure.
+- [ ] Every affected product, preset, and checklist section is rerun after a
+  fix, followed by the complete cross-product smoke pass when shared code or
+  data contracts changed.
+- [ ] The Lua, prepare-release, link-addon, build-release, and release-workflow
+  suites plus local deterministic package validation are rerun after any
+  source, manifest, library, install-tool, build-tool, release-tool, or
+  packaged-document fix.
+- [ ] Every defect has passing rerun evidence or is shown with evidence to be
+  invalid or a duplicate. No unresolved required item is classified as
+  non-blocking merely because another product passed.
 
 ## Cleanup and restoration
 
@@ -629,20 +804,26 @@ Record every discovered defect before deciding whether the beta passes.
 - [ ] Restore each product/region's `original-user` account and character
   SavedVariables backups, or explicitly record that the disposable QA state is
   intentionally retained.
-- [ ] Move the exact installed beta `RGMS` directories out of `Interface/AddOns`
-  after verifying each path. Restore the prior package, or recreate development
-  links separately with `link-addon.ps1 -Retail` and
+- [ ] Remove every disposable Auctionator QA stub after verifying its exact
+  path and recorded hash. Restore the tester's original supported Auctionator
+  package or absent-addon state separately in each product.
+- [ ] Move the exact installed release-candidate `RGMS` directories out of
+  `Interface/AddOns` after verifying each path. Restore the prior package, or
+  recreate development links separately with `link-addon.ps1 -Retail` and
   `link-addon.ps1 -Forever`.
 - [ ] Start a restored client to confirm its pre-test state only when its
   matching prior package has also been restored. Otherwise leave it closed and
-  retain the backups; do not let the beta package migrate restored originals.
+  retain the backups; do not let the release-candidate package migrate restored
+  originals.
 
 ## Completion gate
 
 - [ ] The recorded full commit has a clean worktree and produced the exact
   archive under test.
-- [ ] The full Lua suite, release-workflow tests, deterministic two-build
-  comparison, archive inspection, and SHA-256 checks passed.
+- [ ] The full Lua suite, prepare-release tests, link-addon tests,
+  build-release tests, release-workflow tests, deterministic two-build
+  comparison, archive inspection, and SHA-256 checks all passed with recorded
+  counts/results.
 - [ ] The same staged ZIP SHA-256 was confirmed immediately before every Retail
   and Forever extraction; extracted-layout evidence is recorded separately.
 - [ ] R, F1, F2, and F-R2 loaded with no wrong-product, out-of-date, Lua,
@@ -654,11 +835,13 @@ Record every discovered defect before deciding whether the beta passes.
 - [ ] Forever full names remained intact and could not collide across product
   or region partitions.
 - [ ] Roster, Mains/Alts, tags, private notes, tenure, News, guild notes, bank,
-  shared UI, and minimap passed with no unresolved core blocker.
-- [ ] All required core boxes are checked; any untestable core item is recorded
+  Provisions, Auctionator absent/unsupported/supported/failure paths, shared
+  UI, and minimap passed in both products with no unresolved blocker.
+- [ ] Retail quality tiers and Forever quality-neutral normalization, bank
+  counts, exact ordered shortage terms, duplicate handling, partition
+  isolation, and fail-closed/no-false-success behavior were evidenced.
+- [ ] All required boxes are checked; any untestable required item is recorded
   as a blocker, not silently waived.
-- [ ] Feature 5.1 Provisions/Auctionator parity gaps are recorded separately and
-  are not treated as completed by this beta.
 - [ ] Shared evidence is sanitized of account, character, guild, path, note, and
   other private identifiers.
 - [ ] Every defect has an owner and every fixed section has passing rerun
@@ -670,6 +853,7 @@ Unresolved blocker or failure notes and owner: _____________________________
 
 - Tester GitHub username: @_________________________________________
 - Test date (Pacific): YYYY-MM-DD
-- Core beta result: PASS / FAIL
-- Deferred Feature 5.1 observations: _______________________________
+- Release-acceptance result: PASS / FAIL
+- Blocking defect summary or `None`: _______________________________
+- Provisions/Auctionator evidence index: ___________________________
 - Evidence index: __________________________________________________

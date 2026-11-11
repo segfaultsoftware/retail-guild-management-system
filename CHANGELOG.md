@@ -40,15 +40,23 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   stores, bank totals, row presentation, and Auctionator shopping lists while
   preserving Retail crafting-quality behavior.
 - Required an explicit Retail or Forever target for Windows development link
-  and unlink commands, preventing accidental operations on the wrong client.
-- Expanded the staged core-beta procedure into one artifact-pinned Retail and
-  Forever validation matrix covering migrations, identities, roster-linked
-  features, notes, guild bank, shared UI, minimap, and deferred parity.
+  and unlink commands, added a product-neutral `-ClientPath` override, and kept
+  `-RetailPath` as a compatibility alias.
+- Replaced the earlier limited procedure with one artifact-pinned Retail and
+  Forever release-acceptance matrix covering migrations, identities,
+  roster-linked features, notes, guild bank, quality-neutral Provisions,
+  Auctionator, shared UI, minimap, packaging, and blocker reruns.
 - Activated one shared manifest for validated Retail and Forever interfaces,
   supported game types, product build metadata, and early client detection.
 - Extended deterministic release packaging to validate comma-delimited
   interface metadata and include shared plus Retail/Forever-conditional runtime
   files exactly once in one unchanged-manifest archive.
+- Hardened release packaging to require exactly two unique interfaces and the
+  complete Retail/Forever load, version, SavedVariables, optional-dependency,
+  CurseForge project, notice, and license contract before retaining an archive.
+- Reconciled user, contributor, development, saved-data, release, test, and
+  dependency documentation with the completed dual-client implementation and
+  final acceptance procedure.
 - Extended final-release CurseForge preflight and publication to resolve exact
   product-typed Retail and Forever targets before mutation, then upload the one
   checksum-verified archive once with both targets.
