@@ -22,7 +22,10 @@ local function trim(value)
     return (string.gsub(string.gsub(value, "^%s+", ""), "%s+$", ""))
 end
 
-local function qualityFromDraft(draft)
+local function qualityFromDraft(draft, supportsCraftingQuality)
+    if supportsCraftingQuality == false then
+        return "either"
+    end
     local silver = type(draft) == "table" and draft.silver == true
     local gold = type(draft) == "table" and draft.gold == true
     if silver and gold then
@@ -35,14 +38,14 @@ local function qualityFromDraft(draft)
     return nil
 end
 
-function Model.normalizeDraft(draft)
+function Model.normalizeDraft(draft, supportsCraftingQuality)
     draft = type(draft) == "table" and draft or {}
     local name = trim(draft.name)
     local targetText = type(draft.targetText) == "string"
         and trim(draft.targetText)
         or tostring(draft.target or "")
     local target = string.match(targetText, "^%d+$") and tonumber(targetText) or nil
-    local quality = qualityFromDraft(draft)
+    local quality = qualityFromDraft(draft, supportsCraftingQuality)
     local length = characterCount(name)
 
     if length < Model.MIN_NAME_LENGTH or length > Model.MAX_NAME_LENGTH then
@@ -62,14 +65,17 @@ function Model.normalizeDraft(draft)
     }
 end
 
-function Model.toDraft(provision)
+function Model.toDraft(provision, supportsCraftingQuality)
     if type(provision) ~= "table" then
         return { name = "", silver = false, gold = false, targetText = "" }
     end
+    local qualityNeutral = supportsCraftingQuality == false
     return {
         name = provision.name,
-        silver = provision.quality == "silver" or provision.quality == "either",
-        gold = provision.quality == "gold" or provision.quality == "either",
+        silver = not qualityNeutral
+            and (provision.quality == "silver" or provision.quality == "either"),
+        gold = not qualityNeutral
+            and (provision.quality == "gold" or provision.quality == "either"),
         targetText = tostring(provision.target),
     }
 end
@@ -227,7 +233,7 @@ local function viewableTabs(bank)
     return result
 end
 
-function Model.buildReport(provisions, bank, lower)
+function Model.buildReport(provisions, bank, lower, supportsCraftingQuality)
     lower = type(lower) == "function" and lower or string.lower
     bank = type(bank) == "table" and bank or {}
     local counts = {}
@@ -265,19 +271,22 @@ function Model.buildReport(provisions, bank, lower)
     for _, provision in ipairs(provisions or {}) do
         local totals = counts[lower(provision.name)]
         local current = 0
+        local quality = supportsCraftingQuality == false
+            and "either"
+            or provision.quality
         if totals then
-            if provision.quality == "either" then
+            if quality == "either" then
                 current = totals.all
-            elseif provision.quality == "silver" then
+            elseif quality == "silver" then
                 current = totals.silver
-            elseif provision.quality == "gold" then
+            elseif quality == "gold" then
                 current = totals.gold
             end
         end
         rows[#rows + 1] = {
             id = provision.id,
             name = provision.name,
-            quality = provision.quality,
+            quality = quality,
             target = provision.target,
             current = current,
             progress = math.min(1, current / provision.target),
@@ -302,8 +311,18 @@ function Model.buildReport(provisions, bank, lower)
     }
 end
 
-function Model.buildAuctionatorTerms(provisions, bank, lower)
-    local report = Model.buildReport(provisions, bank, lower)
+function Model.buildAuctionatorTerms(
+    provisions,
+    bank,
+    lower,
+    supportsCraftingQuality
+)
+    local report = Model.buildReport(
+        provisions,
+        bank,
+        lower,
+        supportsCraftingQuality
+    )
     local terms = {}
     for _, row in ipairs(report.rows) do
         if row.current < row.target then

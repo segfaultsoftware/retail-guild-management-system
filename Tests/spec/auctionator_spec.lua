@@ -79,6 +79,21 @@ return {
         test.assert_matches(message, "conversion rejected")
         test.assert_equal(createCalls, 0)
 
+        local invalidConversion = fakeAuctionator({
+            ConvertToSearchString = function()
+                return {}
+            end,
+            CreateShoppingList = function()
+                createCalls = createCalls + 1
+            end,
+        })
+        result, message = integration.CreateShoppingList({
+            { searchString = "Herb", isExact = true, quantity = 1 },
+        }, invalidConversion)
+        test.assert_nil(result)
+        test.assert_equal(message, "Auctionator returned an invalid search string")
+        test.assert_equal(createCalls, 0)
+
         local creationFailure = fakeAuctionator({
             CreateShoppingList = function()
                 error("creation rejected")
@@ -89,5 +104,27 @@ return {
         }, creationFailure)
         test.assert_nil(result)
         test.assert_matches(message, "creation rejected")
+
+        local explicitRejection = fakeAuctionator({
+            CreateShoppingList = function()
+                return false, "request rejected"
+            end,
+        })
+        result, message = integration.CreateShoppingList({
+            { searchString = "Herb", isExact = true, quantity = 1 },
+        }, explicitRejection)
+        test.assert_nil(result)
+        test.assert_equal(message, "request rejected")
+
+        local nilRejection = fakeAuctionator({
+            CreateShoppingList = function()
+                return nil, "request failed"
+            end,
+        })
+        result, message = integration.CreateShoppingList({
+            { searchString = "Herb", isExact = true, quantity = 1 },
+        }, nilRejection)
+        test.assert_nil(result)
+        test.assert_equal(message, "request failed")
     end),
 }

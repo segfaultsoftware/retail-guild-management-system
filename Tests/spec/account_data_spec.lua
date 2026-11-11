@@ -968,6 +968,82 @@ return {
         )
     end),
 
+    test.case("provision normalization replacements are atomic and partition-isolated", function()
+        local retail = guild("Night Shift", "area-52", "US")
+        local foreverUS = foreverGuild("Night Shift", "US", 4242)
+        local foreverEU = foreverGuild("Night Shift", "EU", 4242)
+        local model = accountData.newModel()
+
+        model = assert(accountData.replaceProvisions(model, retail, {
+            { id = 1, name = "Retail Supply", quality = "gold", target = 5 },
+        }, 2))
+        model = assert(accountData.replaceProvisions(model, foreverUS, {
+            { id = 1, name = "US Silver", quality = "silver", target = 10 },
+            { id = 2, name = "US Gold", quality = "gold", target = 20 },
+        }, 3))
+        model = assert(accountData.replaceProvisions(model, foreverEU, {
+            { id = 1, name = "EU Supply", quality = "silver", target = 15 },
+        }, 2))
+
+        local replacement = assert(accountData.replaceProvisions(
+            model,
+            foreverUS,
+            {
+                { id = 1, name = "US Silver", quality = "either", target = 10 },
+                { id = 2, name = "US Gold", quality = "either", target = 20 },
+            },
+            3
+        ))
+
+        test.assert_equal(
+            accountData.findGuild(replacement, foreverUS).provisions,
+            {
+                { id = 1, name = "US Silver", quality = "either", target = 10 },
+                { id = 2, name = "US Gold", quality = "either", target = 20 },
+            }
+        )
+        test.assert_equal(
+            accountData.findGuild(model, foreverUS).provisions[1].quality,
+            "silver"
+        )
+        test.assert_equal(
+            accountData.findGuild(model, foreverUS).provisions[2].quality,
+            "gold"
+        )
+        test.assert_equal(
+            accountData.findGuild(replacement, retail).provisions[1].quality,
+            "gold"
+        )
+        test.assert_equal(
+            accountData.findGuild(replacement, foreverEU).provisions[1].quality,
+            "silver"
+        )
+
+        local invalid = accountData.findGuild(replacement, foreverUS)
+        invalid.provisions[2].quality = "invalid"
+        local rejected, message = accountData.replaceProvisions(
+            replacement,
+            foreverUS,
+            {
+                { id = 1, name = "US Silver", quality = "either", target = 10 },
+                { id = 2, name = "US Gold", quality = "either", target = 20 },
+            },
+            3
+        )
+
+        test.assert_nil(rejected)
+        test.assert_matches(message, "silver, gold, or either")
+        test.assert_equal(invalid.provisions[2].quality, "invalid")
+        test.assert_equal(
+            accountData.findGuild(replacement, retail).provisions[1].quality,
+            "gold"
+        )
+        test.assert_equal(
+            accountData.findGuild(replacement, foreverEU).provisions[1].quality,
+            "silver"
+        )
+    end),
+
     test.case("roster news persists account-wide inside only its guild partition", function()
         local active = guild("Night Shift", "area-52")
         local other = guild("Night Shift", "illidan")

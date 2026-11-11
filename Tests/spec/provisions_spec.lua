@@ -25,6 +25,11 @@ local function newHarness(initialProvisions, options)
         AccountData = accountData,
         AccountDataState = { enabled = true, model = account },
         ActiveGuildIdentity = identity,
+        ClientFlavor = {
+            supportsCraftingQuality = function()
+                return options.supportsCraftingQuality ~= false
+            end,
+        },
         SavedDataState = { enabled = true, model = savedData.newModel() },
         DB = accountData.view(account, identity, {}),
         DateTime = dateTime,
@@ -56,6 +61,9 @@ local function newHarness(initialProvisions, options)
             end,
         },
     }
+    if options.omitClientFlavor then
+        rgms.ClientFlavor = nil
+    end
     local chunk = assert(loadfile("Provisions/Provisions.lua"))
     local provisions = chunk("RGMS", rgms)
     rgms.Provisions = provisions
@@ -68,6 +76,7 @@ local function newHarness(initialProvisions, options)
         toasts = toasts,
         dragCancellations = function() return dragCancellations end,
         setLocked = function(value) locked = value == true end,
+        identity = identity,
     }
 end
 
@@ -133,6 +142,230 @@ return {
         test.assert_nil(harness.provisions.selectedId)
         test.assert_equal(harness.toasts[4], "Removed Updated Feast from Provisions")
         test.assert_equal(#harness.messages, 0)
+    end),
+
+    test.case("Forever activation atomically normalizes only the active guild store", function()
+        local harness = newHarness({
+            saved(1, "Feast", "silver", 10),
+            saved(2, "Flask", "gold", 20),
+            saved(3, "Oil", "either", 30),
+        }, { supportsCraftingQuality = false })
+        local otherIdentity = fixtures.guild_identity({
+            name = "Other Guild",
+            realm = { name = "Other Realm", slug = "other-realm" },
+        })
+        local accountWithOther = assert(accountData.replaceProvisions(
+            harness.rgms.AccountDataState.model,
+            otherIdentity,
+            { saved(1, "Other Feast", "gold", 40) },
+            2
+        ))
+        harness.rgms.AccountDataState.model = accountWithOther
+        harness.rgms.DB = accountData.view(
+            accountWithOther,
+            harness.identity,
+            harness.rgms.SavedDataState.model.ui
+        )
+
+        local calls = 0
+        local originalReplace = harness.rgms.AccountData.replaceProvisions
+        harness.rgms.AccountData.replaceProvisions = function(...)
+            calls = calls + 1
+            return originalReplace(...)
+        end
+
+        test.assert_true(harness.provisions.OnGuildChanged())
+
+        test.assert_equal(calls, 1)
+        test.assert_false(harness.rgms.AccountDataState.model == accountWithOther)
+        test.assert_equal(harness.rgms.DB.provisions, {
+            saved(1, "Feast", "either", 10),
+            saved(2, "Flask", "either", 20),
+            saved(3, "Oil", "either", 30),
+        })
+        test.assert_equal(
+            accountData.findGuild(accountWithOther, harness.identity).provisions,
+            {
+                saved(1, "Feast", "silver", 10),
+                saved(2, "Flask", "gold", 20),
+                saved(3, "Oil", "either", 30),
+            }
+        )
+        test.assert_equal(
+            accountData.findGuild(
+                harness.rgms.AccountDataState.model,
+                otherIdentity
+            ).provisions,
+            { saved(1, "Other Feast", "gold", 40) }
+        )
+    end),
+
+    test.case("Forever normalization is a no-op for neutral stores while Retail is unchanged", function()
+        local neutral = newHarness({
+            saved(1, "Feast", "either", 10),
+        }, { supportsCraftingQuality = false })
+        local neutralAccount = neutral.rgms.AccountDataState.model
+        local neutralCalls = 0
+        local neutralReplace = neutral.rgms.AccountData.replaceProvisions
+        neutral.rgms.AccountData.replaceProvisions = function(...)
+            neutralCalls = neutralCalls + 1
+            return neutralReplace(...)
+        end
+
+        test.assert_true(neutral.provisions.OnGuildChanged())
+        test.assert_equal(neutralCalls, 0)
+        test.assert_true(neutral.rgms.AccountDataState.model == neutralAccount)
+
+        local retail = newHarness({
+            saved(1, "Feast", "silver", 10),
+        })
+        local retailAccount = retail.rgms.AccountDataState.model
+        local retailCalls = 0
+        local retailReplace = retail.rgms.AccountData.replaceProvisions
+        retail.rgms.AccountData.replaceProvisions = function(...)
+            retailCalls = retailCalls + 1
+            return retailReplace(...)
+        end
+
+        test.assert_true(retail.provisions.OnGuildChanged())
+        test.assert_equal(retailCalls, 0)
+        test.assert_true(retail.rgms.AccountDataState.model == retailAccount)
+        test.assert_equal(retail.rgms.DB.provisions, {
+            saved(1, "Feast", "silver", 10),
+        })
+    end),
+
+    test.case("missing capability service fails closed to neutral Forever storage", function()
+        local harness = newHarness({
+            saved(1, "Feast", "gold", 10),
+        }, { omitClientFlavor = true })
+
+        test.assert_true(harness.provisions.OnGuildChanged())
+        test.assert_equal(harness.rgms.DB.provisions, {
+            saved(1, "Feast", "either", 10),
+        })
+    end),
+
+    test.case("Forever create edit and reports remain quality neutral", function()
+        local harness = newHarness({}, { supportsCraftingQuality = false })
+
+        local state = harness.provisions.SetDraft({
+            name = "Feast",
+            silver = true,
+            targetText = "10",
+        })
+        test.assert_true(state.valid)
+        test.assert_false(state.draft.silver)
+        test.assert_false(state.draft.gold)
+        local created, id = harness.provisions.Save()
+        test.assert_true(created)
+        test.assert_equal(id, 1)
+        test.assert_equal(harness.rgms.DB.provisions, {
+            saved(1, "Feast", "either", 10),
+        })
+
+        test.assert_true(harness.provisions.Select(1))
+        state = harness.provisions.SetDraft({
+            name = "Updated Feast",
+            gold = true,
+            targetText = "12",
+        })
+        test.assert_false(state.draft.silver)
+        test.assert_false(state.draft.gold)
+        test.assert_true(harness.provisions.Save())
+        test.assert_equal(harness.rgms.DB.provisions, {
+            saved(1, "Updated Feast", "either", 12),
+        })
+
+        harness.rgms.DB.bank = {
+            scannedAt = fixtures.timestamp(),
+            tabs = {
+                fixtures.bank_tab({ index = 1, isViewable = true }),
+                fixtures.bank_tab({ index = 2, isViewable = false }),
+            },
+            slots = {
+                fixtures.bank_slot({
+                    tabIndex = 1,
+                    slotIndex = 1,
+                    itemLink = "|Hitem:1|h[Updated Feast]|h",
+                    quantity = 4,
+                    craftingQuality = 1,
+                }),
+                fixtures.bank_slot({
+                    tabIndex = 1,
+                    slotIndex = 2,
+                    itemLink = "|Hitem:1|h[Updated Feast]|h",
+                    quantity = 3,
+                    craftingQuality = 2,
+                }),
+                fixtures.bank_slot({
+                    tabIndex = 1,
+                    slotIndex = 3,
+                    itemLink = "|Hitem:1|h[Updated Feast]|h",
+                    quantity = 2,
+                }),
+                fixtures.bank_slot({
+                    tabIndex = 2,
+                    slotIndex = 1,
+                    itemLink = "|Hitem:1|h[Updated Feast]|h",
+                    quantity = 99,
+                    craftingQuality = 1,
+                }),
+            },
+        }
+
+        test.assert_true(harness.provisions.RefreshStatus())
+        local report = harness.reports[#harness.reports].report
+        test.assert_equal(report.rows[1].quality, "either")
+        test.assert_equal(report.rows[1].current, 9)
+        test.assert_equal(report.rows[1].progressText, "9 / 12")
+    end),
+
+    test.case("Forever normalization failures preserve the prior account and block use", function()
+        local harness = newHarness({
+            saved(1, "Feast", "silver", 10),
+        }, { supportsCraftingQuality = false })
+        local originalAccount = harness.rgms.AccountDataState.model
+        local calls = 0
+        local originalReplace = harness.rgms.AccountData.replaceProvisions
+        harness.rgms.AccountData.replaceProvisions = function()
+            calls = calls + 1
+            return nil, "simulated storage failure"
+        end
+
+        local result, message = harness.provisions.OnGuildChanged()
+
+        test.assert_nil(result)
+        test.assert_equal(message, "simulated storage failure")
+        test.assert_equal(calls, 1)
+        test.assert_true(harness.rgms.AccountDataState.model == originalAccount)
+        test.assert_equal(harness.rgms.DB.provisions, {
+            saved(1, "Feast", "silver", 10),
+        })
+        test.assert_equal(harness.messages, {
+            "Could not normalize Forever provisions: simulated storage failure.",
+        })
+        harness.rgms.AccountData.replaceProvisions = originalReplace
+
+        local invalid = newHarness({
+            saved(1, "Flask", "either", 20),
+        }, { supportsCraftingQuality = false })
+        local invalidAccount = invalid.rgms.AccountDataState.model
+        accountData.findGuild(invalidAccount, invalid.identity).provisions[1].quality = "bronze"
+        local invalidCalls = 0
+        invalid.rgms.AccountData.replaceProvisions = function()
+            invalidCalls = invalidCalls + 1
+            return nil, "must not be reached"
+        end
+
+        result, message = invalid.provisions.OnGuildChanged()
+
+        test.assert_nil(result)
+        test.assert_matches(message, "quality must be silver, gold, or either")
+        test.assert_equal(invalidCalls, 0)
+        test.assert_true(invalid.rgms.AccountDataState.model == invalidAccount)
+        test.assert_equal(invalid.rgms.DB.provisions[1].quality, "bronze")
+        invalid.rgms.AccountData.replaceProvisions = originalReplace
     end),
 
     test.case("selection reload discards drafts while close clears the session", function()
@@ -403,6 +636,72 @@ return {
         test.assert_equal(harness.toasts[#harness.toasts],
             "Successfully created RGMS Provisions shopping list")
         test.assert_equal(#harness.messages, 0)
+    end),
+
+    test.case("Forever Auctionator terms use current untiered ordered shortages", function()
+        local capturedTerms
+        local integration = {
+            IsAvailable = function() return true end,
+            CreateShoppingList = function(terms)
+                capturedTerms = terms
+                return true
+            end,
+        }
+        local harness = newHarness({
+            saved(1, "Argentleaf", "silver", 20),
+            saved(2, "Peacebloom", "gold", 15),
+        }, {
+            supportsCraftingQuality = false,
+            auctionatorIntegration = integration,
+        })
+        test.assert_true(harness.provisions.OnGuildChanged())
+        harness.rgms.DB.bank = {
+            scannedAt = fixtures.timestamp(),
+            tabs = { fixtures.bank_tab({ index = 1, isViewable = true }) },
+            slots = {
+                fixtures.bank_slot({
+                    tabIndex = 1,
+                    slotIndex = 1,
+                    itemLink = "|Hitem:1|h[Argentleaf]|h",
+                    quantity = 4,
+                    craftingQuality = 1,
+                }),
+                fixtures.bank_slot({
+                    tabIndex = 1,
+                    slotIndex = 2,
+                    itemLink = "|Hitem:1|h[Argentleaf]|h",
+                    quantity = 5,
+                    craftingQuality = 2,
+                }),
+                fixtures.bank_slot({
+                    tabIndex = 1,
+                    slotIndex = 3,
+                    itemLink = "|Hitem:2|h[Peacebloom]|h",
+                    quantity = 6,
+                }),
+            },
+        }
+
+        test.assert_true(harness.provisions.CreateAuctionatorShoppingList())
+
+        test.assert_equal(harness.rgms.DB.provisions, {
+            saved(1, "Argentleaf", "either", 20),
+            saved(2, "Peacebloom", "either", 15),
+        })
+        test.assert_equal(capturedTerms, {
+            {
+                searchString = "Argentleaf",
+                isExact = true,
+                quantity = 11,
+            },
+            {
+                searchString = "Peacebloom",
+                isExact = true,
+                quantity = 9,
+            },
+        })
+        test.assert_equal(harness.toasts[#harness.toasts],
+            "Successfully created RGMS Provisions shopping list")
     end),
 
     test.case("Auctionator rejection is printed and never shows success", function()

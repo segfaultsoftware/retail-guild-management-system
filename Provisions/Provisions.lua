@@ -8,9 +8,17 @@ local AuctionatorIntegration = type(RGMS.AuctionatorIntegration) == "table"
     and RGMS.AuctionatorIntegration
     or require("Provisions.Auctionator")
 
+local function supportsCraftingQuality()
+    return type(RGMS.ClientFlavor) == "table"
+        and type(RGMS.ClientFlavor.supportsCraftingQuality) == "function"
+        and RGMS.ClientFlavor.supportsCraftingQuality() == true
+end
+
 Provisions.selectedId = nil
-Provisions.draft = Model.toDraft(nil)
+Provisions.draft = Model.toDraft(nil, supportsCraftingQuality())
 Provisions.activeGuildKey = nil
+
+local normalizeActiveStore
 
 local function currentGuildKey()
     if type(RGMS.ActiveGuildIdentity) ~= "table"
@@ -22,15 +30,29 @@ end
 
 local function clearSession()
     Provisions.selectedId = nil
-    Provisions.draft = Model.toDraft(nil)
+    Provisions.draft = Model.toDraft(nil, supportsCraftingQuality())
 end
 
 local function ensureGuildSession()
     local key = currentGuildKey()
     if key ~= Provisions.activeGuildKey then
-        Provisions.activeGuildKey = key
         clearSession()
+        if key ~= nil then
+            local normalized, normalizationError = normalizeActiveStore()
+            if not normalized then
+                if type(RGMS.Print) == "function" then
+                    RGMS.Print(
+                        "Could not normalize Forever provisions: "
+                            .. tostring(normalizationError)
+                            .. "."
+                    )
+                end
+                return nil, normalizationError
+            end
+        end
+        Provisions.activeGuildKey = key
     end
+    return true
 end
 
 local function currentList()
@@ -38,7 +60,10 @@ local function currentList()
 end
 
 local function editorState()
-    local normalized, validationError = Model.normalizeDraft(Provisions.draft)
+    local normalized, validationError = Model.normalizeDraft(
+        Provisions.draft,
+        supportsCraftingQuality()
+    )
     local selected = Model.find(currentList(), Provisions.selectedId)
     return {
         selectedId = selected and selected.id or nil,
@@ -57,7 +82,10 @@ local function renderEditor()
 end
 
 function Provisions.RefreshStatus()
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     if Provisions.selectedId ~= nil
         and Model.find(currentList(), Provisions.selectedId) == nil then
         clearSession()
@@ -66,7 +94,12 @@ function Provisions.RefreshStatus()
         return true
     end
     local bank = type(RGMS.DB) == "table" and RGMS.DB.bank or {}
-    local report = Model.buildReport(currentList(), bank)
+    local report = Model.buildReport(
+        currentList(),
+        bank,
+        nil,
+        supportsCraftingQuality()
+    )
     if type(RGMS.UI.SetProvisionsReport) == "function" then
         RGMS.UI.SetProvisionsReport(report, Provisions.selectedId)
     end
@@ -101,6 +134,10 @@ function Provisions.New()
     if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
         return nil, "scan-locked"
     end
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     clearSession()
     renderEditor()
     if type(RGMS.UI) == "table" and type(RGMS.UI.SelectProvisionRow) == "function" then
@@ -113,13 +150,16 @@ function Provisions.Select(id)
     if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
         return nil, "scan-locked"
     end
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     local provision = Model.find(currentList(), id)
     if not provision then
         return nil, "provision was not found"
     end
     Provisions.selectedId = id
-    Provisions.draft = Model.toDraft(provision)
+    Provisions.draft = Model.toDraft(provision, supportsCraftingQuality())
     renderEditor()
     if type(RGMS.UI) == "table" and type(RGMS.UI.SelectProvisionRow) == "function" then
         RGMS.UI.SelectProvisionRow(id)
@@ -128,11 +168,19 @@ function Provisions.Select(id)
 end
 
 function Provisions.SetDraft(draft)
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
+    local qualityEnabled = supportsCraftingQuality()
     Provisions.draft = {
         name = type(draft) == "table" and tostring(draft.name or "") or "",
-        silver = type(draft) == "table" and draft.silver == true,
-        gold = type(draft) == "table" and draft.gold == true,
+        silver = qualityEnabled
+            and type(draft) == "table"
+            and draft.silver == true,
+        gold = qualityEnabled
+            and type(draft) == "table"
+            and draft.gold == true,
         targetText = type(draft) == "table" and tostring(draft.targetText or "") or "",
     }
     renderEditor()
@@ -164,6 +212,53 @@ local function persist(items, nextId)
     return true
 end
 
+normalizeActiveStore = function()
+    if supportsCraftingQuality() then
+        return true, false
+    end
+    if type(RGMS.AccountDataState) ~= "table"
+        or RGMS.AccountDataState.enabled ~= true
+        or type(RGMS.AccountDataState.model) ~= "table"
+        or type(RGMS.ActiveGuildIdentity) ~= "table" then
+        return nil, "saved data is unavailable"
+    end
+
+    if type(RGMS.AccountData.validate) == "function" then
+        local valid, validationError = RGMS.AccountData.validate(
+            RGMS.AccountDataState.model
+        )
+        if not valid then
+            return nil, validationError
+        end
+    end
+
+    local items = {}
+    local changed = false
+    for index, provision in ipairs(currentList()) do
+        local copied = {}
+        for key, value in pairs(provision) do
+            copied[key] = value
+        end
+        if copied.quality == "silver" or copied.quality == "gold" then
+            copied.quality = "either"
+            changed = true
+        elseif copied.quality ~= "either" then
+            return nil, "saved provision quality must be silver, gold, or either"
+        end
+        items[index] = copied
+    end
+
+    if not changed then
+        return true, false
+    end
+    local nextId = type(RGMS.DB) == "table" and RGMS.DB.nextProvisionId or nil
+    local persisted, persistenceError = persist(items, nextId)
+    if not persisted then
+        return nil, persistenceError
+    end
+    return true, true
+end
+
 local function reportFailure(action, message)
     if type(RGMS.Print) == "function" then
         RGMS.Print("Could not " .. action .. " provision: " .. tostring(message) .. ".")
@@ -192,7 +287,10 @@ function Provisions.CreateAuctionatorShoppingList()
     if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
         return nil, "scan-locked"
     end
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     if type(RGMS.AccountDataState) ~= "table"
         or RGMS.AccountDataState.enabled ~= true
         or type(RGMS.ActiveGuildIdentity) ~= "table" then
@@ -211,7 +309,12 @@ function Provisions.CreateAuctionatorShoppingList()
     if #currentList() == 0 then
         return nil, "there are no saved provisions"
     end
-    local terms = Model.buildAuctionatorTerms(currentList(), bank)
+    local terms = Model.buildAuctionatorTerms(
+        currentList(),
+        bank,
+        nil,
+        supportsCraftingQuality()
+    )
     if #terms == 0 then
         return nil, "every provision target is satisfied"
     end
@@ -228,9 +331,15 @@ function Provisions.Save()
     if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
         return nil, "scan-locked"
     end
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     local creating = Provisions.selectedId == nil
-    local normalized, validationError = Model.normalizeDraft(Provisions.draft)
+    local normalized, validationError = Model.normalizeDraft(
+        Provisions.draft,
+        supportsCraftingQuality()
+    )
     if not normalized then
         return nil, validationError
     end
@@ -269,7 +378,10 @@ function Provisions.Delete(id)
     if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
         return nil, "scan-locked"
     end
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     local deleteId = id or Provisions.selectedId
     if deleteId == nil then
         return nil, "no provision is selected"
@@ -295,7 +407,10 @@ function Provisions.Reorder(orderedIds)
     if type(RGMS.IsScanLocked) == "function" and RGMS.IsScanLocked() then
         return nil, "scan-locked"
     end
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     local items, reorderError = Model.reorder(currentList(), orderedIds)
     if not items then
         return reportFailure("reorder", reorderError)
@@ -309,10 +424,13 @@ function Provisions.Reorder(orderedIds)
 end
 
 function Provisions.OnTabSelected()
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     local selected = Model.find(currentList(), Provisions.selectedId)
     if selected then
-        Provisions.draft = Model.toDraft(selected)
+        Provisions.draft = Model.toDraft(selected, supportsCraftingQuality())
     else
         clearSession()
     end
@@ -330,7 +448,10 @@ function Provisions.OnGuildChanged()
         RGMS.UI.CancelProvisionDrag()
     end
     Provisions.activeGuildKey = nil
-    ensureGuildSession()
+    local ready, sessionError = ensureGuildSession()
+    if not ready then
+        return nil, sessionError
+    end
     return Provisions.RefreshStatus()
 end
 
