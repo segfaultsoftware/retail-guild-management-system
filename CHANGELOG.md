@@ -7,82 +7,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## 1.2.1
+
 ### Added
 
-- Added Windows development-link support for the World of Warcraft Forever
-  client, including safe unlinking.
-- Added a bounded standalone Retail and Forever runtime probe, privacy-safe
-  fixture-export workflow, validated sanitized live-client fixtures including
-  supplemental same-first Forever evidence, automated evidence assertions, and
-  a decision record for portable identity and roster-delivery contracts.
-- Added early-loaded, fail-closed Retail and Forever client-flavor detection
-  with shared-Mainline and crafting-quality semantic capability queries.
-- Added a pure product-aware character identity contract that preserves
-  existing Retail Name-Realm keys while providing region-scoped opaque
-  Forever keys, separate display and sort inputs, explicit validation, and
-  optional GUID correlation metadata.
-- Added a pure product-aware guild identity contract that preserves existing
-  Retail partition keys while providing region-scoped, stable-club-ID Forever
-  keys, separate display metadata, fail-closed validation, and shared equality.
-- Added Forever full-name capture to the shared modern guild-roster adapter,
-  preserving Retail Name-Realm behavior while keeping surname-distinguished
-  members separate through transactional retry and commit.
-- Added Forever guild-bank capture to the shared modern adapter and
-  transactional scanner, preserving Retail observations while omitting
-  unsupported crafting quality from Forever slots.
-- Retained last-good public and officer guild notes independently when Retail
-  or Forever temporarily returns secret values, with bounded refresh retries
-  and permission-safe officer-note visibility.
-
-### Changed
-
-- Made Forever Provisions quality-neutral across editing, persisted guild
-  stores, bank totals, row presentation, and Auctionator shopping lists while
-  preserving Retail crafting-quality behavior.
-- Required an explicit Retail or Forever target for Windows development link
-  and unlink commands, added a product-neutral `-ClientPath` override, and kept
-  `-RetailPath` as a compatibility alias.
-- Replaced the earlier limited procedure with one artifact-pinned Retail and
-  Forever release-acceptance matrix covering migrations, identities,
-  roster-linked features, notes, guild bank, quality-neutral Provisions,
-  Auctionator, shared UI, minimap, packaging, and blocker reruns.
-- Activated one shared manifest for validated Retail and Forever interfaces,
-  supported game types, product build metadata, and early client detection.
-- Extended deterministic release packaging to validate comma-delimited
-  interface metadata and include shared plus Retail/Forever-conditional runtime
-  files exactly once in one unchanged-manifest archive.
-- Hardened release packaging to require exactly two unique interfaces and the
-  complete Retail/Forever load, version, SavedVariables, optional-dependency,
-  CurseForge project, notice, and license contract before retaining an archive.
-- Hardened package-builder CI tests to normalize PowerShell ANSI styling and
-  line-wrap gutters across terminal widths and return success after expected
-  failure fixtures.
-- Reconciled user, contributor, development, saved-data, release, test, and
-  dependency documentation with the completed dual-client implementation and
-  final acceptance procedure.
-- Extended final-release CurseForge preflight and publication to resolve exact
-  product-typed Retail and Forever targets before mutation, then upload the one
-  checksum-verified archive once with both targets.
-- Updated release preparation to atomically capture tested Retail and Forever
-  version/build and interface metadata with deterministic Retail-first ordering.
-- Updated the bundled LibDBIcon provenance to the maintained v12.1.2 release,
-  preserving the account-wide draggable launcher across Retail and Forever UI
-  configurations without product-specific positioning code.
-- Migrated Mains/Alts groups, private notes, live guild-note lookups, and tag
-  assignments to opaque roster identity keys, preserving existing Retail note
-  and tag data while keeping same-first-name Forever characters distinct.
-- Migrated persisted roster members and news observations to opaque
-  product-aware character identities, preserving Retail tenure and historical
-  News labels while keeping same-first-name Forever members distinct.
-- Migrated account-wide and per-character guild identities to the shared
-  product-aware contract while preserving every existing Retail partition key,
-  isolating new Forever data by region, and rejecting stale cross-product scan
-  commits without changing recoverable saved data.
-
-### Removed
-
-- Removed the unused macOS addon-link helper and macOS-specific development
-  guidance.
+- Support for Forever
 
 ## 1.2.0
 
