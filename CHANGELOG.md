@@ -54,8 +54,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Hardened release packaging to require exactly two unique interfaces and the
   complete Retail/Forever load, version, SavedVariables, optional-dependency,
   CurseForge project, notice, and license contract before retaining an archive.
-- Hardened package-builder diagnostic assertions to normalize PowerShell ANSI
-  styling and line-wrap gutters across CI terminal widths.
+- Hardened package-builder CI tests to normalize PowerShell ANSI styling and
+  line-wrap gutters across terminal widths and return success after expected
+  failure fixtures.
 - Reconciled user, contributor, development, saved-data, release, test, and
   dependency documentation with the completed dual-client implementation and
   final acceptance procedure.
