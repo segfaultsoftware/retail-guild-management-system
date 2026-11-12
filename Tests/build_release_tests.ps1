@@ -89,6 +89,39 @@ function Assert-Contains {
     $script:Passed += 1
 }
 
+function Get-NormalizedDiagnosticText {
+    param([AllowEmptyString()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return ''
+    }
+
+    $withoutAnsi = [System.Text.RegularExpressions.Regex]::Replace(
+        $Text,
+        '\x1B\[[0-?]*[ -/]*[@-~]',
+        ''
+    )
+    return [System.Text.RegularExpressions.Regex]::Replace(
+        $withoutAnsi,
+        '\r?\n[ \t]+\|[ \t]?',
+        ' '
+    ).Trim()
+}
+
+function Assert-DiagnosticContains {
+    param([string]$Text, [string]$Expected, [string]$Message)
+
+    $normalizedText = Get-NormalizedDiagnosticText -Text $Text
+    $normalizedExpected = Get-NormalizedDiagnosticText -Text $Expected
+    if (-not $normalizedText.Contains(
+        $normalizedExpected,
+        [System.StringComparison]::Ordinal
+    )) {
+        throw "$Message Missing '$Expected'. Output:`n$Text"
+    }
+    $script:Passed += 1
+}
+
 function Assert-SequenceEqual {
     param([string[]]$Expected, [string[]]$Actual, [string]$Message)
 
@@ -329,7 +362,7 @@ function Assert-BuildFailsCleanly {
         -OutputName $OutputName
     Assert-True ($result.ExitCode -ne 0) 'Invalid package fixture built successfully.'
     if (-not [string]::IsNullOrEmpty($ExpectedOutput)) {
-        Assert-Contains `
+        Assert-DiagnosticContains `
             -Text $result.Output `
             -Expected $ExpectedOutput `
             -Message 'Package failure did not explain the rejected input.'
@@ -429,6 +462,21 @@ function Assert-Archive {
 }
 
 try {
+    $ansiEscape = [char]27
+    $wrappedDiagnostic = @(
+        "${ansiEscape}[31;1mManifest field 'SavedVariablesPerCharacter' must equal${ansiEscape}[0m",
+        "${ansiEscape}[31;1m    | ${ansiEscape}[31;1m'RGMSCharacterDB'; found 'RGMSOtherCharacterDB'.${ansiEscape}[0m"
+    ) -join "`n"
+    Assert-DiagnosticContains `
+        -Text $wrappedDiagnostic `
+        -Expected "must equal 'RGMSCharacterDB'; found 'RGMSOtherCharacterDB'." `
+        -Message 'Wrapped PowerShell diagnostics were not normalized.'
+    $preservedDiagnostic = "Diagnostic A | B remains meaningful.`n| Literal next line."
+    Assert-Equal `
+        $preservedDiagnostic `
+        (Get-NormalizedDiagnosticText -Text $preservedDiagnostic) `
+        'Diagnostic normalization changed meaningful whitespace or punctuation.'
+
     # A dual-interface manifest packages the union of shared, standard-only,
     # and camelot-only runtime files while preserving its exact source bytes.
     $dualFixture = New-Fixture -Name 'dual-interface'
