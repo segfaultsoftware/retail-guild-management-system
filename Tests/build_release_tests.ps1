@@ -327,6 +327,9 @@ function Invoke-FixtureBuild {
     )
     $outputLines = @(& $script:PowerShellCommand @arguments 2>&1)
     $exitCode = $LASTEXITCODE
+    # Fixture outcomes are asserted through ExitCode. Do not let an expected
+    # child failure leak into GitHub Actions' process-level pwsh epilogue.
+    $global:LASTEXITCODE = 0
     [pscustomobject]@{
         ExitCode = $exitCode
         Output = ($outputLines | Out-String)
@@ -768,6 +771,10 @@ try {
         -FixturePath $luaFailureFixture `
         -OutputName 'output' `
         -ExpectedOutput 'Automated tests failed with exit code 7'
+    Assert-Equal `
+        0 `
+        $LASTEXITCODE `
+        'Expected fixture failures leaked a native process exit code.'
 
     Write-Output "$($script:Passed) build release tests: $($script:Passed) passed, 0 failed"
 }
