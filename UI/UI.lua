@@ -415,12 +415,7 @@ function UI.SetRosterScanInProgress(inProgress)
 
     local view = UI.frame.views.roster
     view.rosterScanInProgress = inProgress == true
-    setRefreshButtonEnabled(
-        view.refreshButton,
-        UI.dataEnabled ~= false
-            and view.rosterAvailable ~= false
-            and not view.rosterScanInProgress
-    )
+    updateRosterRefreshButton(view)
     local mainsAltsView = UI.frame.views.mainsalts
     mainsAltsView.rosterScanInProgress = inProgress == true
     mainsAltsView.mainsAltsScanInProgress = inProgress == true
@@ -454,6 +449,8 @@ updateRosterRefreshButton = function(view)
             and UI.globalScanLocked ~= true
             and view.rosterAvailable ~= false
             and view.rosterScanInProgress ~= true
+            and (view.guildIdentityPending ~= true
+                or view.guildIdentityRetryActionable == true)
     )
 end
 
@@ -469,6 +466,24 @@ function UI.SetRosterAvailable(isAvailable)
     byNameView.rosterAvailable = isAvailable == true
     updateRosterRefreshButton(byNameView)
     updateRosterModeControls()
+    return true
+end
+
+function UI.SetGuildIdentityPending(waiting, actionable)
+    if not UI.frame then
+        return nil, "the RGMS window has not been initialized"
+    end
+
+    local isPending = waiting == true
+    local canRetry = isPending and actionable == true
+    for _, view in ipairs({
+        UI.frame.views.roster,
+        UI.frame.views.mainsalts,
+    }) do
+        view.guildIdentityPending = isPending
+        view.guildIdentityRetryActionable = canRetry
+        updateRosterRefreshButton(view)
+    end
     return true
 end
 
@@ -573,6 +588,7 @@ end, {
     "SetGlobalScanLock",
     "SetRosterScanInProgress",
     "SetRosterAvailable",
+    "SetGuildIdentityPending",
     "SetMainsAltsAvailable",
     "SetGuildBankOpen",
     "SetBankScanInProgress",

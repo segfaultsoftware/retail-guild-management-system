@@ -611,6 +611,19 @@ Expected results:
   bank scans plus one group, tag, private note, and News change.
   - Both characters see the same current-guild account partition.
   - A character does not create a duplicate guild partition.
+- [ ] With that populated shared roster saved, cold-start Forever or switch to
+  the second character and open RGMS before native club data settles.
+  - Roster ByName, Roster ByTenure, and Tags show `Waiting for guild data…`;
+    none shows `0 roster characters`, `No roster data yet`, a saved same-named
+    guild, or another guild's tags.
+  - Let club data settle without `/reload` or a manual scan. The cached shared
+    rows and last-successful timestamp appear immediately, followed by exactly
+    one background roster refresh.
+  - Repeated guild/club readiness events do not start a duplicate scan, stack a
+    retry, or print a concurrent-scan message. If the five bounded retries are
+    exhausted before an event arrives, the views show `Guild data is still
+    unavailable. Click Refresh to retry.` and Roster Refresh or `/rgms
+    scanroster` still recovers when the identity becomes available.
 - [ ] Save different window positions and numeric roster-rank/bank-tab
   selections on the two characters.
   - Each character retains only its own UI state across reload and login.

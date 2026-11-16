@@ -8,9 +8,11 @@ local datasetOwnership = require("Core.DatasetOwnership")
 local dateTime = require("Core.DateTime")
 local fixtures = require("Tests.fixtures")
 local guildIdentity = require("Core.GuildIdentity")
+local mainsAltsReport = require("MainsAlts.Report")
 local mvp = require("Tests.mvp_fixtures")
 local resetModule = require("Core.Reset")
 local rosterNews = require("Roster.News")
+local rosterReport = require("Roster.Report")
 local rosterScannerModule = require("Roster.Scanner")
 local savedData = require("Core.SavedData")
 local tenure = require("Roster.Tenure")
@@ -1063,5 +1065,86 @@ return {
                 rankName = "Officer",
             },
         })
+    end),
+
+    test.case("MVP-E2E-11 delayed Forever identity binds the cached account view", function()
+        local guild = assert(guildIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Fixture Guild",
+            clubId = "Club-176",
+        }))
+        local identity = assert(characterIdentity.create({
+            flavor = clientFlavor.FOREVER,
+            region = "US",
+            name = "Cached Member",
+            guid = "Guid-176",
+        }))
+        local member = fixtures.roster_member({
+            guid = identity.guid,
+            identity = identity.key,
+            name = identity.name,
+            displayName = identity.displayName,
+            rankIndex = 2,
+            rankName = "Member",
+            observedAt = {
+                unixSeconds = mvp.dates.day1Morning.unixSeconds,
+                iso8601 = mvp.dates.day1Morning.iso8601,
+            },
+        })
+        member.realm = nil
+        member.rankTenureStartDate = nil
+        member.lastSeenDate = nil
+        member.isMissing = nil
+        local snapshot = mvp.roster_snapshot(mvp.dates.day1Morning, {
+            guild = guild,
+            members = { member },
+        })
+        local cachedRoster = assert(tenure.reduce({
+            guild = guild,
+            ranks = {},
+            members = {},
+        }, snapshot, dateTime))
+        local account = assert(accountData.replaceDataset(
+            accountData.newModel(),
+            guild,
+            "roster",
+            cachedRoster
+        ))
+        local before = accountData.load(account).model
+
+        local pendingView = accountData.view(account, nil, {})
+        test.assert_equal(pendingView.roster.members, {})
+        test.assert_nil(pendingView.roster.scannedAt)
+        test.assert_equal(account, before)
+
+        local resolvedView = accountData.view(account, guild, {})
+        test.assert_equal(#resolvedView.roster.members, 1)
+        test.assert_equal(resolvedView.roster.members[1].identity, identity.key)
+        test.assert_equal(
+            resolvedView.roster.scannedAt.iso8601,
+            mvp.dates.day1Morning.iso8601
+        )
+
+        local byName = assert(mainsAltsReport.build(
+            resolvedView.roster,
+            resolvedView.mainAltGroups,
+            resolvedView.characterNotes,
+            resolvedView.tags
+        ))
+        local byTenure = assert(rosterReport.build(
+            resolvedView.roster,
+            mvp.dates.day1Morning.pacificDate,
+            dateTime
+        ))
+        local visibleTenureRows = 0
+        for _, rank in ipairs(byTenure.ranks) do
+            for _, group in ipairs(rank.groups) do
+                visibleTenureRows = visibleTenureRows + #group.members
+            end
+        end
+        test.assert_equal(#byName.rows, 1)
+        test.assert_equal(visibleTenureRows, 1)
+        test.assert_equal(account, before)
     end),
 }

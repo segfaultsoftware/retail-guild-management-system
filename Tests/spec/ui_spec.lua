@@ -2835,6 +2835,58 @@ return {
         test.assert_true(refreshButton:IsEnabled())
     end),
 
+    test.case("guild identity readiness controls both roster refresh buttons", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local frame = harness.frame()
+        local byTenure = frame.views.roster
+        local byName = frame.views.mainsalts
+
+        test.assert_true(harness.ui.SetGuildIdentityPending(true, false))
+        for _, view in ipairs({ byTenure, byName }) do
+            test.assert_true(view.guildIdentityPending)
+            test.assert_false(view.guildIdentityRetryActionable)
+            test.assert_false(view.refreshButton:IsEnabled())
+        end
+
+        test.assert_true(harness.ui.SetGuildIdentityPending(true, true))
+        for _, view in ipairs({ byTenure, byName }) do
+            test.assert_true(view.guildIdentityPending)
+            test.assert_true(view.guildIdentityRetryActionable)
+            test.assert_true(view.refreshButton:IsEnabled())
+        end
+        byName.refreshButton.scripts.OnClick()
+        test.assert_equal(harness.refreshRequests(), 1)
+
+        test.assert_true(harness.ui.SetGlobalScanLock(true))
+        test.assert_false(byTenure.refreshButton:IsEnabled())
+        test.assert_false(byName.refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetGlobalScanLock(false))
+        test.assert_true(byTenure.refreshButton:IsEnabled())
+        test.assert_true(byName.refreshButton:IsEnabled())
+
+        test.assert_true(harness.ui.SetRosterScanInProgress(true))
+        test.assert_false(byTenure.refreshButton:IsEnabled())
+        test.assert_false(byName.refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetRosterScanInProgress(false))
+        test.assert_true(byTenure.refreshButton:IsEnabled())
+        test.assert_true(byName.refreshButton:IsEnabled())
+
+        test.assert_true(harness.ui.SetGuildIdentityPending(false, true))
+        for _, view in ipairs({ byTenure, byName }) do
+            test.assert_false(view.guildIdentityPending)
+            test.assert_false(view.guildIdentityRetryActionable)
+            test.assert_true(view.refreshButton:IsEnabled())
+        end
+
+        test.assert_true(harness.ui.SetRosterAvailable(false))
+        test.assert_false(byTenure.refreshButton:IsEnabled())
+        test.assert_false(byName.refreshButton:IsEnabled())
+        test.assert_true(harness.ui.SetGuildIdentityPending(false, false))
+        test.assert_false(byTenure.refreshButton:IsEnabled())
+        test.assert_false(byName.refreshButton:IsEnabled())
+    end),
+
     test.case("bank refresh follows bank-open and scan lifecycle restrictions", function()
         local harness = newHarness()
         harness.ui.Initialize()
@@ -3553,6 +3605,68 @@ return {
         test.assert_true(frame.views.roster.rosterLines[1].frame:IsShown())
         test.assert_true(frame.views.bank.bankReport == bankReport)
         test.assert_true(frame.views.bank.bankMessage:IsShown())
+    end),
+
+    test.case("guild readiness hides stale views before cached roster recovery", function()
+        local harness = newHarness()
+        harness.ui.Initialize()
+        local rank = rosterRank(1, "Guild Master")
+        rank.groups[1].members[1] = {
+            displayName = "Current-Example Realm",
+            classFileName = "MAGE",
+            lastOnlineText = "Online",
+            tenureDays = 12,
+        }
+        local rosterReport = { ranks = { rank } }
+        local byNameReport = mainsAltsReport(1)
+        local tagsReport = {
+            rows = { {
+                name = "raid",
+                characterPreview = "Current-Example Realm",
+                characterCount = 1,
+                immutable = false,
+            } },
+        }
+        harness.ui.SetRosterReport(rosterReport)
+        harness.ui.SetMainsAltsReport(byNameReport)
+        harness.ui.SetTagsReport(tagsReport)
+
+        local frame = harness.frame()
+        test.assert_true(frame.views.roster.rosterLines[2].frame:IsShown())
+        test.assert_true(frame.views.mainsalts.mainsAltsLines[1].frame:IsShown())
+        test.assert_true(frame.views.tags.tagRows[1].frame:IsShown())
+
+        local waiting = "Waiting for guild data…"
+        harness.ui.SetViewContent("roster", waiting)
+        harness.ui.SetViewStatus("roster", waiting)
+        harness.ui.SetViewContent("tags", waiting)
+        harness.ui.SetViewStatus("tags", waiting)
+
+        test.assert_equal(frame.views.roster.status.text, waiting)
+        test.assert_equal(frame.views.mainsalts.status.text, waiting)
+        test.assert_equal(frame.views.tags.status.text, waiting)
+        test.assert_equal(frame.views.roster.text.text, waiting)
+        test.assert_equal(frame.views.mainsalts.text.text, waiting)
+        test.assert_equal(frame.views.tags.text.text, waiting)
+        test.assert_false(frame.views.roster.rosterLines[2].frame:IsShown())
+        test.assert_false(frame.views.mainsalts.mainsAltsLinePool[1].frame:IsShown())
+        test.assert_false(frame.views.tags.tagRows[1].frame:IsShown())
+        test.assert_false(frame.views.tags.tagHeader.frame:IsShown())
+
+        harness.ui.SetRosterReport(rosterReport)
+        harness.ui.SetMainsAltsReport(byNameReport)
+        harness.ui.SetTagsReport(tagsReport)
+        harness.ui.SetRosterScanInProgress(true)
+        harness.ui.SetViewStatus(
+            "roster",
+            "Updating... Last successful update: 2024-06-01 09:00 PT"
+        )
+
+        test.assert_true(frame.views.roster.rosterLines[2].frame:IsShown())
+        test.assert_true(frame.views.mainsalts.mainsAltsLines[1].frame:IsShown())
+        test.assert_true(frame.views.tags.tagRows[1].frame:IsShown())
+        test.assert_matches(frame.views.roster.status.text, "Last successful update")
+        test.assert_matches(frame.views.mainsalts.status.text, "Last successful update")
     end),
 
     test.case("bank tabs render access state rows stale styling tooltips and links", function()

@@ -20,12 +20,16 @@ local function newHarness(options)
         Roster = {
             IsAvailable = function() return options.available ~= false end,
             IsScanInProgress = function() return options.scanning == true end,
+            GetGuildIdentityReadiness = function()
+                return options.readinessState, options.readinessMessage
+            end,
         },
         IsScanLocked = function()
             return options.scanLocked == true
         end,
         MainsAltsReport = {
             build = function()
+                calls.reportBuilds = (calls.reportBuilds or 0) + 1
                 if options.reportError then
                     return nil, options.reportError
                 end
@@ -78,7 +82,12 @@ local function newHarness(options)
                     groupRemains
             end,
         },
-        MainsAltsTags = tags,
+        MainsAltsTags = setmetatable({
+            buildCatalog = function(...)
+                calls.tagCatalogBuilds = (calls.tagCatalogBuilds or 0) + 1
+                return tags.buildCatalog(...)
+            end,
+        }, { __index = tags }),
         LiveGuildNotes = options.liveNotes,
         AccountDataState = { model = { original = true } },
         ActiveGuildIdentity = { name = "Guild" },
@@ -178,6 +187,53 @@ return {
             value = "Not in a guild",
         })
         test.assert_equal(calls.status.value, "Not in a guild")
+    end),
+
+    test.case("ByName and Tags replace empty views with guild readiness status", function()
+        local cases = {
+            {
+                state = "waiting",
+                message = "Waiting for guild data…",
+            },
+            {
+                state = "exhausted",
+                message = "Guild data is still unavailable. Click Refresh to retry.",
+            },
+        }
+
+        for _, readiness in ipairs(cases) do
+            local controller, calls = newHarness({
+                readinessState = readiness.state,
+                readinessMessage = readiness.message,
+            })
+
+            controller.RefreshStatus()
+
+            test.assert_true(calls.available)
+            test.assert_nil(calls.report)
+            test.assert_nil(calls.reportBuilds)
+            test.assert_equal(calls.content, {
+                tabId = "mainsalts",
+                value = readiness.message,
+            })
+            test.assert_equal(calls.status, {
+                tabId = "mainsalts",
+                value = readiness.message,
+            })
+
+            controller.RefreshTags()
+
+            test.assert_nil(calls.tagsReport)
+            test.assert_nil(calls.tagCatalogBuilds)
+            test.assert_equal(calls.content, {
+                tabId = "tags",
+                value = readiness.message,
+            })
+            test.assert_equal(calls.status, {
+                tabId = "tags",
+                value = readiness.message,
+            })
+        end
     end),
 
     test.case("ByName status identifies an active roster scan", function()

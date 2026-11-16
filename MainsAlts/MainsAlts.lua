@@ -357,6 +357,20 @@ function MainsAlts.RemoveAlt(altIdentity)
     return changeAltGroup("remove", altIdentity)
 end
 
+local function guildIdentityReadiness()
+    if type(RGMS.Roster) ~= "table"
+        or type(RGMS.Roster.GetGuildIdentityReadiness) ~= "function" then
+        return nil
+    end
+
+    local state, message = RGMS.Roster.GetGuildIdentityReadiness()
+    if (state == "waiting" or state == "exhausted")
+        and type(message) == "string" and message ~= "" then
+        return state, message
+    end
+    return nil
+end
+
 function MainsAlts.RefreshStatus()
     if type(RGMS.UI) ~= "table"
         or type(RGMS.UI.SetViewStatus) ~= "function" then
@@ -373,6 +387,13 @@ function MainsAlts.RefreshStatus()
     if not available then
         RGMS.UI.SetViewContent("mainsalts", "Not in a guild")
         RGMS.UI.SetViewStatus("mainsalts", "Not in a guild")
+        return
+    end
+
+    local readiness, readinessMessage = guildIdentityReadiness()
+    if readiness then
+        RGMS.UI.SetViewContent("mainsalts", readinessMessage)
+        RGMS.UI.SetViewStatus("mainsalts", readinessMessage)
         return
     end
 
@@ -467,6 +488,13 @@ function MainsAlts.RefreshTags()
     if not available then
         RGMS.UI.SetViewContent("tags", "Not in a guild")
         RGMS.UI.SetViewStatus("tags", "Not in a guild")
+        return
+    end
+
+    local readiness, readinessMessage = guildIdentityReadiness()
+    if readiness then
+        RGMS.UI.SetViewContent("tags", readinessMessage)
+        RGMS.UI.SetViewStatus("tags", readinessMessage)
         return
     end
 

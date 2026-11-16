@@ -440,6 +440,29 @@ return {
         test.assert_matches(harness.messages[1], "already in progress")
     end),
 
+    test.case("automatic lock contention is silent while manual contention reports", function()
+        local rejections = 0
+        local harness = newHarness({
+            isScanLocked = function()
+                return true
+            end,
+            rejectConcurrentScan = function()
+                rejections = rejections + 1
+            end,
+        })
+
+        local started, reason = harness.scanner:Request("automatic")
+        test.assert_nil(started)
+        test.assert_equal(reason, "scan-in-progress")
+        test.assert_equal(rejections, 0)
+        test.assert_equal(harness.messages, {})
+
+        started, reason = harness.scanner:Request("manual")
+        test.assert_nil(started)
+        test.assert_equal(reason, "scan-in-progress")
+        test.assert_equal(rejections, 1)
+    end),
+
     test.case("global scan admission releases on roster success failure and rejection", function()
         local active
         local releases = 0
@@ -464,7 +487,11 @@ return {
             endScan = finish,
             requestError = "simulated",
         })
-        test.assert_nil(failure.scanner:Request("manual"))
+        local failed, failureReason, admitted =
+            failure.scanner:Request("manual")
+        test.assert_nil(failed)
+        test.assert_equal(failureReason, "api-failure")
+        test.assert_true(admitted)
         test.assert_false(active)
 
         active = true

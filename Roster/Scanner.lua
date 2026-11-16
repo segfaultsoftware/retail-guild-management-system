@@ -54,9 +54,10 @@ function Scanner.create(dependencies)
         source = source == "automatic" and "automatic" or "manual"
 
         if self.inProgress then
-            if type(dependencies.rejectConcurrentScan) == "function" then
+            if source ~= "automatic"
+                and type(dependencies.rejectConcurrentScan) == "function" then
                 dependencies.rejectConcurrentScan()
-            else
+            elseif source ~= "automatic" then
                 printMessage(
                     "A guild roster scan is already in progress; no second scan was started."
                 )
@@ -65,7 +66,8 @@ function Scanner.create(dependencies)
         end
         if type(dependencies.isScanLocked) == "function"
             and dependencies.isScanLocked() then
-            if type(dependencies.rejectConcurrentScan) == "function" then
+            if source ~= "automatic"
+                and type(dependencies.rejectConcurrentScan) == "function" then
                 dependencies.rejectConcurrentScan()
             end
             return nil, "scan-in-progress"
@@ -122,13 +124,14 @@ function Scanner.create(dependencies)
             dependencies.api:requestRoster()
         end)
         if not requested then
-            return self:FinishFailure(
+            local failed, failureReason = self:FinishFailure(
                 "the game client rejected the roster request (" .. tostring(requestError) .. ")",
                 "api-failure"
             )
+            return failed, failureReason, true
         end
 
-        return true
+        return true, nil, true
     end
 
     function scanner:RequestRosterUpdate()

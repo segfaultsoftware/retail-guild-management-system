@@ -49,6 +49,152 @@ return {
         CreateFrame = previousCreateFrame
     end),
 
+    test.case("timer creation and scan release use the injected runtime seams", function()
+        local previousCreateFrame = CreateFrame
+        local previousTimer = C_Timer
+        local timerDelay
+        local timerCallback
+        local timerHandle = { cancelled = false }
+        local released = true
+        local releasedOwner
+        local scanLockStates = {}
+        local releaseNotifications = 0
+
+        CreateFrame = function()
+            return {
+                RegisterEvent = function() end,
+                SetScript = function() end,
+            }
+        end
+        C_Timer = {
+            NewTimer = function(delay, callback)
+                timerDelay = delay
+                timerCallback = callback
+                return timerHandle
+            end,
+        }
+
+        local fakeRGMS = {
+            Portal = {
+                create = function()
+                    return {
+                        finishScan = function(_, owner)
+                            releasedOwner = owner
+                            return released
+                        end,
+                    }
+                end,
+            },
+            UI = {
+                SetGlobalScanLock = function(locked)
+                    scanLockStates[#scanLockStates + 1] = locked
+                end,
+            },
+            Roster = {
+                OnGlobalScanLockReleased = function()
+                    releaseNotifications = releaseNotifications + 1
+                end,
+            },
+        }
+        assert(loadfile("Core/Bootstrap.lua"))("RGMS", fakeRGMS)
+
+        local callback = function() end
+        local created = fakeRGMS.NewTimer(0.5, callback)
+        test.assert_true(created == timerHandle)
+        test.assert_equal(timerDelay, 0.5)
+        test.assert_true(timerCallback == callback)
+
+        test.assert_true(fakeRGMS.EndScan("bank"))
+        test.assert_equal(releasedOwner, "bank")
+        test.assert_equal(scanLockStates, { false })
+        test.assert_equal(releaseNotifications, 1)
+
+        released = false
+        test.assert_false(fakeRGMS.EndScan("roster"))
+        test.assert_equal(releasedOwner, "roster")
+        test.assert_equal(scanLockStates, { false })
+        test.assert_equal(releaseNotifications, 1)
+
+        C_Timer = nil
+        local missing, missingError = fakeRGMS.NewTimer(1, callback)
+        test.assert_nil(missing)
+        test.assert_equal(missingError, "timer service is unavailable")
+
+        CreateFrame = previousCreateFrame
+        C_Timer = previousTimer
+    end),
+
+    test.case("addon loading primes pending identity before the first roster refresh", function()
+        local previousChatFrame = DEFAULT_CHAT_FRAME
+        local previousCreateFrame = CreateFrame
+        local previousCharacter = RGMSCharacterDB
+        local previousAccount = RGMSAccountDB
+        local eventCallback
+        local pendingReason
+        local steps = {}
+        local frame = {
+            RegisterEvent = function() end,
+            SetScript = function(_, scriptName, callback)
+                test.assert_equal(scriptName, "OnEvent")
+                eventCallback = callback
+            end,
+            UnregisterEvent = function() end,
+        }
+
+        DEFAULT_CHAT_FRAME = { AddMessage = function() end }
+        CreateFrame = function() return frame end
+        RGMSCharacterDB = {}
+        RGMSAccountDB = {}
+
+        local characterModel = { ui = {} }
+        local accountModel = { guilds = {} }
+        local fakeRGMS = {
+            SavedData = {
+                CURRENT_SCHEMA_VERSION = 1,
+                load = function()
+                    return { enabled = true, model = characterModel }
+                end,
+            },
+            AccountData = {
+                load = function()
+                    return { enabled = true, model = accountModel }
+                end,
+            },
+            UI = {
+                Initialize = function()
+                    steps[#steps + 1] = "initialize"
+                    return true
+                end,
+                SetDataState = function() end,
+            },
+            Roster = {
+                PrimeGuildIdentityPending = function(reason)
+                    pendingReason = reason
+                    steps[#steps + 1] = "prime:" .. tostring(reason)
+                end,
+                RefreshStatus = function()
+                    steps[#steps + 1] = "refresh:" .. tostring(pendingReason)
+                end,
+            },
+        }
+        assert(loadfile("Core/Bootstrap.lua"))("RGMS", fakeRGMS)
+        fakeRGMS.ActivateCurrentGuild = function()
+            return nil, false, "guild data is unavailable", "guild-identity-pending"
+        end
+
+        eventCallback(frame, "ADDON_LOADED", "RGMS")
+        test.assert_equal(steps, {
+            "prime:guild-identity-pending",
+            "initialize",
+            "refresh:guild-identity-pending",
+        })
+
+        DEFAULT_CHAT_FRAME = previousChatFrame
+        CreateFrame = previousCreateFrame
+        RGMSCharacterDB = previousCharacter
+        RGMSAccountDB = previousAccount
+    end),
+
     test.case("guild activation initializes roster migration before display", function()
         local previousCreateFrame = CreateFrame
         local previousAccount = RGMSAccountDB
@@ -177,12 +323,16 @@ return {
         C_Club = previousClub
     end),
 
-    test.case("guild resolution fails closed for malformed product inputs", function()
+    test.case("guild resolution distinguishes pending live inputs from hard errors", function()
         local previousCreateFrame = CreateFrame
         local previousIsInGuild = IsInGuild
         local previousGetGuildInfo = GetGuildInfo
+        local previousGetNormalizedRealmName = GetNormalizedRealmName
+        local previousGetRealmName = GetRealmName
         local previousGetCurrentRegion = GetCurrentRegion
         local previousClub = C_Club
+        local flavor = clientFlavor.FOREVER
+        local guildName = "Night Shift"
 
         CreateFrame = function()
             return {
@@ -191,7 +341,7 @@ return {
             }
         end
         IsInGuild = function() return true end
-        GetGuildInfo = function() return "Night Shift" end
+        GetGuildInfo = function() return guildName end
         GetCurrentRegion = function() return 0 end
         C_Club = { GetGuildClubId = function() return nil end }
 
@@ -199,24 +349,82 @@ return {
             ClientFlavor = {
                 RETAIL = clientFlavor.RETAIL,
                 FOREVER = clientFlavor.FOREVER,
-                getFlavor = function() return clientFlavor.FOREVER end,
+                getFlavor = function() return flavor end,
             },
             GuildIdentity = guildIdentity,
         }
         assert(loadfile("Core/Bootstrap.lua"))("RGMS", fakeRGMS)
 
-        local identity, identityError = fakeRGMS.ResolveCurrentGuildIdentity()
+        local identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
         test.assert_nil(identity)
         test.assert_equal(identityError, "guild region is unavailable")
+        test.assert_equal(identityReason, "guild-identity-pending")
+
+        GetCurrentRegion = function() return 6 end
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_nil(identity)
+        test.assert_equal(identityError, "guild region is unsupported")
+        test.assert_nil(identityReason)
 
         GetCurrentRegion = function() return 1 end
-        identity, identityError = fakeRGMS.ResolveCurrentGuildIdentity()
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
         test.assert_nil(identity)
         test.assert_equal(identityError, "Forever guild club ID is unavailable")
+        test.assert_equal(identityReason, "guild-identity-pending")
+
+        C_Club.GetGuildClubId = function() return -1 end
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_nil(identity)
+        test.assert_equal(identityError, "Forever guild club ID is unavailable")
+        test.assert_nil(identityReason)
+
+        C_Club = {}
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_nil(identity)
+        test.assert_equal(
+            identityError,
+            "Forever guild club ID service is unavailable"
+        )
+        test.assert_nil(identityReason)
+
+        C_Club = { GetGuildClubId = function() return 123456 end }
+        guildName = nil
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_nil(identity)
+        test.assert_equal(identityError, "guild name is unavailable")
+        test.assert_equal(identityReason, "guild-identity-pending")
+
+        guildName = "Night Shift"
+        flavor = clientFlavor.RETAIL
+        GetNormalizedRealmName = function() return nil end
+        GetRealmName = function() return nil end
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_nil(identity)
+        test.assert_equal(
+            identityError,
+            "Retail guild realm requires a name and slug"
+        )
+        test.assert_equal(identityReason, "guild-identity-pending")
+
+        flavor = clientFlavor.UNSUPPORTED
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_nil(identity)
+        test.assert_equal(identityError, "guild flavor is unavailable")
+        test.assert_nil(identityReason)
 
         CreateFrame = previousCreateFrame
         IsInGuild = previousIsInGuild
         GetGuildInfo = previousGetGuildInfo
+        GetNormalizedRealmName = previousGetNormalizedRealmName
+        GetRealmName = previousGetRealmName
         GetCurrentRegion = previousGetCurrentRegion
         C_Club = previousClub
     end),
@@ -240,17 +448,20 @@ return {
         assert(loadfile("Core/Bootstrap.lua"))("RGMS", fakeRGMS)
         fakeRGMS.ActiveGuildIdentity = fixtures.guild_identity()
         fakeRGMS.ResolveCurrentGuildIdentity = function()
-            return nil, "guild region is unavailable"
+            return nil, "guild region is unavailable", "guild-identity-pending"
         end
 
-        local identity, initialized, activationError =
+        local identity, initialized, activationError, activationReason =
             fakeRGMS.ActivateCurrentGuild()
         test.assert_nil(identity)
         test.assert_false(initialized)
         test.assert_equal(activationError, "guild region is unavailable")
+        test.assert_equal(activationReason, "guild-identity-pending")
         test.assert_nil(fakeRGMS.ActiveGuildIdentity)
         test.assert_equal(fakeRGMS.DB.roster.members, {})
         test.assert_equal(fakeRGMS.DB.bank.slots, {})
+        test.assert_true(fakeRGMS.AccountDataState.model == account)
+        test.assert_equal(account.guilds, {})
 
         CreateFrame = previousCreateFrame
     end),
