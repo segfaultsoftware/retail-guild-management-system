@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## 1.3.0
+
 ### Fixed
 
 - Recovered Forever shared rosters automatically when stable guild data arrives
