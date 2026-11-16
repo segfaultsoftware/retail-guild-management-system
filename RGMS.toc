@@ -1,6 +1,6 @@
 ## Interface: 120105, 16001
 ## AllowLoadGameType: standard, camelot
-## Title: Retail Guild Management System (RGMS)
+## Title: Remarkable Guild Management System (RGMS)
 ## Notes: Guild roster and bank data for the RGMS application.
 ## Author: RGMS contributors
 ## Version: 1.2.1

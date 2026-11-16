@@ -146,7 +146,7 @@ the changed files again before using `/reload`; linking avoids this extra step.
 1. Start the supported client you are testing and reach the
    character-selection screen.
 2. Select **AddOns**.
-3. Find **Retail Guild Management System (RGMS)** and check its box for the
+3. Find **Remarkable Guild Management System (RGMS)** and check its box for the
    character you will use. The name comes from the `Title` field in `RGMS.toc`.
 4. Log in with that character.
 5. Look for `RGMS: [development] loaded. Type /rgms help for available

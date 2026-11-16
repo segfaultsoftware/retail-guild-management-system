@@ -458,7 +458,7 @@ jobs:
             throw "CurseForge upload failed: $failureReason $guidance"
           }
 
-          $fileUrl = "https://www.curseforge.com/wow/addons/retailguildmanagementsystem/files/$fileId"
+          $fileUrl = "https://www.curseforge.com/wow/addons/remarkableguildmanagementsystem/files/$fileId"
           @"
           ## Published CurseForge file
 

@@ -1,4 +1,4 @@
-# Retail Guild Management System
+# Remarkable Guild Management System
 
 RGMS is a World of Warcraft addon for guild officers on Retail and Blizzard's
 official Forever client who need a local, read-only view of guild-roster and
@@ -7,10 +7,9 @@ and stores its latest complete observations in account-wide, per-guild
 SavedVariables. Window placement and deprecated migration sources remain per
 character. It does not send data anywhere.
 
-The established **Retail Guild Management System (RGMS)** title and long-form
-branding are retained. Despite that name, the same addon supports both current
-live Retail and Forever; RGMS does not maintain a separately named Forever
-edition.
+The **Remarkable Guild Management System (RGMS)** name preserves the established
+acronym while reflecting that the same addon supports both current live Retail
+and Forever. RGMS does not maintain a separately named Forever edition.
 
 ## What the MVP does
 
@@ -92,8 +91,8 @@ Bank scans are started from the default guild-bank window and the Bank
    - Windows Forever: `powershell -ExecutionPolicy Bypass -File .\scripts\link-addon.ps1 -Forever`
    - To safely remove a Windows junction later, rerun the same command with
      `-Unlink` while retaining its required product switch.
-4. Enable **Retail Guild Management System (RGMS)** at character selection and
-   log in.
+4. Enable **Remarkable Guild Management System (RGMS)** at character selection
+   and log in.
 5. Confirm that the RGMS development load message appears, then run
    `/rgms help`.
 

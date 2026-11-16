@@ -13,6 +13,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   after login, showing explicit waiting and retry states while preserving cached
   rows through one background refresh.
 
+### Changed
+
+- Renamed the public add-on branding to **Remarkable Guild Management System**
+  while preserving RGMS identifiers, existing SavedVariables, package names,
+  and CurseForge project ID `1741733`.
+
 ## 1.2.1
 
 ### Added

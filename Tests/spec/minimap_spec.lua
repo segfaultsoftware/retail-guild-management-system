@@ -113,7 +113,7 @@ return {
             local object = harness.dataObjects[1].object
             test.assert_equal(object.type, "launcher")
             test.assert_equal(object.text, "RGMS")
-            test.assert_equal(object.label, "Retail Guild Management System")
+            test.assert_equal(object.label, "Remarkable Guild Management System")
             test.assert_equal(
                 object.icon,
                 "Interface\\AddOns\\RGMS\\assets\\rgms-minimap-icon.png"
