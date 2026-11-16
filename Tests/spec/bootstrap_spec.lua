@@ -263,10 +263,18 @@ return {
         IsInGuild = function() return true end
         GetGuildInfo = function(unit)
             test.assert_equal(unit, "player")
-            return "Night Shift"
+            return "Night Shift", nil, nil, "Area-52-Area-52-Ar"
         end
-        GetNormalizedRealmName = function() return "Area-52-Area-52-Ar" end
-        GetRealmName = function() return "Area 52-Area 52-Ar" end
+        GetNormalizedRealmName = function()
+            error(
+                "Retail resolution must not read the player's normalized realm"
+            )
+        end
+        GetRealmName = function()
+            error(
+                "Retail resolution must not read the player's display realm"
+            )
+        end
         GetCurrentRegion = function() return 1 end
         C_Club = {
             GetGuildClubId = function()
@@ -290,7 +298,7 @@ return {
         test.assert_equal(retail.flavor, clientFlavor.RETAIL)
         test.assert_equal(retail.key, "11:Night Shift:area-52")
         test.assert_equal(retail.realm, {
-            name = "Area 52",
+            name = "Area-52",
             slug = "Area-52",
         })
 
@@ -333,6 +341,8 @@ return {
         local previousClub = C_Club
         local flavor = clientFlavor.FOREVER
         local guildName = "Night Shift"
+        local guildRealm
+        local playerRealmReads = 0
 
         CreateFrame = function()
             return {
@@ -341,7 +351,9 @@ return {
             }
         end
         IsInGuild = function() return true end
-        GetGuildInfo = function() return guildName end
+        GetGuildInfo = function()
+            return guildName, nil, nil, guildRealm
+        end
         GetCurrentRegion = function() return 0 end
         C_Club = { GetGuildClubId = function() return nil end }
 
@@ -402,16 +414,41 @@ return {
 
         guildName = "Night Shift"
         flavor = clientFlavor.RETAIL
-        GetNormalizedRealmName = function() return nil end
-        GetRealmName = function() return nil end
+        C_Club = { GetGuildClubId = function() return nil end }
+        GetNormalizedRealmName = function()
+            playerRealmReads = playerRealmReads + 1
+            return "Player-Realm"
+        end
+        GetRealmName = function()
+            playerRealmReads = playerRealmReads + 1
+            return "Player Realm"
+        end
         identity, identityError, identityReason =
             fakeRGMS.ResolveCurrentGuildIdentity()
         test.assert_nil(identity)
-        test.assert_equal(
-            identityError,
-            "Retail guild realm requires a name and slug"
-        )
+        test.assert_equal(identityError, "Retail guild realm is unavailable")
         test.assert_equal(identityReason, "guild-identity-pending")
+        test.assert_equal(playerRealmReads, 0)
+
+        guildRealm = "Guild-Realm"
+        C_Club.GetGuildClubId = function()
+            error("Retail resolution must prefer an available guild realm")
+        end
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_not_nil(identity, identityError)
+        test.assert_equal(identity.key, "11:Night Shift:guild-realm")
+        test.assert_nil(identityReason)
+        test.assert_equal(playerRealmReads, 0)
+
+        guildRealm = nil
+        C_Club.GetGuildClubId = function() return 123456 end
+        identity, identityError, identityReason =
+            fakeRGMS.ResolveCurrentGuildIdentity()
+        test.assert_not_nil(identity, identityError)
+        test.assert_equal(identity.key, "11:Night Shift:player-realm")
+        test.assert_nil(identityReason)
+        test.assert_equal(playerRealmReads, 2)
 
         flavor = clientFlavor.UNSUPPORTED
         identity, identityError, identityReason =

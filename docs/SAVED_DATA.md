@@ -328,11 +328,12 @@ Per-character recovery continues to retain only a valid window position.
 RGMS resolves the logged-in character's guild at addon load, player login, and
 guild-membership changes. Retail resolution uses the canonical realm contract;
 Forever resolution uses product, region, and the stable guild club ID and never
-uses realm APIs as ownership fallback. When a guilded Forever character's live
-identity inputs are still initializing, resolution fails closed with the
-session-only `guild-identity-pending` reason. RGMS binds an empty transient view,
-shows `Waiting for guild data…`, and does not create, replace, reset, or expose a
-saved guild partition.
+uses realm APIs as ownership fallback. When a guilded character's required live
+identity inputs are still initializing, including Retail guild-realm and club
+readiness, resolution fails closed with the session-only
+`guild-identity-pending` reason. RGMS binds an empty transient view, shows
+`Waiting for guild data…`, and does not create, replace, reset, or expose a saved
+guild partition.
 
 Pending activation retries first from guild and club readiness events. One
 cancellable fallback timer uses delays of 0.5, 1, 2, 4, and 8 seconds, with a

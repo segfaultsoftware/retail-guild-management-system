@@ -252,12 +252,20 @@ the final SHA-256. The complete live-client procedure is in
   `camelot`, never `forever`, in client-parsed load directives.
 - Runtime files are shared and unconditional unless their implementation
   genuinely differs by product. `Core/ClientFlavor.lua` loads before every
-  product-sensitive identity, persistence, adapter, and UI consumer and accepts
-  only valid, distinct WoW project globals identifying Mainline or Camelot.
-  Missing, invalid, or unknown values produce an unsupported profile, so
-  identity and capability-dependent behavior fails closed. Consumers use the
-  resulting Retail/Forever and crafting-quality queries instead of reading raw
-  project IDs or comparing client versions.
+  product-sensitive identity, persistence, adapter, and UI consumer. A valid
+  current project matching Mainline identifies Retail without the Camelot-only
+  global; other runtimes additionally require a valid, distinct Camelot global
+  to identify Forever. Missing required, invalid, contradictory, or unknown
+  values produce an unsupported profile, so identity and capability-dependent
+  behavior fails closed. Consumers use the resulting Retail/Forever and
+  crafting-quality queries instead of reading raw project IDs or comparing
+  client versions.
+- Retail guild activation uses the guild realm returned by
+  `GetGuildInfo("player")`. If that realm is temporarily unavailable after
+  login, identity remains pending until the guild club is ready and follows the
+  bounded readiness retry path. Only after that readiness signal may same-realm
+  compatibility use `GetRealmName()` and `GetNormalizedRealmName()`; those
+  character-realm APIs must not create an early cross-realm guild identity.
 - The manifest's `Title`, `Notes`, `Author`, and `Version` fields provide the
   addon-list and project metadata. Keep the development version placeholder
   until a release process supplies a real release version.

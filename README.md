@@ -61,11 +61,12 @@ RGMS supports current live **Retail** and **Forever** from the same
 [`RGMS.toc`](RGMS.toc), source load graph, and release artifact. The manifest's
 Retail and Forever interfaces and version/build metadata are set from values
 captured immediately before that exact artifact is built and tested in both
-clients. Early runtime detection accepts only WoW's `WOW_PROJECT_MAINLINE` and
-`WOW_PROJECT_CAMELOT` IDs; missing, invalid, or other product IDs fail closed.
-Feature code consumes semantic capabilities from that detection layer, so
-crafting quality is enabled only on Retail rather than inferred from a version
-string.
+clients. Early runtime detection recognizes Retail when `WOW_PROJECT_ID`
+matches WoW's valid `WOW_PROJECT_MAINLINE` ID; Forever additionally requires
+the game-type-specific `WOW_PROJECT_CAMELOT` ID. Missing required, invalid,
+contradictory, or other product IDs fail closed. Feature code consumes semantic
+capabilities from that detection layer, so crafting quality is enabled only on
+Retail rather than inferred from a version string.
 
 ## Commands
 

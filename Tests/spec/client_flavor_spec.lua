@@ -65,6 +65,18 @@ return {
         })
     end),
 
+    test.case("Retail does not require the Camelot-only project constant", function()
+        local runtime = validRuntime()
+        runtime.camelotProjectId = nil
+
+        test.assert_equal(clientFlavor.evaluate(runtime), {
+            flavor = clientFlavor.RETAIL,
+            supported = true,
+            mainlineFamily = true,
+            craftingQuality = true,
+        })
+    end),
+
     test.case("Forever shares Mainline without Retail crafting quality", function()
         local runtime = validRuntime()
         runtime.projectId = runtime.camelotProjectId
@@ -84,17 +96,21 @@ return {
         assertUnsupported(clientFlavor.evaluate(runtime))
     end),
 
-    test.case("missing project values fail closed", function()
+    test.case("missing required project values fail closed", function()
         local fields = {
             "projectId",
             "mainlineProjectId",
-            "camelotProjectId",
         }
         for _, field in ipairs(fields) do
             local runtime = validRuntime()
             runtime[field] = nil
             assertUnsupported(clientFlavor.evaluate(runtime))
         end
+
+        local forever = validRuntime()
+        forever.projectId = forever.camelotProjectId
+        forever.camelotProjectId = nil
+        assertUnsupported(clientFlavor.evaluate(forever))
         assertUnsupported(clientFlavor.evaluate(nil))
     end),
 
@@ -135,7 +151,6 @@ return {
         withProjectGlobals({
             WOW_PROJECT_ID = 1,
             WOW_PROJECT_MAINLINE = 1,
-            WOW_PROJECT_CAMELOT = 18,
         }, function()
             local addon = {}
             local loaded = assert(loadfile("Core/ClientFlavor.lua"))(
