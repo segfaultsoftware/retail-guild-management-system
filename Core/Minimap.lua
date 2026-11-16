@@ -3,7 +3,7 @@ local addonName, RGMS = ...
 local MinimapButton = {}
 
 local DEFAULT_POSITION = 225
-local DISPLAY_NAME = "Retail Guild Management System"
+local DISPLAY_NAME = "Remarkable Guild Management System"
 local TOOLTIP_TEXT = "RGMS"
 
 local function currentSettings()

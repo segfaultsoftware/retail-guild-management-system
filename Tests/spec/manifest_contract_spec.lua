@@ -185,7 +185,7 @@ return {
     test.case("manifest preserves RGMS branding and saved-variable contracts", function()
         test.assert_equal(
             singleMetadata("Title"),
-            "Retail Guild Management System (RGMS)"
+            "Remarkable Guild Management System (RGMS)"
         )
         test.assert_equal(singleMetadata("SavedVariables"), "RGMSAccountDB")
         test.assert_equal(

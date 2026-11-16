@@ -158,6 +158,8 @@ Assert-True ($workflow.Contains("-Uri 'https://wow.curseforge.com/api/game/wow/v
 Assert-Equal 1 ([regex]::Matches($workflow, [regex]::Escape("-Uri 'https://wow.curseforge.com/api/game/wow/versions'")).Count) 'Retail and Forever must share one catalog request.'
 Assert-True ($workflow.Contains("-Uri 'https://wow.curseforge.com/api/projects/1741733/upload-file'")) 'Upload must use the WoW CurseForge author API host.'
 Assert-Equal 1 ([regex]::Matches($workflow, [regex]::Escape("-Uri 'https://wow.curseforge.com/api/projects/1741733/upload-file'")).Count) 'The canonical ZIP must have one upload path.'
+Assert-True ($workflow.Contains('$fileUrl = "https://www.curseforge.com/wow/addons/remarkableguildmanagementsystem/files/$fileId"')) 'Published file summaries must use the renamed CurseForge slug.'
+Assert-True (-not $workflow.Contains('retailguildmanagementsystem')) 'Release automation must not use the retired CurseForge slug.'
 Assert-True (-not $workflow.Contains('https://wow.curseforge.com/api/game/versions')) 'The unscoped legacy version endpoint must not be used.'
 Assert-True ($workflow.Contains("curseforge_preflight:`n    name: CurseForge preflight")) 'CurseForge preflight must remain a distinct job.'
 Assert-True ($workflow.Contains("publish_curseforge:`n    name: Publish CurseForge")) 'CurseForge publication must remain a distinct retryable job.'

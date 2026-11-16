@@ -29,7 +29,7 @@ A repository administrator must complete this once before the next final
 release:
 
 1. Sign in to the CurseForge account that owns or can upload files to project
-   [1741733](https://www.curseforge.com/wow/addons/retailguildmanagementsystem).
+   [1741733](https://www.curseforge.com/wow/addons/remarkableguildmanagementsystem).
 2. Open [CurseForge API Tokens](https://www.curseforge.com/account/api-tokens)
    and generate an author API token with a descriptive name such as
    `RGMS GitHub Actions`.
