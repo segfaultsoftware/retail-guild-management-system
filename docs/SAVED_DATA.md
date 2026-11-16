@@ -328,10 +328,29 @@ Per-character recovery continues to retain only a valid window position.
 RGMS resolves the logged-in character's guild at addon load, player login, and
 guild-membership changes. Retail resolution uses the canonical realm contract;
 Forever resolution uses product, region, and the stable guild club ID and never
-uses realm APIs as ownership fallback. Missing required inputs fail closed.
-Activation initializes the current guild's roster partition conservatively,
-selects only that opaque-key partition for display, and starts the normal roster
-scan. A guildless character still receives an empty transient view. Bank
+uses realm APIs as ownership fallback. When a guilded Forever character's live
+identity inputs are still initializing, resolution fails closed with the
+session-only `guild-identity-pending` reason. RGMS binds an empty transient view,
+shows `Waiting for guild data…`, and does not create, replace, reset, or expose a
+saved guild partition.
+
+Pending activation retries first from guild and club readiness events. One
+cancellable fallback timer uses delays of 0.5, 1, 2, 4, and 8 seconds, with a
+generation token preventing a stale callback from activating a prior guild.
+The wrapper uses the clients' native `C_Timer.NewTimer()` primitive because it
+provides the required cancellable handle; `C_Timer.After()` does not, and an
+external timer/event library would add packaging and compatibility surface for
+no missing capability. Retry state and handles are never saved.
+
+As soon as the stable identity resolves, activation selects that opaque-key
+partition and renders its cached account-wide roster before requesting exactly
+one startup refresh. If another scan owns the global lock, that refresh remains
+pending without chat output until it can start. Repeated readiness events do not
+start another scan. After the bounded timers are exhausted, event-driven
+recovery remains active and RGMS shows `Guild data is still unavailable. Click
+Refresh to retry.`; Roster Refresh and `/rgms scanroster` use the same activation
+path. A guildless character still receives an empty transient view, while hard
+identity errors and disabled saved data retain their distinct behavior. Bank
 partitions are not initialized during activation or merely by opening RGMS. They
 are initialized immediately before an eligible scan after the guild bank opens.
 

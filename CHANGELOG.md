@@ -7,6 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Fixed
+
+- Recovered Forever shared rosters automatically when stable guild data arrives
+  after login, showing explicit waiting and retry states while preserving cached
+  rows through one background refresh.
+
 ## 1.2.1
 
 ### Added

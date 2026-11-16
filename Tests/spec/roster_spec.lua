@@ -4,9 +4,16 @@ local EVENT_GLOBAL_NAMES = {
     "C_Club",
     "C_GuildInfo",
     "CreateFrame",
+    "IsInGuild",
 }
 
-local function withEventHarness(callback)
+local function withEventHarness(options, callback)
+    if type(options) == "function" then
+        callback = options
+        options = {}
+    end
+    options = options or {}
+
     local previous = {}
     for _, name in ipairs(EVENT_GLOBAL_NAMES) do
         previous[name] = _G[name]
@@ -17,21 +24,44 @@ local function withEventHarness(callback)
         capture = 0,
         requestScan = 0,
         requestRoster = 0,
+        scanSources = {},
+        statuses = {},
+        contents = {},
     }
     local registeredEvents = {}
     local scripts = {}
-    local scanner = {}
+    local scanner = {
+        inProgress = options.inProgress ~= false,
+    }
+    local timers = {}
+    local scanLocked = options.scanLocked == true
+    local activationIndex = 0
+    local activationResults = options.activationResults or {
+        {
+            identity = { key = "guild" },
+            initialized = true,
+        },
+    }
 
     function scanner:IsInProgress()
-        return true
+        return self.inProgress
     end
 
     function scanner:OnDataUpdated()
         calls.capture = calls.capture + 1
     end
 
-    function scanner:Request()
+    function scanner:Request(source)
         calls.requestScan = calls.requestScan + 1
+        calls.scanSources[#calls.scanSources + 1] = source
+        if type(options.requestScan) == "function" then
+            local accepted, reason, admitted = options.requestScan(source, self)
+            if not accepted then
+                return nil, reason, admitted
+            end
+        end
+        self.inProgress = true
+        return true, nil, true
     end
 
     function scanner:RequestRosterUpdate()
@@ -43,6 +73,9 @@ local function withEventHarness(callback)
 
     C_Club = {}
     C_GuildInfo = {}
+    IsInGuild = function()
+        return options.inGuild ~= false
+    end
     CreateFrame = function()
         return {
             RegisterEvent = function(_, event)
@@ -54,7 +87,8 @@ local function withEventHarness(callback)
         }
     end
 
-    local fakeRGMS = {
+    local fakeRGMS
+    fakeRGMS = {
         RosterScanner = {
             create = function()
                 return scanner
@@ -70,8 +104,64 @@ local function withEventHarness(callback)
         },
         ActivateCurrentGuild = function()
             calls.activate = calls.activate + 1
-            return { key = "guild" }, true
+            activationIndex = activationIndex + 1
+            local result = activationResults[activationIndex]
+                or activationResults[#activationResults]
+            if result.identity ~= nil then
+                fakeRGMS.ActiveGuildIdentity = result.identity
+            elseif result.reason ~= "guild-identity-pending" then
+                fakeRGMS.ActiveGuildIdentity = nil
+            end
+            if result.database ~= nil then
+                fakeRGMS.DB = result.database
+            end
+            return result.identity,
+                result.initialized,
+                result.error,
+                result.reason
         end,
+        IsScanLocked = function()
+            return scanLocked
+        end,
+        NewTimer = function(delay, timerCallback)
+            local timer = {
+                delay = delay,
+                callback = timerCallback,
+                cancelled = false,
+            }
+            function timer:Cancel()
+                self.cancelled = true
+            end
+            timers[#timers + 1] = timer
+            return timer
+        end,
+        UI = {
+            SetGuildIdentityPending = function(waiting, actionable)
+                calls.guildIdentityPending = {
+                    waiting = waiting,
+                    actionable = actionable,
+                }
+            end,
+            SetRosterAvailable = function()
+            end,
+            SetViewContent = function(tabId, content)
+                calls.contents[#calls.contents + 1] = {
+                    tabId = tabId,
+                    content = content,
+                }
+            end,
+            SetViewStatus = function(tabId, status)
+                calls.statuses[#calls.statuses + 1] = {
+                    tabId = tabId,
+                    status = status,
+                }
+            end,
+        },
+        SavedDataState = options.savedDataDisabled and {
+            enabled = false,
+            status = "incompatible",
+        } or nil,
+        DB = options.database,
         Print = function()
         end,
     }
@@ -84,6 +174,17 @@ local function withEventHarness(callback)
         registeredEvents = registeredEvents,
         roster = roster,
         scanner = scanner,
+        timers = timers,
+        api = fakeRGMS,
+        fireTimer = function(index)
+            timers[index].callback()
+        end,
+        setLocked = function(locked)
+            scanLocked = locked == true
+        end,
+        setInProgress = function(inProgress)
+            scanner.inProgress = inProgress == true
+        end,
     })
 
     for _, name in ipairs(EVENT_GLOBAL_NAMES) do
@@ -160,6 +261,446 @@ local function newHarness(options)
 end
 
 return {
+    test.case("login waits for a transient guild identity and schedules one retry", function()
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                {
+                    error = "guild club is not initialized",
+                    reason = "guild-identity-pending",
+                },
+            },
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+
+            test.assert_equal(harness.calls.activate, 1)
+            test.assert_equal(harness.calls.requestScan, 0)
+            test.assert_equal(#harness.timers, 1)
+            test.assert_equal(harness.timers[1].delay, 0.5)
+            test.assert_equal(
+                harness.roster.GetGuildIdentityReadiness(),
+                "waiting"
+            )
+            test.assert_equal(harness.calls.statuses[#harness.calls.statuses], {
+                tabId = "roster",
+                status = "Waiting for guild data…",
+            })
+            test.assert_equal(harness.calls.contents[#harness.calls.contents], {
+                tabId = "roster",
+                content = "Waiting for guild data…",
+            })
+        end)
+    end),
+
+    test.case("pre-login readiness binds cache but login alone admits the refresh", function()
+        local cached = {
+            roster = {
+                ranks = {},
+                members = { {} },
+            },
+        }
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                {
+                    identity = { key = "guild" },
+                    initialized = false,
+                    database = cached,
+                },
+            },
+        }, function(harness)
+            test.assert_true(harness.roster.PrimeGuildIdentityPending(
+                "guild-identity-pending"
+            ))
+            test.assert_equal(
+                harness.roster.GetGuildIdentityReadiness(),
+                "waiting"
+            )
+
+            harness.onEvent(nil, "CLUB_MEMBERS_UPDATED")
+            test.assert_true(harness.api.DB == cached)
+            test.assert_equal(harness.calls.requestScan, 0)
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            harness.onEvent(nil, "INITIAL_CLUBS_LOADED")
+            harness.onEvent(nil, "CLUB_MEMBERS_UPDATED")
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_equal(#harness.timers, 0)
+        end)
+    end),
+
+    test.case("unguilded login retains the established silent scan path", function()
+        withEventHarness({
+            inGuild = false,
+            inProgress = false,
+            activationResults = { {} },
+            requestScan = function(source)
+                test.assert_equal(source, "automatic")
+                return nil, "not-in-guild"
+            end,
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+
+            test.assert_equal(harness.calls.activate, 1)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_false(harness.scanner:IsInProgress())
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+            test.assert_equal(#harness.timers, 0)
+        end)
+    end),
+
+    test.case("hard identity errors do not enter transient recovery", function()
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                {
+                    error = "guild identity is invalid",
+                    reason = "invalid-guild-identity",
+                },
+            },
+            requestScan = function(source)
+                test.assert_equal(source, "automatic")
+                return nil, "identity-unavailable"
+            end,
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+
+            test.assert_equal(harness.calls.activate, 1)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_false(harness.scanner:IsInProgress())
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+            test.assert_equal(#harness.timers, 0)
+        end)
+    end),
+
+    test.case("normal successful login admits one automatic refresh", function()
+        local cached = { roster = { ranks = {}, members = { {} } } }
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                {
+                    identity = { key = "retail-guild" },
+                    initialized = false,
+                    database = cached,
+                },
+            },
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            harness.onEvent(nil, "PLAYER_GUILD_UPDATE")
+
+            test.assert_true(harness.api.DB == cached)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_equal(#harness.timers, 0)
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+        end)
+    end),
+
+    test.case("public automatic scan requests one scan after activation", function()
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                {
+                    identity = { key = "guild" },
+                    initialized = false,
+                    database = { roster = { ranks = {}, members = {} } },
+                },
+            },
+        }, function(harness)
+            test.assert_true(harness.roster.RequestAutomaticScan())
+            test.assert_equal(harness.calls.activate, 1)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+        end)
+    end),
+
+    test.case("disabled data still routes through scanner recovery guidance", function()
+        withEventHarness({
+            savedDataDisabled = true,
+            inProgress = false,
+            requestScan = function(_, scanner)
+                scanner.inProgress = false
+                return nil, "scanning-disabled"
+            end,
+        }, function(harness)
+            local started, reason = harness.roster.RequestManualScan()
+            test.assert_nil(started)
+            test.assert_equal(reason, "scanning-disabled")
+
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            test.assert_equal(harness.calls.activate, 0)
+            test.assert_equal(harness.calls.requestScan, 2)
+            test.assert_equal(
+                harness.calls.scanSources,
+                { "manual", "automatic" }
+            )
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+            test.assert_equal(#harness.timers, 0)
+        end)
+    end),
+
+    test.case("club member readiness binds cached data and starts one refresh", function()
+        local cached = {
+            roster = {
+                ranks = {},
+                members = { {} },
+            },
+        }
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                {
+                    error = "guild club is not initialized",
+                    reason = "guild-identity-pending",
+                },
+                {
+                    identity = { key = "guild" },
+                    initialized = false,
+                    database = cached,
+                },
+            },
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            harness.onEvent(nil, "CLUB_MEMBERS_UPDATED")
+
+            test.assert_true(harness.api.DB == cached)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_equal(harness.calls.capture, 1)
+            test.assert_true(harness.timers[1].cancelled)
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+
+            harness.onEvent(nil, "CLUB_MEMBERS_UPDATED")
+            harness.onEvent(nil, "INITIAL_CLUBS_LOADED")
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.capture, 2)
+            test.assert_equal(harness.calls.requestRoster, 1)
+            test.assert_equal(#harness.timers, 1)
+        end)
+    end),
+
+    test.case("initial clubs readiness starts the recovered refresh once", function()
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                { reason = "guild-identity-pending" },
+                {
+                    identity = { key = "guild" },
+                    initialized = false,
+                    database = { roster = { ranks = {}, members = {} } },
+                },
+            },
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            harness.onEvent(nil, "INITIAL_CLUBS_LOADED")
+
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_equal(harness.calls.requestRoster, 1)
+            test.assert_true(harness.timers[1].cancelled)
+        end)
+    end),
+
+    test.case("a global scan lock retains one silent startup refresh", function()
+        local cached = { roster = { ranks = {}, members = { {} } } }
+        withEventHarness({
+            inProgress = false,
+            scanLocked = true,
+            activationResults = {
+                {
+                    identity = { key = "guild" },
+                    initialized = false,
+                    database = cached,
+                },
+            },
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+
+            test.assert_true(harness.api.DB == cached)
+            test.assert_equal(harness.calls.requestScan, 0)
+
+            harness.setLocked(false)
+            test.assert_true(harness.roster.OnGlobalScanLockReleased())
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_false(harness.roster.OnGlobalScanLockReleased())
+            test.assert_equal(harness.calls.requestScan, 1)
+        end)
+    end),
+
+    test.case("admitted request failure does not queue a second startup scan", function()
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                {
+                    identity = { key = "guild" },
+                    initialized = false,
+                    database = { roster = { ranks = {}, members = {} } },
+                },
+            },
+            requestScan = function()
+                return nil, "api-failure", true
+            end,
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_false(harness.scanner:IsInProgress())
+
+            test.assert_false(harness.roster.OnGlobalScanLockReleased())
+            harness.onEvent(nil, "INITIAL_CLUBS_LOADED")
+            test.assert_equal(harness.calls.requestScan, 1)
+        end)
+    end),
+
+    test.case("identity retries are bounded and expose an actionable status", function()
+        local original = { roster = { ranks = {}, members = {} } }
+        withEventHarness({
+            inProgress = false,
+            database = original,
+            activationResults = {
+                { reason = "guild-identity-pending" },
+            },
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            for index = 1, 5 do
+                harness.fireTimer(index)
+            end
+
+            test.assert_equal(#harness.timers, 5)
+            test.assert_equal(harness.timers[1].delay, 0.5)
+            test.assert_equal(harness.timers[2].delay, 1)
+            test.assert_equal(harness.timers[3].delay, 2)
+            test.assert_equal(harness.timers[4].delay, 4)
+            test.assert_equal(harness.timers[5].delay, 8)
+            local readiness, message =
+                harness.roster.GetGuildIdentityReadiness()
+            test.assert_equal(readiness, "exhausted")
+            test.assert_equal(
+                message,
+                "Guild data is still unavailable. Click Refresh to retry."
+            )
+            test.assert_true(harness.api.DB == original)
+            test.assert_equal(harness.calls.requestScan, 0)
+            test.assert_true(harness.calls.guildIdentityPending.actionable)
+        end)
+    end),
+
+    test.case("a membership transition ignores a stale timer generation", function()
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                { reason = "guild-identity-pending" },
+                {},
+            },
+            requestScan = function()
+                return nil, "not-in-guild"
+            end,
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            harness.onEvent(nil, "PLAYER_GUILD_UPDATE")
+
+            test.assert_equal(#harness.timers, 1)
+            test.assert_true(harness.timers[1].cancelled)
+            test.assert_equal(harness.calls.activate, 2)
+
+            harness.fireTimer(1)
+            test.assert_equal(harness.calls.activate, 2)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_false(harness.scanner:IsInProgress())
+        end)
+    end),
+
+    test.case("repeated pending readiness events do not stack timers", function()
+        withEventHarness({
+            inProgress = false,
+            activationResults = {
+                { reason = "guild-identity-pending" },
+            },
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            harness.onEvent(nil, "PLAYER_GUILD_UPDATE")
+            harness.onEvent(nil, "CLUB_MEMBERS_UPDATED")
+            harness.onEvent(nil, "INITIAL_CLUBS_LOADED")
+
+            test.assert_equal(#harness.timers, 1)
+            test.assert_false(harness.timers[1].cancelled)
+            test.assert_equal(harness.calls.requestScan, 0)
+        end)
+    end),
+
+    test.case("late readiness event recovers after timer exhaustion", function()
+        local results = {}
+        for index = 1, 6 do
+            results[index] = { reason = "guild-identity-pending" }
+        end
+        local cached = { roster = { ranks = {}, members = { {} } } }
+        results[7] = {
+            identity = { key = "guild" },
+            initialized = false,
+            database = cached,
+        }
+
+        withEventHarness({
+            inProgress = false,
+            activationResults = results,
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            for index = 1, 5 do
+                harness.fireTimer(index)
+            end
+            test.assert_equal(
+                harness.roster.GetGuildIdentityReadiness(),
+                "exhausted"
+            )
+
+            harness.onEvent(nil, "CLUB_MEMBERS_UPDATED")
+            test.assert_true(harness.api.DB == cached)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_equal(#harness.timers, 5)
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+
+            harness.onEvent(nil, "INITIAL_CLUBS_LOADED")
+            test.assert_equal(harness.calls.requestScan, 1)
+        end)
+    end),
+
+    test.case("manual retry after exhaustion recovers through the same helper", function()
+        local results = {}
+        for index = 1, 6 do
+            results[index] = { reason = "guild-identity-pending" }
+        end
+        local cached = { roster = { ranks = {}, members = { {} } } }
+        results[7] = {
+            identity = { key = "guild" },
+            initialized = false,
+            database = cached,
+        }
+
+        withEventHarness({
+            inProgress = false,
+            activationResults = results,
+        }, function(harness)
+            harness.onEvent(nil, "PLAYER_LOGIN")
+            for index = 1, 5 do
+                harness.fireTimer(index)
+            end
+            test.assert_equal(
+                harness.roster.GetGuildIdentityReadiness(),
+                "exhausted"
+            )
+
+            test.assert_true(harness.roster.RequestManualScan())
+            test.assert_true(harness.api.DB == cached)
+            test.assert_equal(harness.calls.requestScan, 1)
+            test.assert_equal(harness.calls.scanSources, { "automatic" })
+            test.assert_nil(harness.roster.GetGuildIdentityReadiness())
+        end)
+    end),
+
     test.case("an in-progress guild update re-reads without starting another scan", function()
         withEventHarness(function(harness)
             test.assert_true(type(harness.onEvent) == "function")

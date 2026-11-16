@@ -22,6 +22,112 @@ local REGION_NAMES = {
     [5] = "CN",
 }
 
+local GUILD_IDENTITY_PENDING = "guild-identity-pending"
+local WAITING_FOR_GUILD_DATA = "Waiting for guild data…"
+local GUILD_DATA_ACTIONABLE =
+    "Guild data is still unavailable. Click Refresh to retry."
+local IDENTITY_RETRY_DELAYS = { 0.5, 1, 2, 4, 8 }
+
+-- Guild readiness is deliberately session-only. Saved guild ownership remains
+-- keyed exclusively by the canonical identity returned from Bootstrap.
+local guildReadiness = {
+    waiting = false,
+    exhausted = false,
+    startupRefreshPending = false,
+    manualRefreshPending = false,
+    retryIndex = 1,
+    retryTimer = nil,
+    generation = 0,
+    releasingRosterScan = false,
+    scanLockRetryDeferred = false,
+}
+
+local function identityKey(identity)
+    return type(identity) == "table" and identity.key or nil
+end
+
+local function cancelIdentityRetry(invalidate)
+    local timer = guildReadiness.retryTimer
+    guildReadiness.retryTimer = nil
+    if timer ~= nil and type(timer.Cancel) == "function" then
+        pcall(timer.Cancel, timer)
+    end
+    if invalidate then
+        guildReadiness.generation = guildReadiness.generation + 1
+    end
+end
+
+local function restartIdentityRetry()
+    cancelIdentityRetry(true)
+    guildReadiness.retryIndex = 1
+    guildReadiness.exhausted = false
+end
+
+local function clearGuildReadiness()
+    cancelIdentityRetry(true)
+    guildReadiness.waiting = false
+    guildReadiness.exhausted = false
+    guildReadiness.startupRefreshPending = false
+    guildReadiness.manualRefreshPending = false
+    guildReadiness.retryIndex = 1
+    guildReadiness.scanLockRetryDeferred = false
+end
+
+local function savedDataIsDisabled()
+    return (type(RGMS.SavedDataState) == "table"
+            and RGMS.SavedDataState.enabled == false)
+        or (type(RGMS.AccountDataState) == "table"
+            and RGMS.AccountDataState.enabled == false)
+end
+
+local function createIdentityRetryTimer(delay, callback)
+    if type(RGMS.NewTimer) == "function" then
+        return RGMS.NewTimer(delay, callback)
+    end
+    if type(C_Timer) == "table" and type(C_Timer.NewTimer) == "function" then
+        return C_Timer.NewTimer(delay, callback)
+    end
+    return nil
+end
+
+local function scheduleIdentityRetry()
+    if guildReadiness.retryTimer ~= nil
+        or not guildReadiness.waiting
+        or guildReadiness.exhausted then
+        return false
+    end
+
+    local delay = IDENTITY_RETRY_DELAYS[guildReadiness.retryIndex]
+    if delay == nil then
+        guildReadiness.exhausted = true
+        if type(Roster.RefreshStatus) == "function" then
+            Roster.RefreshStatus()
+        end
+        return false
+    end
+
+    guildReadiness.retryIndex = guildReadiness.retryIndex + 1
+    local generation = guildReadiness.generation
+    local timer
+    timer = createIdentityRetryTimer(delay, function()
+        if generation ~= guildReadiness.generation
+            or guildReadiness.retryTimer ~= timer then
+            return
+        end
+        guildReadiness.retryTimer = nil
+        Roster.ActivateAndRefresh("automatic")
+    end)
+    guildReadiness.retryTimer = timer
+    if timer == nil then
+        guildReadiness.exhausted = true
+        if type(Roster.RefreshStatus) == "function" then
+            Roster.RefreshStatus()
+        end
+        return false
+    end
+    return true
+end
+
 local function incomplete(message)
     return nil, "incomplete", message
 end
@@ -300,6 +406,29 @@ function Roster.IsAvailable()
     return checked and isInGuild == true
 end
 
+function Roster.GetGuildIdentityReadiness()
+    if not guildReadiness.waiting then
+        return nil
+    end
+    if guildReadiness.exhausted then
+        return "exhausted", GUILD_DATA_ACTIONABLE
+    end
+    return "waiting", WAITING_FOR_GUILD_DATA
+end
+
+function Roster.PrimeGuildIdentityPending(reason)
+    if reason ~= GUILD_IDENTITY_PENDING then
+        return false
+    end
+
+    restartIdentityRetry()
+    guildReadiness.waiting = true
+    if type(Roster.RefreshStatus) == "function" then
+        Roster.RefreshStatus()
+    end
+    return true
+end
+
 function Roster.RefreshStatus()
     if type(RGMS.UI) ~= "table" or type(RGMS.UI.SetViewStatus) ~= "function" then
         return
@@ -312,6 +441,10 @@ function Roster.RefreshStatus()
             and RGMS.AccountDataState.enabled == false
             and RGMS.AccountDataState)
     if disabledState then
+        clearGuildReadiness()
+        if type(RGMS.UI.SetGuildIdentityPending) == "function" then
+            RGMS.UI.SetGuildIdentityPending(false, false)
+        end
         if type(RGMS.UI.SetDataState) == "function" then
             RGMS.UI.SetDataState(false, disabledState.status)
         end
@@ -322,6 +455,14 @@ function Roster.RefreshStatus()
         RGMS.UI.SetDataState(true)
     end
 
+    local readiness, readinessMessage = Roster.GetGuildIdentityReadiness()
+    if type(RGMS.UI.SetGuildIdentityPending) == "function" then
+        RGMS.UI.SetGuildIdentityPending(
+            readiness ~= nil,
+            readiness == "exhausted"
+        )
+    end
+
     local available = Roster.IsAvailable()
     if type(RGMS.UI.SetRosterAvailable) == "function" then
         RGMS.UI.SetRosterAvailable(available)
@@ -329,6 +470,18 @@ function Roster.RefreshStatus()
     if type(RGMS.MainsAlts) == "table"
         and type(RGMS.MainsAlts.RefreshStatus) == "function" then
         RGMS.MainsAlts.RefreshStatus()
+    end
+    if type(RGMS.MainsAlts) == "table"
+        and type(RGMS.MainsAlts.RefreshTags) == "function" then
+        RGMS.MainsAlts.RefreshTags()
+    end
+
+    if readiness ~= nil then
+        if type(RGMS.UI.SetViewContent) == "function" then
+            RGMS.UI.SetViewContent("roster", readinessMessage)
+        end
+        RGMS.UI.SetViewStatus("roster", readinessMessage)
+        return
     end
 
     if type(RGMS.UI.SetRosterReport) == "function"
@@ -415,12 +568,127 @@ function Roster.RequestScan(source)
     return scanner:Request(source)
 end
 
+function Roster.ActivateAndRefresh(source, options)
+    source = source == "manual" and "manual" or "automatic"
+    options = options or {}
+
+    if options.restartIdentityRetry then
+        restartIdentityRetry()
+    end
+    if options.startupRefresh then
+        guildReadiness.startupRefreshPending = true
+    end
+    if source == "manual" then
+        guildReadiness.manualRefreshPending = true
+    end
+
+    if savedDataIsDisabled() then
+        local requestedSource = guildReadiness.manualRefreshPending
+            and "manual"
+            or source
+        clearGuildReadiness()
+        Roster.RefreshStatus()
+        return Roster.RequestScan(requestedSource)
+    end
+
+    local previousIdentityKey = identityKey(RGMS.ActiveGuildIdentity)
+    local identity
+    local activationError
+    local activationReason
+    if type(RGMS.ActivateCurrentGuild) == "function" then
+        identity, _, activationError, activationReason =
+            RGMS.ActivateCurrentGuild()
+    end
+
+    if identity == nil and activationReason == GUILD_IDENTITY_PENDING then
+        if options.guildTransition and previousIdentityKey ~= nil then
+            restartIdentityRetry()
+            guildReadiness.startupRefreshPending = true
+        end
+        guildReadiness.waiting = true
+        Roster.RefreshStatus()
+        scheduleIdentityRetry()
+        return nil, GUILD_IDENTITY_PENDING, activationError
+    end
+
+    if identity == nil then
+        local requestedSource = guildReadiness.manualRefreshPending
+            and "manual"
+            or source
+        clearGuildReadiness()
+        Roster.RefreshStatus()
+        return Roster.RequestScan(requestedSource)
+    end
+
+    local currentIdentityKey = identityKey(identity)
+    if options.guildTransition
+        and previousIdentityKey ~= currentIdentityKey then
+        guildReadiness.startupRefreshPending = true
+    end
+
+    cancelIdentityRetry(true)
+    guildReadiness.waiting = false
+    guildReadiness.exhausted = false
+    guildReadiness.retryIndex = 1
+
+    -- ActivateCurrentGuild has rebound the account partition. Render it before
+    -- the scanner changes the status to the in-progress presentation.
+    Roster.RefreshStatus()
+
+    if guildReadiness.startupRefreshPending then
+        local scannerBusy = Roster.IsScanInProgress()
+        local globallyLocked = type(RGMS.IsScanLocked) == "function"
+            and RGMS.IsScanLocked()
+        if scannerBusy or globallyLocked then
+            return identity, "scan-pending"
+        end
+
+        local accepted, requestReason, admitted =
+            Roster.RequestScan("automatic")
+        if accepted or admitted then
+            guildReadiness.startupRefreshPending = false
+            guildReadiness.manualRefreshPending = false
+        end
+        return accepted, requestReason, admitted
+    end
+
+    if guildReadiness.manualRefreshPending then
+        guildReadiness.manualRefreshPending = false
+        return Roster.RequestScan("manual")
+    end
+
+    if options.requestScan then
+        return Roster.RequestScan(source)
+    end
+
+    return identity
+end
+
 function Roster.RequestManualScan()
-    return Roster.RequestScan("manual")
+    return Roster.ActivateAndRefresh("manual", {
+        restartIdentityRetry = guildReadiness.exhausted,
+    })
 end
 
 function Roster.RequestAutomaticScan()
-    return Roster.RequestScan("automatic")
+    return Roster.ActivateAndRefresh("automatic", {
+        requestScan = true,
+    })
+end
+
+function Roster.OnGlobalScanLockReleased()
+    if guildReadiness.releasingRosterScan then
+        if guildReadiness.startupRefreshPending then
+            guildReadiness.scanLockRetryDeferred = true
+        end
+        return false
+    end
+    if not guildReadiness.startupRefreshPending
+        or guildReadiness.waiting
+        or Roster.IsScanInProgress() then
+        return false
+    end
+    return Roster.ActivateAndRefresh("automatic")
 end
 
 function Roster.AcknowledgeNewsSet(setId)
@@ -491,7 +759,10 @@ if type(Roster.Scanner) ~= "table"
             return RGMS.BeginScan("roster")
         end,
         endScan = function()
-            return RGMS.EndScan("roster")
+            guildReadiness.releasingRosterScan = true
+            local released, releaseError = RGMS.EndScan("roster")
+            guildReadiness.releasingRosterScan = false
+            return released, releaseError
         end,
         rejectConcurrentScan = RGMS.RejectConcurrentScan,
         print = RGMS.Print,
@@ -523,10 +794,10 @@ if type(Roster.Scanner) ~= "table"
     eventFrame:RegisterEvent("PLAYER_GUILD_UPDATE")
     eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "PLAYER_LOGIN" then
-            if type(RGMS.ActivateCurrentGuild) == "function" then
-                RGMS.ActivateCurrentGuild()
-            end
-            Roster.RequestAutomaticScan()
+            Roster.ActivateAndRefresh("automatic", {
+                restartIdentityRetry = true,
+                startupRefresh = true,
+            })
         elseif event == "GUILD_ROSTER_UPDATE" then
             local canRequestRosterUpdate = ...
             if canRequestRosterUpdate then
@@ -535,26 +806,33 @@ if type(Roster.Scanner) ~= "table"
                 Roster.Scanner:OnDataUpdated()
             end
         elseif event == "INITIAL_CLUBS_LOADED" then
+            if guildReadiness.waiting
+                or guildReadiness.startupRefreshPending then
+                Roster.ActivateAndRefresh("automatic")
+            end
             Roster.Scanner:RequestRosterUpdate()
         elseif event == "CLUB_MEMBERS_UPDATED" then
+            if guildReadiness.waiting
+                or guildReadiness.startupRefreshPending then
+                Roster.ActivateAndRefresh("automatic")
+            end
             Roster.Scanner:OnDataUpdated()
         elseif event == "PLAYER_GUILD_UPDATE" then
-            local identity
-            local rosterInitialized = false
-            if type(RGMS.ActivateCurrentGuild) == "function" then
-                identity, rosterInitialized = RGMS.ActivateCurrentGuild()
-            end
-            Roster.RefreshStatus()
+            Roster.ActivateAndRefresh("automatic", {
+                guildTransition = true,
+            })
             if Roster.IsScanInProgress()
                 and type(Roster.Scanner.OnDataUpdated) == "function" then
                 Roster.Scanner:OnDataUpdated()
-            elseif identity ~= nil and rosterInitialized then
-                Roster.RequestAutomaticScan()
             end
         end
     end)
     eventFrame:SetScript("OnUpdate", function(_, elapsed)
         Roster.Scanner:Update(elapsed)
+        if guildReadiness.scanLockRetryDeferred then
+            guildReadiness.scanLockRetryDeferred = false
+            Roster.OnGlobalScanLockReleased()
+        end
     end)
     Roster.EventFrame = eventFrame
 end
