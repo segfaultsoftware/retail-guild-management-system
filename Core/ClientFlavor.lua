@@ -43,14 +43,24 @@ function ClientFlavor.evaluate(runtime)
     local mainlineProjectId = runtime.mainlineProjectId
     local camelotProjectId = runtime.camelotProjectId
     if not isProjectId(projectId)
-        or not isProjectId(mainlineProjectId)
-        or not isProjectId(camelotProjectId)
-        or mainlineProjectId == camelotProjectId then
+        or not isProjectId(mainlineProjectId) then
         return unsupportedProfile()
     end
 
     if projectId == mainlineProjectId then
+        -- WOW_PROJECT_CAMELOT is scoped to the Camelot game type and is not
+        -- available on Retail. When it is exposed, still reject malformed or
+        -- contradictory constants rather than silently accepting them.
+        if camelotProjectId ~= nil
+            and (not isProjectId(camelotProjectId)
+                or mainlineProjectId == camelotProjectId) then
+            return unsupportedProfile()
+        end
         return profile(ClientFlavor.RETAIL, true, true, true)
+    end
+    if not isProjectId(camelotProjectId)
+        or mainlineProjectId == camelotProjectId then
+        return unsupportedProfile()
     end
     if projectId == camelotProjectId then
         return profile(ClientFlavor.FOREVER, true, true, false)

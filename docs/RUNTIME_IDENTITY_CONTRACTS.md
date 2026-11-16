@@ -491,6 +491,13 @@ API's positive integer club IDs normalize to decimal strings, while non-empty
 opaque strings support the privacy-safe Feature 1.1 fixture aliases. Feature
 2.1 owns persisted-schema migration and production consumer wiring.
 
+Live Retail resolution prefers the guild realm returned alongside the guild
+name. The captured player and guild realms are distinct, so when both the guild
+realm and club ID are temporarily unavailable, identity remains pending rather
+than using character realm APIs. Once club readiness is established, the
+existing character-realm fallback remains available for same-realm clients
+whose fourth `GetGuildInfo` result stays unavailable.
+
 ### Feature 2.4 roster-adapter implementation choice
 
 The roster adapter remains project-owned after evaluating established and

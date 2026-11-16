@@ -132,16 +132,27 @@ function RGMS.ResolveCurrentGuildIdentity()
     }
 
     if flavor == RGMS.ClientFlavor.RETAIL then
-        if guildRealm == nil
-            and (type(GetNormalizedRealmName) ~= "function"
-                or type(GetRealmName) ~= "function") then
-            return nil, "Retail guild realm service is unavailable"
-        end
         local normalizedRealm = guildRealm
-            or (type(GetNormalizedRealmName) == "function"
-                and GetNormalizedRealmName())
         local displayRealm = guildRealm
-            or (type(GetRealmName) == "function" and GetRealmName())
+        if guildRealm == nil or guildRealm == "" then
+            -- The player's realm is not a safe early fallback for a cross-realm
+            -- guild. Club readiness arrives with the authoritative guild realm
+            -- in that path, while preserving the fallback for same-realm guilds
+            -- whose fourth GetGuildInfo result remains unavailable.
+            if type(C_Club) ~= "table"
+                or type(C_Club.GetGuildClubId) ~= "function" then
+                return nil, "Retail guild readiness service is unavailable"
+            end
+            if C_Club.GetGuildClubId() == nil then
+                return pendingGuildIdentity("Retail guild realm is unavailable")
+            end
+            if type(GetNormalizedRealmName) ~= "function"
+                or type(GetRealmName) ~= "function" then
+                return nil, "Retail guild realm service is unavailable"
+            end
+            normalizedRealm = GetNormalizedRealmName()
+            displayRealm = GetRealmName()
+        end
         if normalizedRealm == nil or normalizedRealm == ""
             or displayRealm == nil or displayRealm == "" then
             return pendingGuildIdentity(

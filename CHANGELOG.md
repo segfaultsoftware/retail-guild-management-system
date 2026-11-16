@@ -7,6 +7,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Fixed
+
+- Restored Retail roster and bank scans by recognizing Mainline without the
+  Forever-only Camelot project constant and waiting for guild-club readiness
+  before using the same-realm fallback after login.
+
 ## 1.3.0
 
 ### Fixed
